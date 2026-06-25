@@ -15,25 +15,26 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 use url::Url;
 
 const PORT: u16 = 3000;
+pub static LAUNCHER_SHOW_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const MAX_PROXY_BODY_BYTES: usize = 16 * 1024 * 1024;
 const CONFIG_ID: &str = "ec29f0cd-700e-4d28-beb3-f4b1b3831fb6";
 const PROXY_AUTH_TOKEN: &str = "local-proxy-token";
 const HTTP_TIMEOUT_SECS: u64 = 60;
 const DPAPI_PREFIX: &str = "dpapi:";
 const CLAUDE_MODEL_ALIASES: [&str; 13] = [
-    "anthropic/claude-sonnet-4-5",
-    "anthropic/claude-haiku-4-5",
-    "anthropic/claude-opus-4-5",
-    "anthropic/claude-sonnet-4",
-    "anthropic/claude-haiku-4",
-    "anthropic/claude-opus-4",
-    "anthropic/claude-3-5-sonnet",
-    "anthropic/claude-3-5-haiku",
-    "anthropic/claude-3-opus",
-    "anthropic/claude-3-sonnet",
-    "claude-opus-4-6",
-    "anthropic/claude-2.1",
-    "anthropic/claude-2.0",
+    "claude-opus-4-8[0]",
+    "claude-opus-4-8[1]",
+    "claude-opus-4-8[2]",
+    "claude-opus-4-8[3]",
+    "claude-opus-4-8[4]",
+    "claude-opus-4-8[5]",
+    "claude-opus-4-8[6]",
+    "claude-opus-4-8[7]",
+    "claude-opus-4-8[8]",
+    "claude-opus-4-8[9]",
+    "claude-opus-4-8[10]",
+    "claude-opus-4-8[11]",
+    "claude-opus-4-8[12]",
 ];
 const PREFERRED_FREE_MODEL_IDS: [&str; 5] = [
     "openai/gpt-oss-20b:free",
@@ -1801,6 +1802,13 @@ fn handle_request(req: Request) -> bool {
                 return false;
             }
             handle_models_request(req, origin)
+        }
+        (&Method::Get, "/__launcher_show") => {
+            LAUNCHER_SHOW_REQUESTED.store(true, std::sync::atomic::Ordering::Release);
+            let _ = req.respond(
+                Response::from_string("ok")
+                    .with_header(header("Content-Type", "text/plain; charset=utf-8")),
+            );
         }
         (&Method::Get, "/") => {
             let _ = req.respond(
