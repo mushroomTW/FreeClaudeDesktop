@@ -31,7 +31,7 @@ const CLAUDE_MODEL_ALIASES: [&str; 13] = [
     "anthropic/claude-3-5-haiku",
     "anthropic/claude-3-opus",
     "anthropic/claude-3-sonnet",
-    "anthropic/claude-3-haiku",
+    "claude-opus-4-6",
     "anthropic/claude-2.1",
     "anthropic/claude-2.0",
 ];
@@ -80,9 +80,6 @@ fn default_capabilities() -> Value {
         "thinking": {
             "supported": true,
             "types": {
-                "adaptive": {
-                    "supported": true
-                },
                 "enabled": {
                     "supported": true
                 }
@@ -130,6 +127,7 @@ struct InferenceModel {
     label_override: String,
     provider_model_id: String,
     display_name: String,
+    capabilities: Value,
 }
 
 fn default_auth_scheme() -> String {
@@ -585,6 +583,7 @@ fn build_inference_models(models: &[NormalizedModel]) -> Vec<InferenceModel> {
             label_override: model.display_name.clone(),
             provider_model_id: model.provider_model_id.clone(),
             display_name: model.display_name.clone(),
+            capabilities: model.capabilities.clone(),
         })
         .collect()
 }
