@@ -15,7 +15,6 @@ iced = { version = "0.14", features = ["tokio"] }
 image = { version = "0.25", default-features = false, features = ["ico"] }
 tiny_http = "0.12"
 url = "2"
-winapi = { version = "0.3", features = ["dpapi", "winbase", "wincrypt", "winuser"] }
 tray-icon = "0.19"
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
@@ -26,6 +25,10 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
+keyring = "4.1.2"
 
-[build-dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "0.3", features = ["dpapi", "winbase", "wincrypt", "winuser", "processthreadsapi"] }
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
 winres = "0.1"

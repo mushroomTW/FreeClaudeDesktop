@@ -59,7 +59,10 @@ pub struct LauncherApp {
 }
 
 impl LauncherApp {
-    pub fn new(port: u16, tray_rx: Arc<Mutex<UnboundedReceiver<Message>>>) -> (Self, Task<Message>) {
+    pub fn new(
+        port: u16,
+        tray_rx: Arc<Mutex<UnboundedReceiver<Message>>>,
+    ) -> (Self, Task<Message>) {
         let mut app = Self {
             provider: None,
             base_url: String::new(),
@@ -174,8 +177,13 @@ impl LauncherApp {
     }
 
     pub fn save_config(&self) -> Result<(), String> {
-        crate::save_config(self.current_port, &self.base_url, &self.api_key, self.auth_value())
-            .map_err(|e| e.to_string())
+        crate::save_config(
+            self.current_port,
+            &self.base_url,
+            &self.api_key,
+            self.auth_value(),
+        )
+        .map_err(|e| e.to_string())
     }
 
     pub fn refresh_status(&mut self) {

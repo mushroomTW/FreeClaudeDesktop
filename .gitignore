@@ -2,3 +2,5 @@ launcher_settings.json
 *.log
 target/
 .omo
+.codex-target/
+.omc/

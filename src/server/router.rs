@@ -8,10 +8,7 @@ pub fn create_router(port: u16) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(move |origin, _| {
             origin.to_str().ok().is_some_and(|origin| {
-                crate::conversion::response_converter::is_allowed_origin(
-                    Some(origin),
-                    port,
-                )
+                crate::conversion::response_converter::is_allowed_origin(Some(origin), port)
             })
         }))
         .allow_methods(Any)

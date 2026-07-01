@@ -23,10 +23,17 @@ pub fn anthropic_to_openai_request(
         tracing::info!("[model 映射] {} → {}", req.model, mapped);
         data["model"] = Value::String(mapped.clone());
     } else if let Some(model) = &settings.real_model {
-        tracing::warn!("[model 映射] {} 不在 routes 中，使用預設 model: {}", req.model, model);
+        tracing::warn!(
+            "[model 映射] {} 不在 routes 中，使用預設 model: {}",
+            req.model,
+            model
+        );
         data["model"] = Value::String(model.clone());
     } else {
-        tracing::debug!("[model 映射] {} 不在 routes 中，也沒有預設 model，原樣轉發", req.model);
+        tracing::debug!(
+            "[model 映射] {} 不在 routes 中，也沒有預設 model，原樣轉發",
+            req.model
+        );
     }
 
     // 處理 thinking 屬性
@@ -144,11 +151,12 @@ pub fn anthropic_to_openai_request(
                                     content,
                                 } = block
                                 {
-                                    let mut result_content = String::new();
+                                    let mut text_parts = Vec::new();
+
                                     if let Some(ref res_c) = content {
                                         match res_c {
                                             ClaudeToolResultContent::Text(text) => {
-                                                result_content.push_str(text);
+                                                text_parts.push(text.clone());
                                             }
                                             ClaudeToolResultContent::Blocks(arr) => {
                                                 for res_block in arr {
@@ -156,7 +164,7 @@ pub fn anthropic_to_openai_request(
                                                         .get("text")
                                                         .and_then(Value::as_str)
                                                     {
-                                                        result_content.push_str(text);
+                                                        text_parts.push(text.to_string());
                                                     } else if res_block
                                                         .get("type")
                                                         .and_then(Value::as_str)
@@ -166,24 +174,31 @@ pub fn anthropic_to_openai_request(
                                                             .get("text")
                                                             .and_then(Value::as_str)
                                                         {
-                                                            result_content.push_str(text);
+                                                            text_parts.push(text.to_string());
                                                         }
+                                                    } else if res_block
+                                                        .get("type")
+                                                        .and_then(Value::as_str)
+                                                        == Some("image")
+                                                    {
+                                                        // tool result 的圖片不轉發。
                                                     } else {
-                                                        result_content
-                                                            .push_str(&res_block.to_string());
+                                                        text_parts.push(res_block.to_string());
                                                     }
                                                 }
                                             }
                                             ClaudeToolResultContent::Object(obj) => {
-                                                result_content.push_str(&obj.to_string());
+                                                text_parts.push(obj.to_string());
                                             }
                                         }
                                     }
 
+                                    let combined_text = text_parts.join("\n").trim().to_string();
+
                                     openai_messages.push(json!({
                                         "role": "tool",
                                         "tool_call_id": tool_use_id,
-                                        "content": result_content
+                                        "content": combined_text
                                     }));
                                 }
                             }
@@ -279,8 +294,8 @@ pub fn anthropic_to_openai_request(
     }
 
     // 轉換 tools
+    let mut openai_tools = Vec::new();
     if let Some(ref tools_val) = req.tools {
-        let mut openai_tools = Vec::new();
         for tool in tools_val {
             if !tool.name.trim().is_empty() {
                 openai_tools.push(json!({
@@ -293,9 +308,10 @@ pub fn anthropic_to_openai_request(
                 }));
             }
         }
-        if !openai_tools.is_empty() {
-            data["tools"] = Value::Array(openai_tools);
-        }
+    }
+
+    if !openai_tools.is_empty() {
+        data["tools"] = Value::Array(openai_tools);
     }
 
     // 轉換 tool_choice

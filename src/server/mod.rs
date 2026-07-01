@@ -34,25 +34,24 @@ pub fn trigger_shutdown() {
 
 pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
-    
-    let local_dir = crate::common::local_app_data().join("FreeClaudeLauncher").join("logs");
+
+    let local_dir = crate::common::local_app_data()
+        .join("FreeClaudeLauncher")
+        .join("logs");
     let _ = std::fs::create_dir_all(&local_dir);
-    
+
     let file_appender = tracing_appender::rolling::daily(local_dir, "launcher.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-    
+
     let file_layer = fmt::layer()
         .with_writer(non_blocking)
         .with_ansi(false)
         .with_target(false)
         .with_thread_ids(true);
-        
-    let stdout_layer = fmt::layer()
-        .with_target(false)
-        .with_ansi(true);
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let stdout_layer = fmt::layer().with_target(false).with_ansi(true);
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let subscriber = Registry::default()
         .with(filter)
@@ -62,7 +61,7 @@ pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     if tracing::subscriber::set_global_default(subscriber).is_err() {
         eprintln!("Failed to set global subscriber");
     }
-    
+
     Some(guard)
 }
 

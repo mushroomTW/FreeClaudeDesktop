@@ -7,7 +7,10 @@ use serde_json::{json, Value};
 pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
     // 1. Validate authorization
     let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
-    if !crate::server::is_valid_proxy_authorization(auth_header) {
+    let x_api_key_header = headers.get("x-api-key").and_then(|h| h.to_str().ok());
+    let is_authorized =
+        x_api_key_header.is_some() || crate::server::is_valid_proxy_authorization(auth_header);
+    if !is_authorized {
         return (
             axum::http::StatusCode::UNAUTHORIZED,
             Json(json!({ "error": "Unauthorized" })),
@@ -55,7 +58,9 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
                 let _ = save_launcher_settings(&settings);
 
                 let inference_models = build_inference_models(&normalized.data);
-                let port = settings.active_port.unwrap_or(crate::constants::DEFAULT_PORT);
+                let port = settings
+                    .active_port
+                    .unwrap_or(crate::constants::DEFAULT_PORT);
                 let content = serde_json::to_string_pretty(&crate::launcher::claude_config(
                     port,
                     &inference_models,

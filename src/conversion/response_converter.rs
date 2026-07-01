@@ -26,16 +26,19 @@ pub fn is_allowed_origin(origin: Option<&str>, _port: u16) -> bool {
 }
 
 fn normalize_gateway_url(base_url: &str, endpoint: &str) -> Result<String, String> {
-  let mut target_url =
-    Url::parse(base_url.trim()).map_err(|_| "Invalid Gateway Base URL".to_string())?;
-  if target_url.scheme() != "https" {
-      let is_local = target_url.host_str().map(is_local_hostname).unwrap_or(false);
-      if !is_local || target_url.scheme() != "http" {
-          return Err("Gateway Base URL must use HTTPS, or HTTP on localhost".to_string());
-      }
-  }
+    let mut target_url =
+        Url::parse(base_url.trim()).map_err(|_| "Invalid Gateway Base URL".to_string())?;
+    if target_url.scheme() != "https" {
+        let is_local = target_url
+            .host_str()
+            .map(is_local_hostname)
+            .unwrap_or(false);
+        if !is_local || target_url.scheme() != "http" {
+            return Err("Gateway Base URL must use HTTPS, or HTTP on localhost".to_string());
+        }
+    }
 
-  let base_path = target_url.path().trim_end_matches('/');
+    let base_path = target_url.path().trim_end_matches('/');
     let path = if base_path.ends_with("/v1") {
         format!("{base_path}/{endpoint}")
     } else {
@@ -70,10 +73,17 @@ pub fn prepare_proxy_body(body: &str, settings: &Settings) -> String {
             tracing::info!("[model 映射] {} → {}", model, mapped);
             data["model"] = Value::String(mapped.clone());
         } else if let Some(fallback) = &settings.real_model {
-            tracing::warn!("[model 映射] {} 不在 routes 中，使用預設 model: {}", model, fallback);
+            tracing::warn!(
+                "[model 映射] {} 不在 routes 中，使用預設 model: {}",
+                model,
+                fallback
+            );
             data["model"] = Value::String(fallback.clone());
         } else {
-            tracing::debug!("[model 映射] {} 不在 routes 中，也沒有預設 model，原樣轉發", model);
+            tracing::debug!(
+                "[model 映射] {} 不在 routes 中，也沒有預設 model，原樣轉發",
+                model
+            );
         }
     } else if let Some(model) = &settings.real_model {
         data["model"] = Value::String(model.clone());
@@ -133,12 +143,8 @@ pub fn normalize_models_response(provider_response: Value) -> Result<NormalizedM
             // `context_length`（總容量），我們暫且當作輸入視窗，輸出另讀
             // `max_completion_tokens`。兩個都沒有時保持 `None`，讓 Claude Desktop
             // 走預設（200k）做為最低限度的視覺提示。
-            let max_input = model
-                .max_input_tokens
-                .or(model.context_length);
-            let max_output = model
-                .max_output_tokens
-                .or(model.max_completion_tokens);
+            let max_input = model.max_input_tokens.or(model.context_length);
+            let max_output = model.max_output_tokens.or(model.max_completion_tokens);
 
             NormalizedModel {
                 kind: "model".to_string(),
@@ -414,6 +420,4 @@ mod tests {
         assert_eq!(converted["content"][0]["type"], "text");
         assert_eq!(converted["content"][0]["text"], "hi");
     }
-
-
 }

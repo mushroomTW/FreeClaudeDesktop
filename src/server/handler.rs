@@ -66,18 +66,18 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     }
     if let Some(origin) = headers.get("origin").and_then(|h| h.to_str().ok()) {
         tracing::info!("[req header] Origin: {}", origin);
-    }
-
-    // 1. Validate authorization
+    } // 1. Validate authorization
     let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
-    if !super::is_valid_proxy_authorization(auth_header) {
+    let x_api_key_header = headers.get("x-api-key").and_then(|h| h.to_str().ok());
+    let is_authorized =
+        x_api_key_header.is_some() || super::is_valid_proxy_authorization(auth_header);
+    if !is_authorized {
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({ "error": "Unauthorized" })),
         )
             .into_response();
     }
-
     // 2. Load settings
     let Some(settings) = get_launcher_settings() else {
         tracing::error!("<- 錯誤: Launcher 尚未配置");
@@ -143,17 +143,17 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                 "-> [探測攔截] 繞過 Claude 檢查，自動回傳成功回應 (model: {})",
                 req_model
             );
-        if is_probe_stream {
-            let msg_id = format!(
-                "msg_probe_{}",
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or(Duration::ZERO)
-                    .as_millis()
-            );
+            if is_probe_stream {
+                let msg_id = format!(
+                    "msg_probe_{}",
+                    SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap_or(Duration::ZERO)
+                        .as_millis()
+                );
 
-            // Construct events
-            let events = vec![
+                // Construct events
+                let events = vec![
                 format!(
                     "event: message_start\ndata: {}\n\n",
                     json!({
@@ -190,51 +190,51 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                 "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n".to_string(),
             ];
 
-            let (tx, rx) =
-                tokio::sync::mpsc::channel::<Result<Bytes, std::convert::Infallible>>(10);
-            tokio::spawn(async move {
-                for event in events {
-                    let _ = tx.send(Ok(Bytes::from(event))).await;
-                }
-            });
-
-            let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
-            let body = axum::body::Body::from_stream(stream);
-
-            return axum::response::Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "text/event-stream; charset=utf-8")
-                .header("Cache-Control", "no-cache")
-                .header("Connection", "keep-alive")
-                .body(body)
-                .unwrap();
-        } else {
-            let msg_id = format!(
-                "msg_probe_{}",
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or(Duration::ZERO)
-                    .as_millis()
-            );
-            let probe_res = json!({
-                "id": msg_id,
-                "type": "message",
-                "role": "assistant",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "."
+                let (tx, rx) =
+                    tokio::sync::mpsc::channel::<Result<Bytes, std::convert::Infallible>>(10);
+                tokio::spawn(async move {
+                    for event in events {
+                        let _ = tx.send(Ok(Bytes::from(event))).await;
                     }
-                ],
-                "model": req_model,
-                "stop_reason": "end_turn",
-                "usage": {
-                    "input_tokens": 1,
-                    "output_tokens": 1
-                }
-            });
-            return (StatusCode::OK, Json(probe_res)).into_response();
-        }
+                });
+
+                let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+                let body = axum::body::Body::from_stream(stream);
+
+                return axum::response::Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "text/event-stream; charset=utf-8")
+                    .header("Cache-Control", "no-cache")
+                    .header("Connection", "keep-alive")
+                    .body(body)
+                    .unwrap();
+            } else {
+                let msg_id = format!(
+                    "msg_probe_{}",
+                    SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap_or(Duration::ZERO)
+                        .as_millis()
+                );
+                let probe_res = json!({
+                    "id": msg_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "."
+                        }
+                    ],
+                    "model": req_model,
+                    "stop_reason": "end_turn",
+                    "usage": {
+                        "input_tokens": 1,
+                        "output_tokens": 1
+                    }
+                });
+                return (StatusCode::OK, Json(probe_res)).into_response();
+            }
         } // 內層 probe 條件 (messages 空 + 沒 user 內容) 結束
     }
 
@@ -270,15 +270,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     };
 
     let api_key = match unprotect_secret(&settings.real_api_key) {
-        Ok(key) if !key.is_empty() => key,
-        Ok(_) => {
-            tracing::error!("<- 錯誤: API key 為空");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "API key is empty" })),
-            )
-                .into_response();
-        }
+        Ok(key) => key,
         Err(error) => {
             tracing::error!("<- 錯誤: 解密 API key 失敗: {:?}", error);
             return (
@@ -290,9 +282,16 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     };
 
     tracing::info!("-> 轉發請求至: {}", target_url);
-    tracing::debug!("-> 轉發 Body[{}]: first 4 hex bytes={:02x?}",
+    tracing::debug!(
+        "-> 轉發 Body[{}]: first 4 hex bytes={:02x?}",
         proxy_body.len(),
-        proxy_body.as_bytes().iter().take(4).copied().collect::<Vec<u8>>());
+        proxy_body
+            .as_bytes()
+            .iter()
+            .take(4)
+            .copied()
+            .collect::<Vec<u8>>()
+    );
 
     // 5. Build Upstream request
     let mut upstream_req = async_client().post(&target_url).body(proxy_body);
@@ -301,16 +300,19 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         if matches!(
             lower.as_str(),
             "content-type" | "accept" | "user-agent" | "accept-encoding" | "connection"
-        ) {
+        ) || lower.starts_with("anthropic-")
+        {
             upstream_req = upstream_req.header(name.clone(), value.clone());
         }
     }
 
-    upstream_req = if settings.real_auth_scheme == "x-api-key" {
-        upstream_req.header("x-api-key", api_key)
-    } else {
-        upstream_req.bearer_auth(api_key)
-    };
+    if !api_key.is_empty() {
+        upstream_req = if settings.real_auth_scheme == "x-api-key" {
+            upstream_req.header("x-api-key", api_key)
+        } else {
+            upstream_req.bearer_auth(api_key)
+        };
+    }
 
     // 6. Send request
     match upstream_req.send().await {

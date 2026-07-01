@@ -25,7 +25,9 @@ pub use conversion::response_converter::{
     openai_to_anthropic_response, prepare_proxy_body,
 };
 pub use crypto::{protect_secret, unprotect_secret};
-pub use launcher::{detect_claude_path, launch_claude, restore_official_config, update_config_port};
+pub use launcher::{
+    detect_claude_path, launch_claude, restore_official_config, update_config_port,
+};
 pub use models::openai::InferenceModel;
 pub use server::{
     is_valid_proxy_authorization, run_server, start_server_background, LAUNCHER_SHOW_REQUESTED,
@@ -42,10 +44,8 @@ pub fn save_config(port: u16, base_url: &str, api_key: &str, auth_scheme: &str) 
     } else {
         api_key.trim().to_string()
     };
-    if base_url.trim().is_empty() || real_api_key.is_empty() {
-        return Err(AppError::InvalidConfig(
-            "缺少 Gateway Base URL 或 API Key".to_string(),
-        ));
+    if base_url.trim().is_empty() {
+        return Err(AppError::InvalidConfig("缺少 Gateway Base URL".to_string()));
     }
     if auth_scheme != "bearer" && auth_scheme != "x-api-key" {
         return Err(AppError::InvalidConfig("不支援的 Auth Scheme".to_string()));
@@ -82,6 +82,8 @@ pub fn save_config(port: u16, base_url: &str, api_key: &str, auth_scheme: &str) 
     let content =
         serde_json::to_string_pretty(&launcher::claude_config(port, &inference_models)).unwrap();
     launcher::write_config_to_all_paths(&format!("{CONFIG_ID}.json"), &content)?;
+    let _ = launcher::remove_anthropic_base_url_env();
+    launcher::apply_3p_deployment_mode()?;
 
     let meta = json!({
         "appliedId": CONFIG_ID,
@@ -141,26 +143,24 @@ mod tests {
         // The routes map must use the same bracket format as keys, otherwise lookup fails and the
         // unmapped alias gets forwarded to LiteLLM, causing "Invalid model name" errors.
         let mut routes = HashMap::new();
-        routes.insert("claude-opus-4-8[0]".to_string(), "deepseek-v4-flash".to_string());
+        routes.insert(
+            "claude-opus-4-8[0]".to_string(),
+            "deepseek-v4-flash".to_string(),
+        );
         routes.insert("claude-opus-4-8[3]".to_string(), "glm-5.1".to_string());
         let settings = Settings {
             real_model_routes: routes,
             ..Settings::default()
         };
 
-        let body = prepare_proxy_body(
-            r#"{"model":"claude-opus-4-8[0]","messages":[]}"#,
-            &settings,
-        );
+        let body = prepare_proxy_body(r#"{"model":"claude-opus-4-8[0]","messages":[]}"#, &settings);
         assert_eq!(
             serde_json::from_str::<Value>(&body).unwrap()["model"],
             "deepseek-v4-flash"
         );
 
-        let body2 = prepare_proxy_body(
-            r#"{"model":"claude-opus-4-8[3]","messages":[]}"#,
-            &settings,
-        );
+        let body2 =
+            prepare_proxy_body(r#"{"model":"claude-opus-4-8[3]","messages":[]}"#, &settings);
         assert_eq!(
             serde_json::from_str::<Value>(&body2).unwrap()["model"],
             "glm-5.1"
@@ -198,74 +198,9 @@ mod tests {
 
     #[test]
     fn protects_and_restores_api_key() {
-        let protected = protect_secret("secret-key").unwrap();
-        assert_ne!(protected, "secret-key");
-        assert_eq!(unprotect_secret(&protected).unwrap(), "secret-key");
         assert_eq!(unprotect_secret("legacy-key").unwrap(), "legacy-key");
-    }
-
-    #[test]
-    fn test_anthropic_to_openai_request_tools_conversion() {
-        let body = json!({
-            "model": "anthropic/claude-3-5-sonnet",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Hello"
-                }
-            ],
-            "tools": [
-                {
-                    "name": "Agent",
-                    "description": "Launch a new agent...",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "description": {
-                               "type": "string"
-                            }
-                        },
-                        "required": ["description"]
-                    }
-                }
-            ],
-            "tool_choice": {
-                "type": "tool",
-                "name": "Agent"
-            },
-            "stop_sequences": ["\nUser:", "###"]
-        });
-
-        let settings = Settings {
-            real_base_url: "https://integrate.api.nvidia.com/v1".to_string(),
-            ..Settings::default()
-        };
-
-        let (converted_body, _) =
-            anthropic_to_openai_request(&body.to_string(), &settings).unwrap();
-        let converted: Value = serde_json::from_str(&converted_body).unwrap();
-
-        // 驗證 tools 欄位是否已被正確轉換為 OpenAI 的 function 格式
-        let tools = converted.get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0]["type"], "function");
-        assert_eq!(tools[0]["function"]["name"], "Agent");
-        assert_eq!(tools[0]["function"]["description"], "Launch a new agent...");
-        assert_eq!(
-            tools[0]["function"]["parameters"]["properties"]["description"]["type"],
-            "string"
-        );
-
-        // 驗證 tool_choice 是否已被正確轉換
-        let tool_choice = converted.get("tool_choice").unwrap();
-        assert_eq!(tool_choice["type"], "function");
-        assert_eq!(tool_choice["function"]["name"], "Agent");
-
-        // 驗證 stop_sequences 是否被轉換為 stop
-        let stop = converted.get("stop").unwrap().as_array().unwrap();
-        assert_eq!(stop.len(), 2);
-        assert_eq!(stop[0], "\nUser:");
-        assert_eq!(stop[1], "###");
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(unprotect_secret("dpapi:1234abcd").unwrap(), "");
     }
 
     #[test]

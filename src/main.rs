@@ -33,7 +33,10 @@ fn main() -> iced::Result {
         .build();
     let mut waked_up = false;
     if let Ok(client) = &client {
-        if let Ok(resp) = client.get(format!("http://127.0.0.1:{}/__launcher_show", test_port)).send() {
+        if let Ok(resp) = client
+            .get(format!("http://127.0.0.1:{}/__launcher_show", test_port))
+            .send()
+        {
             if resp.status().is_success() {
                 if let Ok(text) = resp.text() {
                     if text == "ok" {
@@ -94,6 +97,10 @@ fn main() -> iced::Result {
                 title.as_ptr(),
                 winapi::um::winuser::MB_OK | winapi::um::winuser::MB_ICONERROR,
             );
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            eprintln!("無法啟動背景代理伺服器，可能已被其他程式佔用。\n詳細錯誤: {e}");
         }
         return Ok(());
     }
