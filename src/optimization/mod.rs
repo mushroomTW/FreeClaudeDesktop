@@ -1,0 +1,325 @@
+//! Local optimization handlers for fast-path API responses.
+//!
+//! Each handler checks if the request matches known Claude Code auxiliary
+//! request patterns and returns an immediate response, saving API quota.
+
+pub mod command_utils;
+pub mod detection;
+pub mod web_tools;
+
+use axum::{body::Bytes, response::IntoResponse, Json};
+use serde_json::{json, Value};
+use std::time::{Duration, SystemTime};
+
+use crate::config::Settings;
+use detection::*;
+
+/// One-shot response for an intercepted optimization.
+pub fn build_text_response(
+    model: &str,
+    text: &str,
+    input_tokens: u64,
+    output_tokens: u64,
+) -> impl IntoResponse {
+    use axum::http::StatusCode;
+
+    let msg_id = format!(
+        "msg_opt_{}",
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO)
+            .as_millis()
+    );
+
+    let response = json!({
+        "id": msg_id,
+        "type": "message",
+        "role": "assistant",
+        "model": model,
+        "content": [
+            { "type": "text", "text": text }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens
+        }
+    });
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+/// Build a simple SSE stream from pre-cooked events.
+///
+/// The result is an `axum::response::Response` with `Content-Type: text/event-stream`.
+pub fn build_text_sse(
+    model: &str,
+    text: &str,
+    _input_tokens: u64,
+    _output_tokens: u64,
+) -> axum::response::Response {
+    use axum::body::Body;
+    use axum::http::StatusCode;
+
+    let msg_id = format!(
+        "msg_opt_sse_{}",
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO)
+            .as_millis()
+    );
+
+    let events = vec![
+        format!(
+            "event: message_start\ndata: {}\n\n",
+            json!({
+                "type": "message_start",
+                "message": {
+                    "id": msg_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": model,
+                    "stop_reason": null,
+                    "usage": { "input_tokens": _input_tokens, "output_tokens": 0 }
+                }
+            })
+        ),
+        format!(
+            "event: content_block_start\ndata: {}\n\n",
+            json!({
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": { "type": "text", "text": "" }
+            })
+        ),
+        format!(
+            "event: content_block_delta\ndata: {}\n\n",
+            json!({
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": { "type": "text_delta", "text": text }
+            })
+        ),
+        "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+            .to_string(),
+        format!(
+            "event: message_delta\ndata: {}\n\n",
+            json!({
+                "type": "message_delta",
+                "delta": { "stop_reason": "end_turn", "stop_sequence": null },
+                "usage": { "input_tokens": _input_tokens, "output_tokens": _output_tokens }
+            })
+        ),
+        "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n".to_string(),
+    ];
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::convert::Infallible>>(10);
+    let _model_owned = model.to_string();
+    let _text_owned = text.to_string();
+    tokio::spawn(async move {
+        for event in events {
+            let _ = tx.send(Ok(Bytes::from(event))).await;
+        }
+    });
+
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+    let body = Body::from_stream(stream);
+
+    axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/event-stream; charset=utf-8")
+        .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
+        .body(body)
+        .unwrap()
+}
+
+fn request_is_stream(body_str: &str) -> bool {
+    serde_json::from_str::<Value>(body_str)
+        .ok()
+        .and_then(|v| v.get("stream").and_then(Value::as_bool))
+        .unwrap_or(false)
+}
+
+fn build_optimized_text_response(
+    body_str: &str,
+    model: &str,
+    text: &str,
+    input_tokens: u64,
+    output_tokens: u64,
+) -> axum::response::Response {
+    if request_is_stream(body_str) {
+        build_text_sse(model, text, input_tokens, output_tokens)
+    } else {
+        build_text_response(model, text, input_tokens, output_tokens).into_response()
+    }
+}
+
+/// Try all optimization handlers in order.
+/// Returns `Some(Response)` if any handler matched.
+///
+/// Order (cheapest / most common first):
+///   1. Quota check mock
+///   2. Prefix detection
+///   3. Title skip
+///   4. Suggestion skip
+///   5. Filepath mock
+///   6. Web server tool interception
+///   7. Safety classifier handling
+pub async fn try_optimizations(
+    body_str: &str,
+    settings: &Settings,
+) -> Option<axum::response::Response> {
+    // 1. Quota check (detect first, trivial cost)
+    if settings.enable_quota_check_mock && is_quota_check_request(body_str) {
+        tracing::info!("Optimization: mocked quota check");
+        let model = extract_model(body_str);
+        return Some(build_optimized_text_response(
+            body_str,
+            &model,
+            "配額檢查通過。",
+            10,
+            5,
+        ));
+    }
+
+    // 2. Prefix detection
+    if settings.enable_prefix_detection {
+        if let Some(prefix) = extract_command_prefix(body_str) {
+            tracing::info!("Optimization: fast prefix detection");
+            let model = extract_model(body_str);
+            return Some(build_optimized_text_response(
+                body_str, &model, &prefix, 100, 5,
+            ));
+        }
+    }
+
+    // 3. Title generation skip
+    if settings.enable_title_generation_skip && is_title_generation_request(body_str) {
+        tracing::info!("Optimization: skipped title generation");
+        let model = extract_model(body_str);
+        return Some(build_optimized_text_response(
+            body_str,
+            &model,
+            "Conversation",
+            100,
+            5,
+        ));
+    }
+
+    // 4. Suggestion mode skip
+    if settings.enable_suggestion_mode_skip && is_suggestion_mode_request(body_str) {
+        tracing::info!("Optimization: skipped suggestion mode");
+        let model = extract_model(body_str);
+        return Some(build_optimized_text_response(body_str, &model, "", 100, 1));
+    }
+
+    // 5. Filepath extraction
+    if settings.enable_filepath_extraction_mock {
+        if let Some(filepaths) = extract_filepaths(body_str) {
+            tracing::info!("Optimization: mocked filepath extraction");
+            let model = extract_model(body_str);
+            return Some(build_optimized_text_response(
+                body_str, &model, &filepaths, 100, 10,
+            ));
+        }
+    }
+
+    // 6. Safety classifier
+    if settings.enable_safety_classifier_handling && is_safety_classifier_request(body_str) {
+        // For safety classifier, we don't short-circuit the response,
+        // we just note it. The actual handling (disabling thinking)
+        // is done by the caller modifying the request body before forwarding.
+        tracing::info!("Optimization: safety classifier detected, will disable thinking");
+        // Return None so the request still goes through, but caller can use this info.
+        // Actually for this optimization we want to disable thinking in the body,
+        // which is best done by the caller inspecting the body before sending.
+        // We return None here but provide a helper function instead.
+        // (Just return None; the caller should separately check and disable thinking.)
+        return None;
+    }
+
+    None
+}
+
+/// Helper to strip `thinking` from a JSON body for safety-classifier-like requests.
+pub fn strip_thinking_for_safety_classifier(body: &mut serde_json::Value) {
+    if let Some(obj) = body.as_object_mut() {
+        if let Some(thinking) = obj.get_mut("thinking") {
+            if let Some(map) = thinking.as_object_mut() {
+                map.insert("type".to_string(), json!("disabled"));
+                map.remove("budget_tokens");
+            }
+        }
+    }
+}
+
+pub fn body_with_safety_classifier_handling(body_str: &str, settings: &Settings) -> String {
+    if !settings.enable_safety_classifier_handling || !is_safety_classifier_request(body_str) {
+        return body_str.to_string();
+    }
+
+    let Ok(mut body) = serde_json::from_str::<Value>(body_str) else {
+        return body_str.to_string();
+    };
+    strip_thinking_for_safety_classifier(&mut body);
+    body.to_string()
+}
+
+fn extract_model(body_str: &str) -> String {
+    serde_json::from_str::<Value>(body_str)
+        .ok()
+        .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(String::from))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Settings;
+    use axum::http::header::CONTENT_TYPE;
+
+    #[tokio::test]
+    async fn non_stream_optimization_returns_json_message() {
+        let settings = Settings::default();
+        let body = json!({
+            "model": "claude-test",
+            "max_tokens": 1,
+            "stream": false,
+            "messages": [{ "role": "user", "content": "quota check" }]
+        })
+        .to_string();
+
+        let response = try_optimizations(&body, &settings).await.unwrap();
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(!content_type.starts_with("text/event-stream"));
+
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["content"][0]["text"], "配額檢查通過。");
+    }
+
+    #[test]
+    fn safety_classifier_handling_disables_thinking_when_enabled() {
+        let settings = Settings::default();
+        let body = json!({
+            "model": "claude-test",
+            "system": "<transcript>classify</transcript>",
+            "messages": [{ "role": "user", "content": "yes</block>" }],
+            "thinking": { "type": "enabled", "budget_tokens": 1024 }
+        })
+        .to_string();
+
+        let rewritten = body_with_safety_classifier_handling(&body, &settings);
+        let value: Value = serde_json::from_str(&rewritten).unwrap();
+        assert_eq!(value["thinking"]["type"], "disabled");
+        assert!(value["thinking"].get("budget_tokens").is_none());
+    }
+}

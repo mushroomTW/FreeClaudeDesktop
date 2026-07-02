@@ -1,11 +1,14 @@
-use crate::app::{LauncherApp, Message};
+use crate::app::{LauncherApp, Message, Tab};
 use crate::constants::{AUTH_SCHEMES, PROVIDERS};
 use crate::ui::styles::{
     danger_btn_style, ghost_btn_style, outline_btn_style, primary_btn_style, secondary_btn_style,
-    CLR_BORDER, CLR_CARD, CLR_DANGER, CLR_SUCCESS, CLR_TEXT_DIM, CLR_WARNING,
+    CLR_BORDER, CLR_CARD, CLR_DANGER, CLR_SIDEBAR, CLR_SUCCESS, CLR_TEXT, CLR_TEXT_DIM,
+    CLR_WARNING,
 };
 use iced::font::Weight;
-use iced::widget::{button, checkbox, column, container, pick_list, row, rule, text, text_input};
+use iced::widget::{
+    button, checkbox, column, container, pick_list, row, rule, scrollable, text, text_input,
+};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length, Shadow};
 
 /// 表單列：左側標籤 + 右側控件
@@ -146,17 +149,83 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     ]
     .spacing(8);
 
-    // ── 組裝主要內容 ──
-    let mut content = column![
-        header,
-        status_card,
-        section_title,
-        rule::horizontal(1),
-        form,
-        custom_section,
+    // ── 進階設定 (Per-feature 開關) ──
+    let advanced_title = text("進階設定").size(18).font(Font {
+        weight: Weight::Semibold,
+        ..Default::default()
+    });
+
+    let transport_options = vec!["openai_chat".to_string(), "anthropic_messages".to_string()];
+    let reasoning_options = vec!["separate".to_string(), "inline".to_string()];
+
+    let advanced_form = column![
+        form_row(
+            "傳輸協定",
+            pick_list(
+                transport_options,
+                Some(app.transport_type.clone()),
+                Message::TransportTypeSelected,
+            )
+            .width(Length::Fill)
+            .into(),
+        ),
+        form_row(
+            "Thinking 模式",
+            pick_list(
+                reasoning_options,
+                Some(app.reasoning_replay_mode.clone()),
+                Message::ReasoningReplayModeSelected,
+            )
+            .width(Length::Fill)
+            .into(),
+        ),
+        // Per-feature toggles
+        checkbox(app.enable_quota_check_mock)
+            .label("配額檢查攔截")
+            .on_toggle(Message::QuotaCheckMockToggled)
+            .text_size(14)
+            .spacing(8),
+        checkbox(app.enable_prefix_detection)
+            .label("命令前綴快速檢測")
+            .on_toggle(Message::PrefixDetectionToggled)
+            .text_size(14)
+            .spacing(8),
+        checkbox(app.enable_title_generation_skip)
+            .label("標題生成跳過")
+            .on_toggle(Message::TitleGenerationSkipToggled)
+            .text_size(14)
+            .spacing(8),
+        checkbox(app.enable_suggestion_mode_skip)
+            .label("建議模式跳過")
+            .on_toggle(Message::SuggestionModeSkipToggled)
+            .text_size(14)
+            .spacing(8),
+        checkbox(app.enable_filepath_extraction_mock)
+            .label("檔案路徑提取模擬")
+            .on_toggle(Message::FilepathExtractionMockToggled)
+            .text_size(14)
+            .spacing(8),
+        checkbox(app.enable_safety_classifier_handling)
+            .label("安全分類器處理")
+            .on_toggle(Message::SafetyClassifierHandlingToggled)
+            .text_size(14)
+            .spacing(8),
     ]
-    .spacing(18)
-    .max_width(540);
+    .spacing(10);
+
+    // ── 組裝主要內容（依目前分頁切換） ──
+    let tab_content: Element<'_, Message> = match app.current_tab {
+        Tab::General => column![section_title, rule::horizontal(1), form, custom_section,]
+            .spacing(18)
+            .into(),
+        Tab::Advanced => column![advanced_title, rule::horizontal(1), advanced_form,]
+            .spacing(18)
+            .into(),
+    };
+
+    let mut content = column![header, status_card, tab_content,]
+        .spacing(18)
+        .max_width(540);
 
     // ── Toast 通知 ──
     if let Some(ref toast) = app.toast {
@@ -248,20 +317,88 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         }))
         .on_press(Message::SaveAndLaunch)
         .style(primary_btn_style)
-        .padding([10, 24]),
+        .padding([10, 20]),
         button(text("💾 僅儲存").size(14))
             .on_press(Message::SaveOnly)
             .style(secondary_btn_style)
-            .padding([10, 20]),
+            .padding([10, 16]),
         button(text("↩ 還原官方").size(14).color(CLR_TEXT_DIM))
             .on_press(Message::RestoreRequested)
             .style(outline_btn_style)
-            .padding([10, 20]),
+            .padding([10, 16]),
     ]
     .spacing(10);
 
     content = content.push(buttons);
 
+    // ── 側邊欄選單 ──
+    let menu_items = vec![("連線設定", Tab::General), ("進階設定", Tab::Advanced)];
+
+    let sidebar_items: Vec<Element<'_, Message>> = menu_items
+        .into_iter()
+        .map(|(label, tab)| {
+            let is_active = app.current_tab == tab;
+            let btn = button(
+                text(label)
+                    .size(14)
+                    .color(if is_active { CLR_TEXT } else { CLR_TEXT_DIM })
+                    .font(Font {
+                        weight: if is_active {
+                            Weight::Semibold
+                        } else {
+                            Weight::Medium
+                        },
+                        ..Default::default()
+                    }),
+            )
+            .on_press(Message::TabSelected(tab))
+            .style(
+                move |theme: &iced::Theme, status: button::Status| -> button::Style {
+                    if is_active {
+                        primary_btn_style(theme, status)
+                    } else {
+                        ghost_btn_style(theme, status)
+                    }
+                },
+            )
+            .padding([8, 12])
+            .width(Length::Fill);
+            btn.into()
+        })
+        .collect();
+
+    let sidebar = container(
+        column![
+            text("設定選單").size(14).color(CLR_TEXT_DIM).font(Font {
+                weight: Weight::Semibold,
+                ..Default::default()
+            }),
+            column(sidebar_items).spacing(4),
+        ]
+        .spacing(12),
+    )
+    .padding([20, 12])
+    .width(Length::Fixed(160.0))
+    .height(Length::Fill)
+    .style(|_theme| container::Style {
+        text_color: None,
+        background: Some(Background::Color(CLR_SIDEBAR)),
+        border: Border {
+            radius: 0.0.into(),
+            width: 0.0,
+            color: iced::Color::TRANSPARENT,
+        },
+        shadow: Shadow::default(),
+        snap: false,
+    });
+
     // ── 外層容器 ──
-    container(content).padding(30).center_x(Length::Fill).into()
+    let main_content = row![
+        sidebar,
+        scrollable(container(content).padding(30).center_x(Length::Fill)).width(Length::Fill),
+    ]
+    .spacing(0)
+    .height(Length::Fill);
+
+    main_content.into()
 }

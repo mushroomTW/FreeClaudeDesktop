@@ -1,17 +1,16 @@
-pub mod app;
-pub mod common;
-pub mod config;
-pub mod constants;
 pub mod conversion;
-pub mod crypto;
-pub mod error;
-pub mod launcher;
+pub mod core;
 pub mod models;
+pub mod optimization;
+pub mod platform;
+pub mod runtime;
 pub mod server;
-pub mod tray;
 pub mod ui;
 
+pub use core::{config, constants, error};
 pub use error::{AppError, AppResult};
+pub use platform::{common, crypto, launcher};
+pub use runtime::{app, tray};
 
 use serde_json::json;
 use std::collections::HashMap;
@@ -34,7 +33,22 @@ pub use server::{
 };
 
 /// 儲存配置，獲取模型列表，並生成 Claude Desktop 配置
-pub fn save_config(port: u16, base_url: &str, api_key: &str, auth_scheme: &str) -> AppResult<()> {
+pub fn save_config(
+    port: u16,
+    base_url: &str,
+    api_key: &str,
+    auth_scheme: &str,
+    enable_quota_check_mock: bool,
+    enable_prefix_detection: bool,
+    enable_title_generation_skip: bool,
+    enable_suggestion_mode_skip: bool,
+    enable_filepath_extraction_mock: bool,
+    enable_web_server_tools: bool,
+    web_fetch_allow_private_networks: bool,
+    enable_safety_classifier_handling: bool,
+    reasoning_replay_mode: &str,
+    transport_type: &str,
+) -> AppResult<()> {
     let existing = get_launcher_settings();
     let real_api_key = if api_key.trim().is_empty() {
         existing
@@ -76,6 +90,17 @@ pub fn save_config(port: u16, base_url: &str, api_key: &str, auth_scheme: &str) 
             routes
         },
         active_port: Some(port),
+        transport_type: transport_type.to_string(),
+        reasoning_replay_mode: reasoning_replay_mode.to_string(),
+        enable_quota_check_mock,
+        enable_prefix_detection,
+        enable_title_generation_skip,
+        enable_suggestion_mode_skip,
+        enable_filepath_extraction_mock,
+        enable_web_server_tools,
+        web_fetch_allowed_schemes: "http,https".to_string(),
+        web_fetch_allow_private_networks,
+        enable_safety_classifier_handling,
     };
     save_launcher_settings(&settings)?;
 

@@ -56,6 +56,16 @@ pub struct InferenceModel {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u64>,
     pub capabilities: Value,
+    /// 傳輸類型: "openai_chat_completions" 或 "anthropic_messages"
+    #[serde(
+        default = "default_transport_type",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub transport_type: Option<String>,
+}
+
+pub fn default_transport_type() -> Option<String> {
+    Some("openai_chat_completions".to_string())
 }
 
 #[derive(Deserialize)]

@@ -1,11 +1,12 @@
-use crate::config::get_launcher_settings;
+use crate::config::{get_launcher_settings, save_launcher_settings};
 use crate::conversion::request_converter::anthropic_to_openai_request;
 use crate::conversion::response_converter::{
     normalize_chat_completions_url, normalize_messages_url, openai_to_anthropic_response,
-    prepare_proxy_body,
+    prepare_proxy_body, rewrite_stale_model_request,
 };
 use crate::crypto::unprotect_secret;
-use crate::server::streaming::start_sse_stream_conversion;
+use crate::optimization;
+use crate::server::streaming::{start_sse_stream_conversion, ReasoningReplayMode};
 use axum::{
     body::Bytes,
     http::{HeaderMap, StatusCode},
@@ -26,6 +27,11 @@ fn async_client() -> &'static Client {
             .build()
             .unwrap_or_else(|_| Client::new())
     })
+}
+
+fn is_model_gone_error(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("has reached its end of life") || lower.contains("no longer available")
 }
 
 pub async fn handle_root() -> impl IntoResponse {
@@ -79,7 +85,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
             .into_response();
     }
     // 2. Load settings
-    let Some(settings) = get_launcher_settings() else {
+    let Some(mut settings) = get_launcher_settings() else {
         tracing::error!("<- 錯誤: Launcher 尚未配置");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -89,8 +95,21 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     };
 
     let body_str = String::from_utf8_lossy(&body);
-    let is_openai_format = !settings.real_base_url.contains("api.anthropic.com")
-        && !settings.real_base_url.contains("openrouter.ai");
+
+    // 3. Try local optimizations (quota mock, prefix detection, etc.)
+    if let Some(response) = optimization::try_optimizations(&body_str, &settings).await {
+        return response;
+    }
+
+    let forwarded_body = optimization::body_with_safety_classifier_handling(&body_str, &settings);
+    let body_str = forwarded_body.as_str();
+
+    // 4. Determine transport type
+    let is_anthropic_native = settings.transport_type == "anthropic_messages"
+        || settings.real_base_url.contains("api.anthropic.com")
+        || settings.real_base_url.contains("openrouter.ai");
+
+    let is_openai_format = !is_anthropic_native;
 
     let req_model = match serde_json::from_str::<Value>(&body_str) {
         Ok(v) => v
@@ -294,7 +313,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     );
 
     // 5. Build Upstream request
-    let mut upstream_req = async_client().post(&target_url).body(proxy_body);
+    let mut upstream_req = async_client().post(&target_url).body(proxy_body.clone());
     for (name, value) in &headers {
         let lower = name.as_str().to_ascii_lowercase();
         if matches!(
@@ -308,9 +327,9 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
     if !api_key.is_empty() {
         upstream_req = if settings.real_auth_scheme == "x-api-key" {
-            upstream_req.header("x-api-key", api_key)
+            upstream_req.header("x-api-key", &api_key)
         } else {
-            upstream_req.bearer_auth(api_key)
+            upstream_req.bearer_auth(&api_key)
         };
     }
 
@@ -328,7 +347,12 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                     return (status, Json(json!({ "error": text }))).into_response();
                 }
 
-                let rx = start_sse_stream_conversion(response, req_model);
+                let reasoning_mode = match settings.reasoning_replay_mode.as_str() {
+                    "inline" => Some(ReasoningReplayMode::Inline),
+                    "separate" => Some(ReasoningReplayMode::Separate),
+                    _ => None,
+                };
+                let rx = start_sse_stream_conversion(response, req_model, reasoning_mode);
                 let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
                 let body = axum::body::Body::from_stream(stream);
 
@@ -368,6 +392,71 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                     (status, Json(err_json)).into_response()
                 } else {
                     // Passthrough raw Anthropic response headers and body
+                    if status == StatusCode::GONE {
+                        let headers_to_forward = response.headers().clone();
+                        let text = response.text().await.unwrap_or_default();
+                        if is_model_gone_error(&text) {
+                            if let Some(rewrite) =
+                                rewrite_stale_model_request(&proxy_body, &settings, &req_model)
+                            {
+                                tracing::warn!(
+                                    "[model fallback] {} retired, retrying {} with {}",
+                                    req_model,
+                                    req_model,
+                                    rewrite.fallback_model
+                                );
+                                settings
+                                    .real_model_routes
+                                    .insert(req_model.clone(), rewrite.fallback_model.clone());
+                                let _ = save_launcher_settings(&settings);
+
+                                let retry_body = rewrite.updated_body.to_string();
+                                let mut retry_req =
+                                    async_client().post(&target_url).body(retry_body);
+                                for (name, value) in &headers {
+                                    let lower = name.as_str().to_ascii_lowercase();
+                                    if matches!(
+                                        lower.as_str(),
+                                        "content-type"
+                                            | "accept"
+                                            | "user-agent"
+                                            | "accept-encoding"
+                                            | "connection"
+                                    ) || lower.starts_with("anthropic-")
+                                    {
+                                        retry_req = retry_req.header(name.clone(), value.clone());
+                                    }
+                                }
+                                if !api_key.is_empty() {
+                                    retry_req = if settings.real_auth_scheme == "x-api-key" {
+                                        retry_req.header("x-api-key", &api_key)
+                                    } else {
+                                        retry_req.bearer_auth(&api_key)
+                                    };
+                                }
+
+                                if let Ok(retry_response) = retry_req.send().await {
+                                    let mut res_builder = axum::response::Response::builder()
+                                        .status(retry_response.status());
+                                    for (name, value) in retry_response.headers() {
+                                        res_builder =
+                                            res_builder.header(name.clone(), value.clone());
+                                    }
+                                    let body = axum::body::Body::from_stream(
+                                        retry_response.bytes_stream(),
+                                    );
+                                    return res_builder.body(body).unwrap();
+                                }
+                            }
+                        }
+
+                        let mut res_builder = axum::response::Response::builder().status(status);
+                        for (name, value) in &headers_to_forward {
+                            res_builder = res_builder.header(name.clone(), value.clone());
+                        }
+                        return res_builder.body(axum::body::Body::from(text)).unwrap();
+                    }
+
                     let mut res_builder = axum::response::Response::builder().status(status);
                     for (name, value) in response.headers() {
                         res_builder = res_builder.header(name.clone(), value.clone());

@@ -19,8 +19,15 @@ pub struct Toast {
     pub is_success: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Tab {
+    General,
+    Advanced,
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
+    TabSelected(Tab),
     ProviderSelected(String),
     BaseUrlChanged(String),
     ApiKeyChanged(String),
@@ -38,6 +45,17 @@ pub enum Message {
     TrayQuit,
     TrayShow,
     TrayHide,
+    // Per-feature optimization toggles
+    QuotaCheckMockToggled(bool),
+    PrefixDetectionToggled(bool),
+    TitleGenerationSkipToggled(bool),
+    SuggestionModeSkipToggled(bool),
+    FilepathExtractionMockToggled(bool),
+    WebServerToolsToggled(bool),
+    WebFetchPrivateNetworkToggled(bool),
+    SafetyClassifierHandlingToggled(bool),
+    ReasoningReplayModeSelected(String),
+    TransportTypeSelected(String),
 }
 
 pub struct LauncherApp {
@@ -56,6 +74,18 @@ pub struct LauncherApp {
     pub window_id: Option<Id>,
     pub tray_rx: Arc<Mutex<UnboundedReceiver<Message>>>,
     pub current_port: u16,
+    pub current_tab: Tab,
+    // Per-feature optimization toggles
+    pub enable_quota_check_mock: bool,
+    pub enable_prefix_detection: bool,
+    pub enable_title_generation_skip: bool,
+    pub enable_suggestion_mode_skip: bool,
+    pub enable_filepath_extraction_mock: bool,
+    pub enable_web_server_tools: bool,
+    pub web_fetch_allow_private_networks: bool,
+    pub enable_safety_classifier_handling: bool,
+    pub reasoning_replay_mode: String,
+    pub transport_type: String,
 }
 
 impl LauncherApp {
@@ -79,6 +109,18 @@ impl LauncherApp {
             window_id: None,
             tray_rx,
             current_port: port,
+            // Per-feature optimization toggles (defaults)
+            enable_quota_check_mock: true,
+            enable_prefix_detection: true,
+            enable_title_generation_skip: false,
+            enable_suggestion_mode_skip: true,
+            enable_filepath_extraction_mock: true,
+            enable_web_server_tools: false,
+            web_fetch_allow_private_networks: false,
+            enable_safety_classifier_handling: true,
+            reasoning_replay_mode: "separate".to_string(),
+            transport_type: "openai_chat".to_string(),
+            current_tab: Tab::General,
         };
 
         // 讀取本地配置以還原狀態
@@ -103,6 +145,18 @@ impl LauncherApp {
             if !settings.real_api_key.is_empty() {
                 app.api_key_placeholder = "已儲存 API Key，留空沿用".into();
             }
+
+            // �跙 Per-feature optimization settings
+            app.enable_quota_check_mock = settings.enable_quota_check_mock;
+            app.enable_prefix_detection = settings.enable_prefix_detection;
+            app.enable_title_generation_skip = settings.enable_title_generation_skip;
+            app.enable_suggestion_mode_skip = settings.enable_suggestion_mode_skip;
+            app.enable_filepath_extraction_mock = settings.enable_filepath_extraction_mock;
+            app.enable_web_server_tools = settings.enable_web_server_tools;
+            app.web_fetch_allow_private_networks = settings.web_fetch_allow_private_networks;
+            app.enable_safety_classifier_handling = settings.enable_safety_classifier_handling;
+            app.reasoning_replay_mode = settings.reasoning_replay_mode;
+            app.transport_type = settings.transport_type;
 
             // 自訂路徑檢查
             if let Some(target) = crate::detect_claude_path() {
@@ -182,6 +236,16 @@ impl LauncherApp {
             &self.base_url,
             &self.api_key,
             self.auth_value(),
+            self.enable_quota_check_mock,
+            self.enable_prefix_detection,
+            self.enable_title_generation_skip,
+            self.enable_suggestion_mode_skip,
+            self.enable_filepath_extraction_mock,
+            self.enable_web_server_tools,
+            self.web_fetch_allow_private_networks,
+            self.enable_safety_classifier_handling,
+            &self.reasoning_replay_mode,
+            &self.transport_type,
         )
         .map_err(|e| e.to_string())
     }
@@ -208,14 +272,17 @@ impl LauncherApp {
                     "OpenRouter" => {
                         self.base_url = "https://openrouter.ai/api".into();
                         self.auth_scheme = Some("bearer".into());
+                        self.transport_type = "openai_chat".to_string();
                     }
                     "NVIDIA" => {
                         self.base_url = "https://integrate.api.nvidia.com/v1".into();
                         self.auth_scheme = Some("bearer".into());
+                        self.transport_type = "openai_chat".to_string();
                     }
                     "Anthropic" => {
                         self.base_url = "https://api.anthropic.com".into();
                         self.auth_scheme = Some("x-api-key".into());
+                        self.transport_type = "anthropic_messages".to_string();
                     }
                     _ => {}
                 }
@@ -261,6 +328,10 @@ impl LauncherApp {
                                     ),
                                     is_success: true,
                                 });
+                                if let Some(id) = self.window_id {
+                                    self.is_hidden = true;
+                                    return window::set_mode(id, Mode::Hidden);
+                                }
                             }
                             Err(e) => {
                                 self.toast = Some(Toast {
@@ -354,6 +425,20 @@ impl LauncherApp {
                     return window::set_mode(id, Mode::Hidden);
                 }
             }
+            Message::TabSelected(tab) => self.current_tab = tab,
+            // Per-feature optimization toggles
+            Message::QuotaCheckMockToggled(v) => self.enable_quota_check_mock = v,
+            Message::PrefixDetectionToggled(v) => self.enable_prefix_detection = v,
+            Message::TitleGenerationSkipToggled(v) => self.enable_title_generation_skip = v,
+            Message::SuggestionModeSkipToggled(v) => self.enable_suggestion_mode_skip = v,
+            Message::FilepathExtractionMockToggled(v) => self.enable_filepath_extraction_mock = v,
+            Message::WebServerToolsToggled(v) => self.enable_web_server_tools = v,
+            Message::WebFetchPrivateNetworkToggled(v) => self.web_fetch_allow_private_networks = v,
+            Message::SafetyClassifierHandlingToggled(v) => {
+                self.enable_safety_classifier_handling = v
+            }
+            Message::ReasoningReplayModeSelected(v) => self.reasoning_replay_mode = v,
+            Message::TransportTypeSelected(v) => self.transport_type = v,
         }
         Task::none()
     }

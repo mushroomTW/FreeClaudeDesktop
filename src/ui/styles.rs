@@ -18,6 +18,7 @@ pub const CLR_WARNING: Color = Color::from_rgb(1.0, 0.694, 0.298);
 pub const CLR_BORDER: Color = Color::from_rgb(0.208, 0.220, 0.329);
 pub const CLR_BTN_SEC: Color = Color::from_rgb(0.173, 0.184, 0.278);
 pub const CLR_BTN_SEC_HOVER: Color = Color::from_rgb(0.216, 0.227, 0.329);
+pub const CLR_SIDEBAR: Color = Color::from_rgb(0.063, 0.067, 0.122);
 
 /// 統一的參數化按鈕樣式生成器，消除重複代碼
 pub fn generic_button_style(

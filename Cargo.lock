@@ -1204,6 +1204,7 @@ dependencies = [
  "iced",
  "image",
  "keyring",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

@@ -92,6 +92,35 @@ pub fn prepare_proxy_body(body: &str, settings: &Settings) -> String {
     serde_json::to_string(&data).unwrap_or_else(|_| body.to_string())
 }
 
+pub struct StaleModelRewrite {
+    pub updated_body: Value,
+    pub fallback_model: String,
+}
+
+pub fn rewrite_stale_model_request(
+    proxy_body: &str,
+    settings: &Settings,
+    requested_model: &str,
+) -> Option<StaleModelRewrite> {
+    let mut data: Value = serde_json::from_str(proxy_body).ok()?;
+    let stale_model = data.get("model").and_then(Value::as_str)?.to_string();
+
+    let mut fallback = settings
+        .real_model_routes
+        .iter()
+        .filter(|(alias, model)| alias.as_str() != requested_model && model.as_str() != stale_model)
+        .map(|(_, model)| model.clone())
+        .collect::<Vec<_>>();
+    fallback.sort();
+    let fallback_model = fallback.into_iter().next()?;
+
+    data["model"] = Value::String(fallback_model.clone());
+    Some(StaleModelRewrite {
+        updated_body: data,
+        fallback_model,
+    })
+}
+
 fn is_free_model(model: &ProviderModel) -> bool {
     model.id.ends_with(":free")
         || model
@@ -249,6 +278,7 @@ pub fn build_inference_models(models: &[NormalizedModel]) -> Vec<InferenceModel>
             max_input_tokens: model.max_input_tokens,
             max_tokens: model.max_tokens,
             capabilities: model.capabilities.clone(),
+            transport_type: crate::models::openai::default_transport_type(),
         })
         .collect()
 }
@@ -419,5 +449,29 @@ mod tests {
         assert_eq!(converted["stop_reason"], "end_turn");
         assert_eq!(converted["content"][0]["type"], "text");
         assert_eq!(converted["content"][0]["text"], "hi");
+    }
+
+    #[test]
+    fn rewrites_stale_mapped_model_to_fallback_route() {
+        let mut routes = std::collections::HashMap::new();
+        routes.insert(
+            "claude-opus-4-8[0]".to_string(),
+            "deepseek-v4-flash".to_string(),
+        );
+        routes.insert("claude-opus-4-8[3]".to_string(), "glm-5.1".to_string());
+        let settings = Settings {
+            real_model_routes: routes,
+            ..Settings::default()
+        };
+
+        let rewritten = rewrite_stale_model_request(
+            r#"{"model":"glm-5.1","messages":[]}"#,
+            &settings,
+            "claude-opus-4-8[3]",
+        )
+        .unwrap();
+
+        assert_eq!(rewritten.fallback_model, "deepseek-v4-flash");
+        assert_eq!(rewritten.updated_body["model"], "deepseek-v4-flash");
     }
 }

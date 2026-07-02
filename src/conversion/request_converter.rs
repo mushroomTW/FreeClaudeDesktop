@@ -202,6 +202,26 @@ pub fn anthropic_to_openai_request(
                                     }));
                                 }
                             }
+                            // After tool results, check for after-tools text in the same message
+                            let after_tools_text: Vec<String> = next_blocks
+                                .iter()
+                                .filter_map(|b| {
+                                    // Extract text from non-ToolResult blocks that may be after the tools
+                                    match b {
+                                        ClaudeContentBlock::Text { text } => Some(text.clone()),
+                                        _ => None,
+                                    }
+                                })
+                                .collect();
+                            if !after_tools_text.is_empty() {
+                                let combined_text = after_tools_text.join("\n").trim().to_string();
+                                if !combined_text.is_empty() {
+                                    openai_messages.push(json!({
+                                        "role": "user",
+                                        "content": combined_text
+                                    }));
+                                }
+                            }
                             i += 1; // 跳過此 user 訊息，因為它的 tool_result 已經被處理了
                         }
                     }

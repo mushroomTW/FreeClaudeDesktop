@@ -14,7 +14,7 @@ pub fn run_tray_icon(tx: tokio::sync::mpsc::UnboundedSender<Message>) {
 fn run_tray_icon_inner(tx: tokio::sync::mpsc::UnboundedSender<Message>) {
     eprintln!("[tray] run_tray_icon 啟動");
     // 從 icon.ico 載入圖示（縮小為 32x32 適合系統匣）
-    let icon_data = include_bytes!("../icon.ico");
+    let icon_data = include_bytes!("../../icon.ico");
     let img = match image::load_from_memory(icon_data) {
         Ok(img) => img.to_rgba8(),
         Err(e) => {

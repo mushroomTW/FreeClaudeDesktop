@@ -11,14 +11,38 @@ struct ToolCallState {
     started: bool,
 }
 
+/// Determines how reasoning content should be replayed in the stream.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ReasoningReplayMode {
+    /// Emit `<antThinking>` tags inline with text.
+    Inline,
+    /// Emit thinking blocks before the text blocks (separate).
+    Separate,
+}
+
+impl Default for ReasoningReplayMode {
+    fn default() -> Self {
+        ReasoningReplayMode::Separate
+    }
+}
+
+/// Start SSE stream conversion with optional reasoning replay mode.
 pub fn start_sse_stream_conversion(
     response: reqwest::Response,
     req_model: String,
+    reasoning_mode: Option<ReasoningReplayMode>,
 ) -> mpsc::Receiver<Result<Bytes, std::convert::Infallible>> {
     let (tx, rx) = mpsc::channel(100);
 
     tokio::spawn(async move {
-        if let Err(e) = convert_stream_inner(response, req_model, tx.clone()).await {
+        if let Err(e) = convert_stream_inner(
+            response,
+            req_model,
+            tx.clone(),
+            reasoning_mode.unwrap_or_default(),
+        )
+        .await
+        {
             tracing::error!("SSE stream conversion error: {:?}", e);
             let err_json = json!({
                 "type": "error",
@@ -43,6 +67,7 @@ async fn convert_stream_inner(
     response: reqwest::Response,
     req_model: String,
     tx: mpsc::Sender<Result<Bytes, std::convert::Infallible>>,
+    reasoning_mode: ReasoningReplayMode,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut stream = response.bytes_stream();
     let mut line_buffer = String::new();
@@ -176,57 +201,118 @@ async fn convert_stream_inner(
                     .and_then(Value::as_str);
 
                 if !delta_reasoning.is_empty() {
-                    if !sent_start {
-                        let start_msg = json!({
-                            "type": "message_start",
-                            "message": {
-                                "id": msg_id.clone(),
-                                "type": "message",
-                                "role": "assistant",
-                                "content": [],
-                                "model": req_model.clone(),
-                                "stop_reason": null,
-                                "usage": { "input_tokens": 0, "output_tokens": 0 }
+                    match reasoning_mode {
+                        ReasoningReplayMode::Inline => {
+                            // Inline mode: wrap reasoning as regular text with <antThinking> tags
+                            if !sent_start {
+                                let start_msg = json!({
+                                    "type": "message_start",
+                                    "message": {
+                                        "id": msg_id.clone(),
+                                        "type": "message",
+                                        "role": "assistant",
+                                        "content": [],
+                                        "model": req_model.clone(),
+                                        "stop_reason": null,
+                                        "usage": { "input_tokens": 0, "output_tokens": 0 }
+                                    }
+                                });
+                                let _ = tx
+                                    .send(Ok(Bytes::from(format!(
+                                        "event: message_start\ndata: {}\n\n",
+                                        start_msg
+                                    ))))
+                                    .await;
+                                sent_start = true;
                             }
-                        });
-                        let _ = tx
-                            .send(Ok(Bytes::from(format!(
-                                "event: message_start\ndata: {}\n\n",
-                                start_msg
-                            ))))
-                            .await;
-                        sent_start = true;
-                    }
 
-                    if !thinking_block_open {
-                        let block_start = json!({
-                            "type": "content_block_start",
-                            "index": content_block_index,
-                            "content_block": { "type": "thinking", "thinking": "", "signature": "" }
-                        });
-                        let _ = tx
-                            .send(Ok(Bytes::from(format!(
-                                "event: content_block_start\ndata: {}\n\n",
-                                block_start
-                            ))))
-                            .await;
-                        thinking_block_open = true;
-                    }
+                            if !text_block_open {
+                                let block_start = json!({
+                                    "type": "content_block_start",
+                                    "index": content_block_index,
+                                    "content_block": { "type": "text", "text": "" }
+                                });
+                                let _ = tx
+                                    .send(Ok(Bytes::from(format!(
+                                        "event: content_block_start\ndata: {}\n\n",
+                                        block_start
+                                    ))))
+                                    .await;
+                                text_block_open = true;
+                            }
 
-                    let block_delta = json!({
-                        "type": "content_block_delta",
-                        "index": content_block_index,
-                        "delta": {
-                            "type": "thinking_delta",
-                            "thinking": delta_reasoning
+                            let inline_reasoning =
+                                format!("<antThinking>{}</antThinking>", delta_reasoning);
+                            let block_delta = json!({
+                                "type": "content_block_delta",
+                                "index": content_block_index,
+                                "delta": {
+                                    "type": "text_delta",
+                                    "text": inline_reasoning
+                                }
+                            });
+                            let _ = tx
+                                .send(Ok(Bytes::from(format!(
+                                    "event: content_block_delta\ndata: {}\n\n",
+                                    block_delta
+                                ))))
+                                .await;
                         }
-                    });
-                    let _ = tx
-                        .send(Ok(Bytes::from(format!(
-                            "event: content_block_delta\ndata: {}\n\n",
-                            block_delta
-                        ))))
-                        .await;
+                        ReasoningReplayMode::Separate => {
+                            // Separate mode: emit thinking blocks before text blocks
+                            if !sent_start {
+                                let start_msg = json!({
+                                    "type": "message_start",
+                                    "message": {
+                                        "id": msg_id.clone(),
+                                        "type": "message",
+                                        "role": "assistant",
+                                        "content": [],
+                                        "model": req_model.clone(),
+                                        "stop_reason": null,
+                                        "usage": { "input_tokens": 0, "output_tokens": 0 }
+                                    }
+                                });
+                                let _ = tx
+                                    .send(Ok(Bytes::from(format!(
+                                        "event: message_start\ndata: {}\n\n",
+                                        start_msg
+                                    ))))
+                                    .await;
+                                sent_start = true;
+                            }
+
+                            if !thinking_block_open {
+                                let block_start = json!({
+                                    "type": "content_block_start",
+                                    "index": content_block_index,
+                                    "content_block": { "type": "thinking", "thinking": "", "signature": "" }
+                                });
+                                let _ = tx
+                                    .send(Ok(Bytes::from(format!(
+                                        "event: content_block_start\ndata: {}\n\n",
+                                        block_start
+                                    ))))
+                                    .await;
+                                thinking_block_open = true;
+                            }
+
+                            let block_delta = json!({
+                                "type": "content_block_delta",
+                                "index": content_block_index,
+                                "delta": {
+                                    "type": "thinking_delta",
+                                    "thinking": delta_reasoning
+                                }
+                            });
+                            let _ = tx
+                                .send(Ok(Bytes::from(format!(
+                                    "event: content_block_delta\ndata: {}\n\n",
+                                    block_delta
+                                ))))
+                                .await;
+                        }
+                    }
                 }
 
                 // Handle content (TextDelta)
@@ -517,7 +603,11 @@ mod tests {
         });
 
         let response = reqwest::get(format!("http://{addr}/")).await.unwrap();
-        let mut rx = start_sse_stream_conversion(response, "claude-test".to_string());
+        let mut rx = start_sse_stream_conversion(
+            response,
+            "claude-test".to_string(),
+            Some(ReasoningReplayMode::Separate),
+        );
         let mut out = String::new();
         while let Some(Ok(bytes)) = rx.recv().await {
             out.push_str(&String::from_utf8_lossy(&bytes));
