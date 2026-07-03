@@ -12,11 +12,28 @@ pub static LAUNCHER_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub static TRAY_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 pub static TRAY_THREAD: std::sync::OnceLock<std::thread::Thread> = std::sync::OnceLock::new();
 
-pub fn is_valid_proxy_authorization(header: Option<&str>) -> bool {
+pub fn is_valid_proxy_bearer(header: Option<&str>, token: &str) -> bool {
     header
         .and_then(|value| value.trim().strip_prefix("Bearer "))
         .map(str::trim)
-        == Some(crate::constants::PROXY_AUTH_TOKEN)
+        == Some(token)
+}
+
+pub fn is_valid_proxy_authorization(header: Option<&str>) -> bool {
+    is_valid_proxy_bearer(header, crate::constants::PROXY_AUTH_TOKEN)
+}
+
+pub fn is_authorized_proxy_request(
+    authorization: Option<&str>,
+    x_api_key: Option<&str>,
+    token: &str,
+) -> bool {
+    let token = token.trim();
+    if token.is_empty() {
+        return false;
+    }
+    is_valid_proxy_bearer(authorization, token)
+        || x_api_key.map(str::trim).is_some_and(|value| value == token)
 }
 
 pub fn app_url(port: u16) -> String {

@@ -158,7 +158,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     let transport_options = vec!["openai_chat".to_string(), "anthropic_messages".to_string()];
     let reasoning_options = vec!["separate".to_string(), "inline".to_string()];
 
-    let advanced_form = column![
+    let mut advanced_form = column![
         form_row(
             "傳輸協定",
             pick_list(
@@ -210,8 +210,40 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             .on_toggle(Message::SafetyClassifierHandlingToggled)
             .text_size(14)
             .spacing(8),
+        checkbox(app.enable_web_server_tools)
+            .label("Web 工具攔截 (本地執行 web_search / web_fetch)")
+            .on_toggle(Message::WebServerToolsToggled)
+            .text_size(14)
+            .spacing(8),
     ]
     .spacing(10);
+
+    if app.enable_web_server_tools {
+        advanced_form = advanced_form.push(
+            row![
+                text("     ") // 縮排
+                    .width(Length::Fixed(20.0)),
+                column![
+                    checkbox(app.web_fetch_allow_private_networks)
+                        .label("允許 web_fetch 存取私有網路目標")
+                        .on_toggle(Message::WebFetchPrivateNetworkToggled)
+                        .text_size(14)
+                        .spacing(8),
+                    form_row(
+                        "允許的 URL 方案",
+                        text_input("http,https", &app.web_fetch_allowed_schemes)
+                            .on_input(Message::WebFetchAllowedSchemesChanged)
+                            .padding(10)
+                            .size(14)
+                            .into(),
+                    )
+                ]
+                .spacing(10)
+                .width(Length::Fill)
+            ]
+            .spacing(0),
+        );
+    }
 
     // ── 組裝主要內容（依目前分頁切換） ──
     let tab_content: Element<'_, Message> = match app.current_tab {

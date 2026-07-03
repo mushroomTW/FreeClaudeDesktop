@@ -5,7 +5,7 @@
 - 請始終使用繁體中文與使用者溝通。
 - 程式碼註解與文件說明亦請優先使用繁體中文。
 - 新增或修改文字檔時維持 UTF-8 編碼。
-- README 與部分既有註解可能已有編碼亂碼；非必要不要順手重寫，避免擴大差異。
+- 若遇到既有亂碼，先確認是否與本次任務相關；非必要不要順手重寫無關檔案。
 
 ## 項目目標
 
@@ -14,7 +14,8 @@
 - 支援 OpenAI-compatible 與 Anthropic-compatible API，並處理 request、response、streaming 格式轉換。
 - 安全保存 API key，優先使用跨平台方案；平台特定儲存邏輯必須隔離。
 - 管理本專案寫入的 Claude Desktop 設定項，並保留可還原能力。
-- 對 Claude Desktop 的探測、標題產生、建議模式、工具呼叫等特殊請求做最小必要最佳化，減少無效上游成本。
+- 對 Claude Desktop 的探測、標題產生、建議模式、檔案路徑提取等特殊請求做最小必要最佳化，減少無效上游成本。
+- 遇到上游回報模型下架時，支援 stale model route fallback 與一次重試。
 - 保持與 Claude Desktop 實際行為相容，不用猜測代替驗證。
 
 ## Claude Desktop 邊界
@@ -22,8 +23,7 @@
 - 不得修改 Claude Desktop 的原始碼、安裝檔或內建資源。
 - 只能修改本專案的 launcher、proxy、config 寫入邏輯與相容層。
 - 修改 configLibrary、Anthropic Messages API 相容、模型 alias、tool use、streaming、thinking、探測請求等相關功能前，必須先查明 Claude Desktop 端實際期待格式。
-- 若可取得 Claude Desktop 相關原始碼，先閱讀相依區塊再修改本專案。
-- 若無法取得 Claude Desktop 原始碼，至少用現有設定檔、請求樣本、回應樣本或日誌驗證，不得憑印象改協定。
+- 請參考 Claude Desktop 原始碼:"C:\Users\mushroomMaster\Documents\ClaudeSource"，先閱讀相依區塊再修改本專案。
 
 ## 跨平台優先級
 
@@ -35,7 +35,12 @@
 
 ## 專案概覽
 
-- 這是 Rust 2021 專案，主要二進位名稱為 `FreeClaudeLauncher`。
+- FreeClaudeLauncher 是跨平台桌面啟動器與本機 API proxy。
+- 主要二進位名稱為 `FreeClaudeLauncher`，使用 Rust 2021。
+- Launcher 負責 GUI 設定、Claude Desktop 探測與啟動、configLibrary 寫入與還原。
+- Proxy 提供 `/v1/messages` 與 `/v1/models`，轉接 Claude Desktop 到使用者設定的上游 gateway。
+- 支援 OpenAI-compatible 與 Anthropic-compatible API，包含 request、response、streaming 轉換。
+- 內建 Claude Desktop 特殊請求 fast path 與 stale model route fallback。
 - GUI 使用 `iced`，系統托盤使用 `tray-icon`。
 - 本機 HTTP proxy 使用 `axum`、`tokio`、`reqwest`。
 - 設定與序列化使用 `serde`、`serde_json`。
@@ -49,15 +54,16 @@
 
 ## 專案結構
 
-- `src/app.rs`：GUI 狀態與事件更新邏輯。
+- `src/core/`：launcher settings、常數、錯誤型別。
+- `src/platform/`：跨平台路徑、API key 保護、Claude Desktop 探測、啟動、config 寫入與還原。
+- `src/runtime/`：GUI 狀態、事件更新邏輯與 tray 整合。
 - `src/ui/`：Iced UI view 與樣式。
-- `src/server/`：本機 proxy、router、handler、streaming。
-- `src/conversion/`：Anthropic 與 OpenAI-compatible request/response 轉換。
-- `src/optimization/`：Claude Desktop 特殊請求的本機最佳化與 mock。
-- `src/config.rs`：launcher settings、公開設定輸出、設定檔讀寫。
-- `src/crypto.rs`：API key 保護與還原。
-- `src/launcher.rs`：Claude Desktop 路徑偵測、啟動、config 寫入與還原。
+- `src/server/`：本機 proxy、router、handler、models endpoint、streaming。
+- `src/conversion/`：Anthropic 與 OpenAI-compatible request/response 轉換、model route rewrite。
+- `src/optimization/`：Claude Desktop 特殊請求的本機 fast path 與安全邊界。
 - `src/models/`：Claude/OpenAI 資料模型。
+- `src/lib.rs`：公開 API、設定套用流程與向後相容 re-export。
+- `src/main.rs`：GUI 入口點。
 
 ## 修改原則
 

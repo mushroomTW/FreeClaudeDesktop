@@ -66,25 +66,20 @@ pub async fn handle_launcher_show() -> impl IntoResponse {
 }
 
 pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
-    // Debug: log all request headers to understand what Claude Desktop sends
+    // Debug: log request headers without leaking local/upstream credentials.
     for (name, value) in &headers {
-        tracing::debug!("[req header] {}: {:?}", name, value);
+        let lower = name.as_str().to_ascii_lowercase();
+        if matches!(lower.as_str(), "authorization" | "x-api-key" | "cookie") {
+            tracing::debug!("[req header] {}: <redacted>", name);
+        } else {
+            tracing::debug!("[req header] {}: {:?}", name, value);
+        }
     }
     if let Some(origin) = headers.get("origin").and_then(|h| h.to_str().ok()) {
         tracing::info!("[req header] Origin: {}", origin);
-    } // 1. Validate authorization
-    let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
-    let x_api_key_header = headers.get("x-api-key").and_then(|h| h.to_str().ok());
-    let is_authorized =
-        x_api_key_header.is_some() || super::is_valid_proxy_authorization(auth_header);
-    if !is_authorized {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Unauthorized" })),
-        )
-            .into_response();
     }
-    // 2. Load settings
+
+    // 1. Load settings for the configured proxy token.
     let Some(mut settings) = get_launcher_settings() else {
         tracing::error!("<- 錯誤: Launcher 尚未配置");
         return (
@@ -94,6 +89,22 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
             .into_response();
     };
 
+    // 2. Validate authorization
+    let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
+    let x_api_key_header = headers.get("x-api-key").and_then(|h| h.to_str().ok());
+    let is_authorized = super::is_authorized_proxy_request(
+        auth_header,
+        x_api_key_header,
+        &settings.proxy_auth_token,
+    );
+    if !is_authorized {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Unauthorized" })),
+        )
+            .into_response();
+    }
+
     let body_str = String::from_utf8_lossy(&body);
 
     // 3. Try local optimizations (quota mock, prefix detection, etc.)
@@ -101,17 +112,74 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         return response;
     }
 
+    // 診斷日誌：記錄未被攔截的請求特徵，便於識別可額外攔截的輔助請求
+    if let Ok(diag) = serde_json::from_str::<Value>(&body_str) {
+        let msg_count = diag
+            .get("messages")
+            .and_then(Value::as_array)
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let max_tokens = diag.get("max_tokens").and_then(Value::as_u64).unwrap_or(0);
+        let has_tools = diag.get("tools").is_some();
+        let _has_system = diag.get("system").is_some();
+        let is_stream = diag.get("stream").and_then(Value::as_bool).unwrap_or(false);
+        let system_hint = diag
+            .get("system")
+            .and_then(|s| s.as_str())
+            .map(|s| {
+                let lower = s.to_lowercase();
+                if lower.contains("title") {
+                    "title-related"
+                } else if lower.contains("suggestion") {
+                    "suggestion-related"
+                } else if lower.contains("extract") || lower.contains("filepath") {
+                    "filepath-related"
+                } else if lower.contains("transcript") {
+                    "classifier-related"
+                } else if s.len() < 200 {
+                    "short-system"
+                } else {
+                    "long-system"
+                }
+            })
+            .unwrap_or("no-system");
+        let first_user_preview = diag
+            .get("messages")
+            .and_then(Value::as_array)
+            .and_then(|arr| {
+                arr.iter()
+                    .find(|m| m.get("role").and_then(Value::as_str) == Some("user"))
+            })
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .map(|s| {
+                let preview: String = s.chars().take(120).collect();
+                preview
+            })
+            .unwrap_or_default();
+        tracing::info!(
+            "[未攔截請求] msgs={}, max_tokens={}, stream={}, tools={}, system={}, body_len={}, user_preview=\"{}\"",
+            msg_count,
+            max_tokens,
+            is_stream,
+            has_tools,
+            system_hint,
+            body_str.len(),
+            first_user_preview
+        );
+    }
+
     let forwarded_body = optimization::body_with_safety_classifier_handling(&body_str, &settings);
     let body_str = forwarded_body.as_str();
 
     // 4. Determine transport type
     let is_anthropic_native = settings.transport_type == "anthropic_messages"
-        || settings.real_base_url.contains("api.anthropic.com")
-        || settings.real_base_url.contains("openrouter.ai");
+        || (settings.transport_type.is_empty()
+            && settings.real_base_url.contains("api.anthropic.com"));
 
     let is_openai_format = !is_anthropic_native;
 
-    let req_model = match serde_json::from_str::<Value>(&body_str) {
+    let req_model = match serde_json::from_str::<Value>(body_str) {
         Ok(v) => v
             .get("model")
             .and_then(Value::as_str)
@@ -131,7 +199,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     //   1. `messages` 解析為空 array
     //   2. `max_tokens` 很小（避免誤吃沒有 body 但有 tools 的請求）
     //   3. body 極短（背景 ping 不會帶大 system 與 tools schemas）
-    let probe_decision = match serde_json::from_str::<Value>(&body_str) {
+    let probe_decision = match serde_json::from_str::<Value>(body_str) {
         Ok(v) => {
             let max_tokens = v.get("max_tokens").and_then(Value::as_u64).unwrap_or(9999);
             let stream = v.get("stream").and_then(Value::as_bool).unwrap_or(false);
@@ -259,7 +327,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
     // 4. Request format conversion
     let (proxy_body, is_stream) = if is_openai_format {
-        match anthropic_to_openai_request(&body_str, &settings) {
+        match anthropic_to_openai_request(body_str, &settings) {
             Ok(res) => res,
             Err(error) => {
                 tracing::error!("<- 錯誤: 轉換請求格式失敗: {:?}", error);
@@ -267,7 +335,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
             }
         }
     } else {
-        (prepare_proxy_body(&body_str, &settings), false)
+        (prepare_proxy_body(body_str, &settings), false)
     };
 
     let target_url = if is_openai_format {

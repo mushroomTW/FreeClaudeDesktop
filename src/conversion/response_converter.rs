@@ -9,20 +9,36 @@ fn is_local_hostname(hostname: &str) -> bool {
     matches!(hostname, "localhost" | "127.0.0.1" | "::1" | "[::1]")
 }
 
-/// Proxy 只綁定 127.0.0.1，不存在跨域風險。
-/// Claude Desktop (Electron) 會帶各種 Origin（如 `https://claude.ai`、
-/// `anthropic://desktop`、`file://` 等），一律放行確保回應不被 CORS 攔截。
-pub fn is_allowed_origin(origin: Option<&str>, _port: u16) -> bool {
+/// 只允許 Claude Desktop 常見 origin 與同埠 localhost，避免任意網頁打 localhost proxy。
+pub fn is_allowed_origin(origin: Option<&str>, port: u16) -> bool {
     let Some(origin) = origin else {
         return true;
     };
-    // 本地 proxy 對任何 Origin 都放行
     if origin.is_empty() {
         return true;
     }
-    // ponytail: 原本只允許 http://localhost:{port}，但 Claude Desktop 帶的 Origin
-    // 不是這個格式，造成回應被 CORS 靜默丟棄 → gateway timeout。全放行。
-    true
+
+    if matches!(
+        origin,
+        "file://" | "null" | "anthropic://desktop" | "app://localhost"
+    ) {
+        return true;
+    }
+
+    let Ok(url) = Url::parse(origin) else {
+        return false;
+    };
+    let host = url.host_str().unwrap_or_default();
+    let is_local = matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]");
+    if is_local && url.port_or_known_default() == Some(port) {
+        return true;
+    }
+
+    url.scheme() == "https"
+        && (host == "claude.ai"
+            || host.ends_with(".claude.ai")
+            || host == "claude.com"
+            || host.ends_with(".claude.com"))
 }
 
 fn normalize_gateway_url(base_url: &str, endpoint: &str) -> Result<String, String> {
@@ -261,7 +277,7 @@ fn days_from_civil(z: i64) -> Option<(i32, u32, u32)> {
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
     let y_final = if m <= 2 { y + 1 } else { y };
-    if y_final < 1970 || y_final > 2099 {
+    if !(1970..=2099).contains(&y_final) {
         return None;
     }
     Some((y_final as i32, m, d))
@@ -419,11 +435,16 @@ mod tests {
         assert!(is_allowed_origin(Some("http://localhost:3000"), 3000));
         assert!(is_allowed_origin(Some("http://127.0.0.1:3000"), 3000));
         assert!(is_allowed_origin(Some("http://[::1]:3000"), 3000));
-        // Non-local origins → also allowed (proxy only binds 127.0.0.1)
-        assert!(is_allowed_origin(Some("https://localhost:3000"), 3000));
-        assert!(is_allowed_origin(Some("http://localhost:4000"), 3000));
+        // Claude Desktop origins → allowed
         assert!(is_allowed_origin(Some("https://claude.ai"), 3000));
-        assert!(is_allowed_origin(Some("https://evil.example"), 3000));
+        assert!(is_allowed_origin(Some("https://claude.com"), 3000));
+        assert!(is_allowed_origin(Some("https://preview.claude.com"), 3000));
+        assert!(is_allowed_origin(Some("app://localhost"), 3000));
+        assert!(is_allowed_origin(Some("anthropic://desktop"), 3000));
+        assert!(is_allowed_origin(Some("file://"), 3000));
+        // Browser origins that are not Claude Desktop → blocked
+        assert!(!is_allowed_origin(Some("https://evil.example"), 3000));
+        assert!(!is_allowed_origin(Some("http://localhost:4000"), 3000));
     }
 
     #[test]

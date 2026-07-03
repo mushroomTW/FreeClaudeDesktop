@@ -1,4 +1,5 @@
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{get, post},
     Router,
 };
@@ -22,5 +23,8 @@ pub fn create_router(port: u16) -> Router {
             "/__launcher_show",
             get(super::handler::handle_launcher_show),
         )
+        .layer(DefaultBodyLimit::max(
+            crate::constants::MAX_PROXY_BODY_BYTES,
+        ))
         .layer(cors)
 }

@@ -3,8 +3,35 @@
 //! Detects quota checks, prefix commands, title generation, safety classifier,
 //! suggestion mode, and filepath extraction requests.
 
+use crate::optimization::command_utils::parse_shell_command_prefix;
 use regex::Regex;
 use serde_json::Value;
+
+/// 從 JSON body 的 `system` 欄位提取文字，支援 String 和 Array 格式。
+///
+/// Anthropic Messages API 允許 `system` 為以下兩種格式：
+/// - `"system": "some text"` （String）
+/// - `"system": [{"type": "text", "text": "some text"}, ...]` （Array）
+///
+/// Claude Code 傾向使用 Array 格式，原先的偵測邏輯只處理 String，
+/// 導致所有依賴 system 的偵測（標題生成、安全分類器等）全部失敗。
+fn extract_system_text(v: &Value) -> Option<String> {
+    match v.get("system")? {
+        Value::String(s) => Some(s.clone()),
+        Value::Array(arr) => {
+            let texts: Vec<&str> = arr
+                .iter()
+                .filter_map(|item| item.get("text").and_then(Value::as_str))
+                .collect();
+            if texts.is_empty() {
+                None
+            } else {
+                Some(texts.join("\n"))
+            }
+        }
+        _ => None,
+    }
+}
 
 /// Check if this is a quota probe request.
 ///
@@ -16,22 +43,7 @@ pub fn is_quota_check_request(body_str: &str) -> bool {
     };
 
     let max_tokens = v.get("max_tokens").and_then(Value::as_u64);
-    let messages = v.get("messages").and_then(Value::as_array);
-
-    if max_tokens != Some(1) {
-        return false;
-    }
-    if messages.map(|m| m.len()) != Some(1) {
-        return false;
-    }
-
-    let text = messages
-        .and_then(|arr| arr.first())
-        .and_then(|msg| msg.get("content"))
-        .and_then(|c| c.as_str())
-        .unwrap_or("");
-
-    text.to_lowercase().contains("quota")
+    max_tokens == Some(1)
 }
 
 /// Check if this is a command prefix detection request.
@@ -77,9 +89,9 @@ pub fn is_title_generation_request(body_str: &str) -> bool {
         return false;
     }
 
-    let system_text = match v.get("system") {
-        Some(Value::String(s)) => s.to_lowercase(),
-        _ => return false,
+    let system_text = match extract_system_text(&v) {
+        Some(s) => s.to_lowercase(),
+        None => return false,
     };
 
     if !system_text.contains("title") {
@@ -87,9 +99,15 @@ pub fn is_title_generation_request(body_str: &str) -> bool {
     }
 
     system_text.contains("sentence-case title")
-        || (system_text.contains("return json")
-            && system_text.contains("field")
-            && (system_text.contains("coding session") || system_text.contains("this session")))
+        || system_text.contains("<title>")
+        || (system_text.contains("title")
+            && (system_text.contains("generate a short title")
+                || system_text.contains("concise title")
+                || system_text.contains("suggest a title")
+                || (system_text.contains("return json")
+                    && system_text.contains("field")
+                    && (system_text.contains("coding session")
+                        || system_text.contains("this session")))))
 }
 
 /// Check if this is a suggestion mode request.
@@ -148,11 +166,7 @@ pub fn extract_filepaths(body_str: &str) -> Option<String> {
         return None;
     }
 
-    let system_text = v
-        .get("system")
-        .and_then(|s| s.as_str())
-        .unwrap_or("")
-        .to_lowercase();
+    let system_text = extract_system_text(&v).unwrap_or_default().to_lowercase();
 
     let user_has_filepaths = content.to_lowercase().contains("filepaths");
     let system_has_extract = system_text.contains("extract any file paths")
@@ -170,11 +184,7 @@ pub fn extract_filepaths(body_str: &str) -> Option<String> {
 
     let command = content[cmd_start..output_marker].trim();
     let output = &content[output_marker + "Output:".len()..];
-    let output = output
-        .split(|c| c == '<' || c == '\n')
-        .next()
-        .unwrap_or(output)
-        .trim();
+    let output = output.split(['<', '\n']).next().unwrap_or(output).trim();
 
     let filepaths = extract_filepaths_from_command(command, output);
     Some(filepaths)
@@ -192,7 +202,7 @@ pub fn is_safety_classifier_request(body_str: &str) -> bool {
         return false;
     }
 
-    let system_text = v.get("system").and_then(|s| s.as_str()).unwrap_or("");
+    let system_text = extract_system_text(&v).unwrap_or_default();
     let messages_text: String = v
         .get("messages")
         .and_then(|m| m.as_array())
@@ -207,36 +217,6 @@ pub fn is_safety_classifier_request(body_str: &str) -> bool {
     let combined = format!("{}\n{}", system_text, messages_text).to_lowercase();
     let has_verdict = combined.contains("yes</block>") || combined.contains("no</block>");
     combined.contains("<transcript>") && has_verdict
-}
-
-/// Parse a shell command to extract the command prefix.
-fn parse_shell_command_prefix(command: &str) -> String {
-    let command = command.trim();
-    if command.contains("`") || command.contains("$(") {
-        return "command_injection_detected".to_string();
-    }
-
-    let parts: Vec<&str> = command.split_whitespace().collect();
-    let parts = strip_env_assignments(&parts);
-
-    if parts.is_empty() {
-        return "none".to_string();
-    }
-
-    let first = parts[0];
-    let two_word_cmds = [
-        "git", "npm", "docker", "kubectl", "cargo", "go", "pip", "yarn",
-    ];
-
-    if two_word_cmds.contains(&first) && parts.len() > 1 {
-        let second = parts[1];
-        if !second.starts_with('-') {
-            return format!("{} {}", first, second);
-        }
-        return first.to_string();
-    }
-
-    first.to_string()
 }
 
 fn strip_env_assignments<'a>(parts: &[&'a str]) -> Vec<&'a str> {
@@ -333,4 +313,57 @@ fn extract_filepaths_from_command(command: &str, _output: &str) -> String {
     }
 
     "<filepaths>\n</filepaths>".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_extract_system_text_string_and_array() {
+        let string_system = json!({ "system": "Hello world" });
+        assert_eq!(extract_system_text(&string_system).unwrap(), "Hello world");
+
+        let array_system = json!({
+            "system": [
+                { "type": "text", "text": "Part 1" },
+                { "type": "text", "text": "Part 2" }
+            ]
+        });
+        assert_eq!(
+            extract_system_text(&array_system).unwrap(),
+            "Part 1\nPart 2"
+        );
+    }
+
+    #[test]
+    fn test_is_title_generation_request_array_system() {
+        let body = json!({
+            "system": [
+                { "type": "text", "text": "Generate a sentence-case title for this chat" }
+            ],
+            "messages": [{ "role": "user", "content": "hello" }]
+        })
+        .to_string();
+        assert!(is_title_generation_request(&body));
+    }
+
+    #[test]
+    fn test_is_quota_check_request_token_count_and_env() {
+        let count_body = json!({
+            "max_tokens": 1,
+            "tools": [{"name": "test_tool"}],
+            "messages": [{ "role": "user", "content": "count" }]
+        })
+        .to_string();
+        assert!(is_quota_check_request(&count_body));
+
+        let env_body = json!({
+            "max_tokens": 1,
+            "messages": [{ "role": "user", "content": "# Environment\nYou are running in Windows..." }]
+        })
+        .to_string();
+        assert!(is_quota_check_request(&env_body));
+    }
 }

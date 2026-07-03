@@ -53,6 +53,7 @@ pub enum Message {
     FilepathExtractionMockToggled(bool),
     WebServerToolsToggled(bool),
     WebFetchPrivateNetworkToggled(bool),
+    WebFetchAllowedSchemesChanged(String),
     SafetyClassifierHandlingToggled(bool),
     ReasoningReplayModeSelected(String),
     TransportTypeSelected(String),
@@ -83,6 +84,7 @@ pub struct LauncherApp {
     pub enable_filepath_extraction_mock: bool,
     pub enable_web_server_tools: bool,
     pub web_fetch_allow_private_networks: bool,
+    pub web_fetch_allowed_schemes: String,
     pub enable_safety_classifier_handling: bool,
     pub reasoning_replay_mode: String,
     pub transport_type: String,
@@ -112,11 +114,12 @@ impl LauncherApp {
             // Per-feature optimization toggles (defaults)
             enable_quota_check_mock: true,
             enable_prefix_detection: true,
-            enable_title_generation_skip: false,
+            enable_title_generation_skip: true,
             enable_suggestion_mode_skip: true,
             enable_filepath_extraction_mock: true,
             enable_web_server_tools: false,
             web_fetch_allow_private_networks: false,
+            web_fetch_allowed_schemes: "http,https".to_string(),
             enable_safety_classifier_handling: true,
             reasoning_replay_mode: "separate".to_string(),
             transport_type: "openai_chat".to_string(),
@@ -154,6 +157,7 @@ impl LauncherApp {
             app.enable_filepath_extraction_mock = settings.enable_filepath_extraction_mock;
             app.enable_web_server_tools = settings.enable_web_server_tools;
             app.web_fetch_allow_private_networks = settings.web_fetch_allow_private_networks;
+            app.web_fetch_allowed_schemes = settings.web_fetch_allowed_schemes;
             app.enable_safety_classifier_handling = settings.enable_safety_classifier_handling;
             app.reasoning_replay_mode = settings.reasoning_replay_mode;
             app.transport_type = settings.transport_type;
@@ -246,6 +250,7 @@ impl LauncherApp {
             self.enable_safety_classifier_handling,
             &self.reasoning_replay_mode,
             &self.transport_type,
+            &self.web_fetch_allowed_schemes,
         )
         .map_err(|e| e.to_string())
     }
@@ -434,6 +439,7 @@ impl LauncherApp {
             Message::FilepathExtractionMockToggled(v) => self.enable_filepath_extraction_mock = v,
             Message::WebServerToolsToggled(v) => self.enable_web_server_tools = v,
             Message::WebFetchPrivateNetworkToggled(v) => self.web_fetch_allow_private_networks = v,
+            Message::WebFetchAllowedSchemesChanged(v) => self.web_fetch_allowed_schemes = v,
             Message::SafetyClassifierHandlingToggled(v) => {
                 self.enable_safety_classifier_handling = v
             }

@@ -12,18 +12,13 @@ struct ToolCallState {
 }
 
 /// Determines how reasoning content should be replayed in the stream.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ReasoningReplayMode {
     /// Emit `<antThinking>` tags inline with text.
     Inline,
     /// Emit thinking blocks before the text blocks (separate).
+    #[default]
     Separate,
-}
-
-impl Default for ReasoningReplayMode {
-    fn default() -> Self {
-        ReasoningReplayMode::Separate
-    }
 }
 
 /// Start SSE stream conversion with optional reasoning replay mode.

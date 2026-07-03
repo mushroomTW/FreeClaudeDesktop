@@ -5,20 +5,7 @@ use axum::{http::HeaderMap, response::IntoResponse, Json};
 use serde_json::{json, Value};
 
 pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
-    // 1. Validate authorization
-    let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
-    let x_api_key_header = headers.get("x-api-key").and_then(|h| h.to_str().ok());
-    let is_authorized =
-        x_api_key_header.is_some() || crate::server::is_valid_proxy_authorization(auth_header);
-    if !is_authorized {
-        return (
-            axum::http::StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Unauthorized" })),
-        )
-            .into_response();
-    }
-
-    // 2. Load settings
+    // 1. Load settings for the configured proxy token.
     let Some(mut settings) = get_launcher_settings() else {
         tracing::error!("<- 錯誤: Launcher 尚未配置");
         return (
@@ -27,6 +14,22 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
         )
             .into_response();
     };
+
+    // 2. Validate authorization
+    let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
+    let x_api_key_header = headers.get("x-api-key").and_then(|h| h.to_str().ok());
+    let is_authorized = crate::server::is_authorized_proxy_request(
+        auth_header,
+        x_api_key_header,
+        &settings.proxy_auth_token,
+    );
+    if !is_authorized {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Unauthorized" })),
+        )
+            .into_response();
+    }
 
     // 3. Decrypt API key
     let api_key = match unprotect_secret(&settings.real_api_key) {
@@ -64,6 +67,7 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
                 let content = serde_json::to_string_pretty(&crate::launcher::claude_config(
                     port,
                     &inference_models,
+                    &settings.proxy_auth_token,
                 ))
                 .unwrap();
                 let _ = crate::launcher::write_config_to_all_paths(
@@ -99,7 +103,12 @@ pub async fn fetch_models_list_async(
     auth_scheme: &str,
 ) -> Result<Value, String> {
     let url = crate::conversion::response_converter::normalize_models_url(base_url)?;
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(
+            crate::constants::HTTP_TIMEOUT_SECS,
+        ))
+        .build()
+        .map_err(|e| e.to_string())?;
     let mut req = client.get(url);
     if auth_scheme == "x-api-key" {
         req = req.header("x-api-key", api_key);

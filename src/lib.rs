@@ -12,11 +12,13 @@ pub use error::{AppError, AppResult};
 pub use platform::{common, crypto, launcher};
 pub use runtime::{app, tray};
 
-use serde_json::json;
 use std::collections::HashMap;
 
 // 重導出 main.rs 和外部需要的 API，保持向後相容
-pub use config::{get_launcher_settings, save_launcher_settings, to_public_config, Settings};
+pub use config::{
+    generate_proxy_auth_token, get_launcher_settings, save_launcher_settings, to_public_config,
+    Settings,
+};
 pub use constants::CONFIG_ID;
 pub use conversion::request_converter::anthropic_to_openai_request;
 pub use conversion::response_converter::{
@@ -29,10 +31,12 @@ pub use launcher::{
 };
 pub use models::openai::InferenceModel;
 pub use server::{
-    is_valid_proxy_authorization, run_server, start_server_background, LAUNCHER_SHOW_REQUESTED,
+    is_authorized_proxy_request, is_valid_proxy_authorization, run_server, start_server_background,
+    LAUNCHER_SHOW_REQUESTED,
 };
 
 /// 儲存配置，獲取模型列表，並生成 Claude Desktop 配置
+#[allow(clippy::too_many_arguments)]
 pub fn save_config(
     port: u16,
     base_url: &str,
@@ -48,6 +52,7 @@ pub fn save_config(
     enable_safety_classifier_handling: bool,
     reasoning_replay_mode: &str,
     transport_type: &str,
+    web_fetch_allowed_schemes: &str,
 ) -> AppResult<()> {
     let existing = get_launcher_settings();
     let real_api_key = if api_key.trim().is_empty() {
@@ -75,6 +80,12 @@ pub fn save_config(
         }
     }
     let stored_api_key = protect_secret(&real_api_key)?;
+    let proxy_auth_token = match existing.as_ref().map(|s| s.proxy_auth_token.as_str()) {
+        Some(token) if !token.is_empty() && token != constants::PROXY_AUTH_TOKEN => {
+            token.to_string()
+        }
+        _ => generate_proxy_auth_token()?,
+    };
 
     let settings = Settings {
         real_base_url: base_url.trim().to_string(),
@@ -89,6 +100,7 @@ pub fn save_config(
         } else {
             routes
         },
+        proxy_auth_token: proxy_auth_token.clone(),
         active_port: Some(port),
         transport_type: transport_type.to_string(),
         reasoning_replay_mode: reasoning_replay_mode.to_string(),
@@ -98,33 +110,29 @@ pub fn save_config(
         enable_suggestion_mode_skip,
         enable_filepath_extraction_mock,
         enable_web_server_tools,
-        web_fetch_allowed_schemes: "http,https".to_string(),
+        web_fetch_allowed_schemes: web_fetch_allowed_schemes.to_string(),
         web_fetch_allow_private_networks,
         enable_safety_classifier_handling,
     };
     save_launcher_settings(&settings)?;
 
-    let content =
-        serde_json::to_string_pretty(&launcher::claude_config(port, &inference_models)).unwrap();
+    let content = serde_json::to_string_pretty(&launcher::claude_config(
+        port,
+        &inference_models,
+        &proxy_auth_token,
+    ))
+    .unwrap();
     launcher::write_config_to_all_paths(&format!("{CONFIG_ID}.json"), &content)?;
     let _ = launcher::remove_anthropic_base_url_env();
     launcher::apply_3p_deployment_mode()?;
-
-    let meta = json!({
-        "appliedId": CONFIG_ID,
-        "entries": [{ "id": CONFIG_ID, "name": "FreeClaudeLauncher" }]
-    });
-    launcher::write_config_to_all_paths(
-        "_meta.json",
-        &serde_json::to_string_pretty(&meta).unwrap(),
-    )?;
+    launcher::write_managed_meta_to_all_paths()?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value;
+    use serde_json::{json, Value};
 
     #[test]
     fn normalizes_provider_urls_to_messages_endpoint() {
@@ -219,6 +227,30 @@ mod tests {
         assert!(!is_valid_proxy_authorization(None));
         assert!(!is_valid_proxy_authorization(Some("Bearer wrong")));
         assert!(!is_valid_proxy_authorization(Some("local-proxy-token")));
+    }
+
+    #[test]
+    fn validates_proxy_x_api_key_against_configured_token() {
+        assert!(is_authorized_proxy_request(
+            None,
+            Some("secret-token"),
+            "secret-token"
+        ));
+        assert!(is_authorized_proxy_request(
+            Some("Bearer secret-token"),
+            None,
+            "secret-token"
+        ));
+        assert!(!is_authorized_proxy_request(
+            None,
+            Some("anything"),
+            "secret-token"
+        ));
+        assert!(!is_authorized_proxy_request(
+            Some("Bearer wrong"),
+            Some("anything"),
+            "secret-token"
+        ));
     }
 
     #[test]

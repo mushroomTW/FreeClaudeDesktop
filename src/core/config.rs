@@ -1,6 +1,6 @@
 use crate::common::local_app_data;
 use crate::crypto::unprotect_secret;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -15,6 +15,9 @@ pub struct Settings {
     pub real_auth_scheme: String,
     pub real_model: Option<String>,
     pub real_model_routes: HashMap<String, String>,
+    /// 寫入 Claude Desktop gateway config 的本機 proxy token
+    #[serde(default = "default_proxy_auth_token")]
+    pub proxy_auth_token: String,
     /// 當前啟用的代理埠號
     #[serde(default)]
     pub active_port: Option<u16>,
@@ -36,7 +39,7 @@ pub struct Settings {
     #[serde(default = "default_true")]
     pub enable_prefix_detection: bool,
     /// 是否啟用標題生成跳過（回傳固定標題 "Conversation"）
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enable_title_generation_skip: bool,
     /// 是否啟用建議模式跳過（回傳空建議）
     #[serde(default = "default_true")]
@@ -66,8 +69,25 @@ pub fn default_false() -> bool {
     false
 }
 
+pub fn default_proxy_auth_token() -> String {
+    crate::constants::PROXY_AUTH_TOKEN.to_string()
+}
+
 fn default_web_fetch_schemes() -> String {
     "http,https".to_string()
+}
+
+pub fn generate_proxy_auth_token() -> AppResult<String> {
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes).map_err(|error| AppError::Crypto(error.to_string()))?;
+
+    let mut token = String::with_capacity(4 + bytes.len() * 2);
+    token.push_str("fcl_");
+    for byte in bytes {
+        use std::fmt::Write;
+        let _ = write!(token, "{byte:02x}");
+    }
+    Ok(token)
 }
 
 impl Default for Settings {
@@ -78,12 +98,13 @@ impl Default for Settings {
             real_auth_scheme: String::new(),
             real_model: None,
             real_model_routes: HashMap::new(),
+            proxy_auth_token: default_proxy_auth_token(),
             active_port: None,
             transport_type: String::new(),
             reasoning_replay_mode: String::new(),
             enable_quota_check_mock: true,
             enable_prefix_detection: true,
-            enable_title_generation_skip: false,
+            enable_title_generation_skip: true,
             enable_suggestion_mode_skip: true,
             enable_filepath_extraction_mock: true,
             enable_web_server_tools: false,

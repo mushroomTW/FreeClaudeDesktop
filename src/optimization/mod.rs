@@ -226,7 +226,21 @@ pub async fn try_optimizations(
         }
     }
 
-    // 6. Safety classifier
+    // 6. Web server tools
+    if settings.enable_web_server_tools {
+        if let Some((_id, name, input)) = web_tools::extract_latest_web_tool_call(body_str) {
+            let policy = web_tools::policy_from_settings(settings);
+            if let Some(text) = web_tools::execute_web_tool(&policy, &name, &input).await {
+                tracing::info!("Optimization: executed local web tool {}", name);
+                let model = extract_model(body_str);
+                return Some(build_optimized_text_response(
+                    body_str, &model, &text, 100, 100,
+                ));
+            }
+        }
+    }
+
+    // 7. Safety classifier
     if settings.enable_safety_classifier_handling && is_safety_classifier_request(body_str) {
         // For safety classifier, we don't short-circuit the response,
         // we just note it. The actual handling (disabling thinking)
@@ -304,6 +318,79 @@ mod tests {
             .unwrap();
         let value: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(value["content"][0]["text"], "配額檢查通過。");
+    }
+
+    #[tokio::test]
+    async fn web_fetch_blocks_private_network_when_disabled() {
+        let settings = Settings {
+            enable_web_server_tools: true,
+            web_fetch_allowed_schemes: "http,https".to_string(),
+            web_fetch_allow_private_networks: false,
+            ..Settings::default()
+        };
+        let body = json!({
+            "model": "claude-test",
+            "messages": [{
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "web_fetch",
+                    "input": { "url": "http://127.0.0.1:9/private" }
+                }]
+            }]
+        })
+        .to_string();
+
+        let response = try_optimizations(&body, &settings).await.unwrap();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        let text = value["content"][0]["text"].as_str().unwrap();
+
+        assert!(text.contains("Private network access is not allowed"));
+    }
+
+    #[tokio::test]
+    async fn web_fetch_returns_page_text_when_allowed() {
+        use axum::{routing::get, Router};
+
+        let app = Router::new().route("/page", get(|| async { "hello from web fetch" }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let settings = Settings {
+            enable_web_server_tools: true,
+            web_fetch_allowed_schemes: "http,https".to_string(),
+            web_fetch_allow_private_networks: true,
+            ..Settings::default()
+        };
+        let body = json!({
+            "model": "claude-test",
+            "messages": [{
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "web_fetch",
+                    "input": { "url": format!("http://{addr}/page") }
+                }]
+            }]
+        })
+        .to_string();
+
+        let response = try_optimizations(&body, &settings).await.unwrap();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        let text = value["content"][0]["text"].as_str().unwrap();
+
+        assert!(text.contains("hello from web fetch"));
     }
 
     #[test]
