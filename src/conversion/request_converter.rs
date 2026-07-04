@@ -5,6 +5,148 @@ use crate::models::claude::{
 };
 use serde_json::{json, Value};
 
+fn thinking_budget_to_effort(budget: u64) -> &'static str {
+    if budget > 8192 {
+        "max"
+    } else if budget > 2048 {
+        "high"
+    } else if budget > 1024 {
+        "medium"
+    } else {
+        "low"
+    }
+}
+
+fn effort_rank(effort: &str) -> Option<u8> {
+    match effort {
+        "none" => Some(0),
+        "low" => Some(1),
+        "medium" => Some(2),
+        "high" => Some(3),
+        "max" => Some(4),
+        _ => None,
+    }
+}
+
+fn clamp_reasoning_effort<'a>(requested: &str, supported: &'a [String]) -> Option<&'a str> {
+    let requested_rank = effort_rank(requested)?;
+    supported
+        .iter()
+        .filter_map(|effort| effort_rank(effort).map(|rank| (rank, effort.as_str())))
+        .filter(|(rank, _)| *rank > 0)
+        .min_by_key(|(rank, _)| {
+            let distance = (*rank as i16 - requested_rank as i16).abs();
+            (distance, std::cmp::Reverse(*rank))
+        })
+        .map(|(_, effort)| effort)
+}
+
+fn image_block_to_openai_part(block: &Value) -> Option<Value> {
+    let source = block.get("source")?;
+    if source.get("type").and_then(Value::as_str) != Some("base64") {
+        return None;
+    }
+    let media_type = source.get("media_type").and_then(Value::as_str)?;
+    let data = source.get("data").and_then(Value::as_str)?;
+    Some(json!({
+        "type": "image_url",
+        "image_url": {
+            "url": format!("data:{media_type};base64,{data}")
+        }
+    }))
+}
+
+fn tool_result_content_to_openai(content: &Option<ClaudeToolResultContent>) -> Value {
+    let mut text_parts = Vec::new();
+    let mut content_parts = Vec::new();
+
+    if let Some(res_c) = content {
+        match res_c {
+            ClaudeToolResultContent::Text(text) => text_parts.push(text.clone()),
+            ClaudeToolResultContent::Blocks(arr) => {
+                for res_block in arr {
+                    match res_block.get("type").and_then(Value::as_str) {
+                        Some("text") => {
+                            if let Some(text) = res_block.get("text").and_then(Value::as_str) {
+                                text_parts.push(text.to_string());
+                            }
+                        }
+                        Some("image") => {
+                            if let Some(image_part) = image_block_to_openai_part(res_block) {
+                                content_parts.push(image_part);
+                            }
+                        }
+                        _ => {
+                            if let Some(text) = res_block.get("text").and_then(Value::as_str) {
+                                text_parts.push(text.to_string());
+                            } else {
+                                text_parts.push(res_block.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            ClaudeToolResultContent::Object(obj) => text_parts.push(obj.to_string()),
+        }
+    }
+
+    let text = text_parts.join("\n").trim().to_string();
+    if content_parts.is_empty() {
+        Value::String(text)
+    } else {
+        if !text.is_empty() {
+            content_parts.insert(0, json!({ "type": "text", "text": text }));
+        }
+        Value::Array(content_parts)
+    }
+}
+
+fn computer_tool_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": [
+                    "screenshot",
+                    "mouse_move",
+                    "left_click",
+                    "left_click_drag",
+                    "right_click",
+                    "middle_click",
+                    "double_click",
+                    "key",
+                    "type",
+                    "scroll",
+                    "wait"
+                ]
+            },
+            "coordinate": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "minItems": 2,
+                "maxItems": 2
+            },
+            "text": { "type": "string" },
+            "key": { "type": "string" },
+            "scroll_direction": {
+                "type": "string",
+                "enum": ["up", "down", "left", "right"]
+            },
+            "scroll_amount": { "type": "integer" }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+    })
+}
+
+fn is_computer_tool(tool_type: Option<&str>, name: &str) -> bool {
+    tool_type
+        .map(|kind| kind.starts_with("computer_"))
+        .unwrap_or(false)
+        || name == "computer"
+}
+
 pub fn anthropic_to_openai_request(
     body: &str,
     settings: &Settings,
@@ -40,15 +182,13 @@ pub fn anthropic_to_openai_request(
     if let Some(ref thinking) = req.thinking {
         if thinking.enabled.unwrap_or(true) {
             let budget = thinking.budget_tokens.unwrap_or(1024);
-            let effort = if budget > 2048 {
-                "high"
-            } else if budget > 1024 {
-                "medium"
-            } else {
-                "low"
-            };
+            let effort = thinking_budget_to_effort(budget);
             let target_model = data["model"].as_str().unwrap_or("");
-            if target_model.contains("o1") || target_model.contains("o3") {
+            if let Some(supported) = settings.real_model_reasoning_efforts.get(&req.model) {
+                if let Some(effort) = clamp_reasoning_effort(effort, supported) {
+                    data["reasoning_effort"] = Value::String(effort.to_string());
+                }
+            } else if target_model.contains("o1") || target_model.contains("o3") {
                 data["reasoning_effort"] = Value::String(effort.to_string());
             }
         }
@@ -193,12 +333,12 @@ pub fn anthropic_to_openai_request(
                                         }
                                     }
 
-                                    let combined_text = text_parts.join("\n").trim().to_string();
+                                    let _combined_text = text_parts.join("\n").trim().to_string();
 
                                     openai_messages.push(json!({
                                         "role": "tool",
                                         "tool_call_id": tool_use_id,
-                                        "content": combined_text
+                                        "content": tool_result_content_to_openai(content)
                                     }));
                                 }
                             }
@@ -318,12 +458,22 @@ pub fn anthropic_to_openai_request(
     if let Some(ref tools_val) = req.tools {
         for tool in tools_val {
             if !tool.name.trim().is_empty() {
+                let input_schema = if let Some(input_schema) = tool.input_schema.clone() {
+                    input_schema
+                } else if is_computer_tool(tool.kind.as_deref(), &tool.name) {
+                    computer_tool_schema()
+                } else {
+                    return Err(format!(
+                        "Anthropic-native tool '{}' cannot be converted to OpenAI-compatible function calling. Use an Anthropic-compatible gateway for Claude Desktop built-in tools.",
+                        tool.name
+                    ));
+                };
                 openai_tools.push(json!({
                     "type": "function",
                     "function": {
                         "name": tool.name.clone(),
                         "description": tool.description.clone().unwrap_or_default(),
-                        "parameters": tool.input_schema.clone()
+                        "parameters": input_schema
                     }
                 }));
             }
@@ -437,5 +587,125 @@ mod tests {
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0]["role"], "system");
         assert_eq!(msgs[0]["content"], "You are a helpful assistant.");
+    }
+
+    #[test]
+    fn computer_tool_converts_to_openai_function_schema() {
+        let settings = Settings::default();
+        let body = json!({
+            "model": "claude-test",
+            "messages": [{"role": "user", "content": "use the computer"}],
+            "tools": [{
+                "type": "computer_20250124",
+                "name": "computer",
+                "display_width_px": 1024,
+                "display_height_px": 768,
+                "display_number": 1
+            }]
+        });
+
+        let (converted, _) = anthropic_to_openai_request(&body.to_string(), &settings).unwrap();
+        let converted: Value = serde_json::from_str(&converted).unwrap();
+        let function = &converted["tools"][0]["function"];
+
+        assert_eq!(function["name"], "computer");
+        assert_eq!(function["parameters"]["required"][0], "action");
+        assert_eq!(
+            function["parameters"]["properties"]["action"]["enum"][0],
+            "screenshot"
+        );
+    }
+
+    #[test]
+    fn other_anthropic_native_tools_still_fail_clearly_for_openai_gateways() {
+        let settings = Settings::default();
+        let body = json!({
+            "model": "claude-test",
+            "messages": [{"role": "user", "content": "run a command"}],
+            "tools": [{
+                "type": "bash_20250124",
+                "name": "bash"
+            }]
+        });
+
+        let err = anthropic_to_openai_request(&body.to_string(), &settings).unwrap_err();
+
+        assert!(err.contains("Anthropic-native tool"));
+    }
+
+    #[test]
+    fn computer_tool_result_keeps_screenshot_image() {
+        let settings = Settings::default();
+        let body = json!({
+            "model": "claude-test",
+            "messages": [
+                {"role": "user", "content": "look"},
+                {
+                    "role": "assistant",
+                    "content": [{
+                        "type": "tool_use",
+                        "id": "toolu_1",
+                        "name": "computer",
+                        "input": {"action": "screenshot"}
+                    }]
+                },
+                {
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_1",
+                        "content": [{
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": "PNGDATA"
+                            }
+                        }]
+                    }]
+                }
+            ]
+        });
+
+        let (converted, _) = anthropic_to_openai_request(&body.to_string(), &settings).unwrap();
+        let converted: Value = serde_json::from_str(&converted).unwrap();
+        let content = converted["messages"][2]["content"].as_array().unwrap();
+
+        assert_eq!(content[0]["type"], "image_url");
+        assert_eq!(
+            content[0]["image_url"]["url"],
+            "data:image/png;base64,PNGDATA"
+        );
+    }
+
+    #[test]
+    fn thinking_budget_clamps_to_model_reasoning_effort_levels() {
+        let mut routes = std::collections::HashMap::new();
+        routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
+        let mut efforts = std::collections::HashMap::new();
+        efforts.insert(
+            "claude-sonnet-4-6[0]".to_string(),
+            vec!["none".to_string(), "low".to_string(), "medium".to_string()],
+        );
+        let settings = Settings {
+            real_model_routes: routes,
+            real_model_reasoning_efforts: efforts,
+            ..Settings::default()
+        };
+        let body = json!({
+            "model": "claude-sonnet-4-6[0]",
+            "messages": [{"role": "user", "content": "think"}],
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": 4096
+            }
+        });
+
+        let (converted, _) = anthropic_to_openai_request(&body.to_string(), &settings).unwrap();
+        let converted: Value = serde_json::from_str(&converted).unwrap();
+
+        assert_eq!(converted["model"], "nim-medium");
+        assert_eq!(converted["reasoning_effort"], "medium");
+        assert!(converted.get("thinking").is_none());
     }
 }

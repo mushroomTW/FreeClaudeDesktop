@@ -73,9 +73,14 @@ pub enum ClaudeMessageContent {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ClaudeTool {
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
     pub name: String,
     pub description: Option<String>,
-    pub input_schema: Value,
+    pub input_schema: Option<Value>,
+    pub display_width_px: Option<u64>,
+    pub display_height_px: Option<u64>,
+    pub display_number: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
