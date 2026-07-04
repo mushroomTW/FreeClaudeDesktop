@@ -56,15 +56,15 @@ pub struct Settings {
     /// 是否啟用 Web 工具攔截（本地執行 web_search/web_fetch）
     #[serde(default = "default_false")]
     pub enable_web_server_tools: bool,
+    /// 是否寫入本機 computer MCP server 設定
+    #[serde(default = "default_false")]
+    pub enable_computer_mcp_server: bool,
     /// web_fetch 允許的 URL 方案清單（逗號分隔，如 "http,https"）
     #[serde(default = "default_web_fetch_schemes")]
     pub web_fetch_allowed_schemes: String,
     /// 是否允許 web_fetch 存取私有網路目標
     #[serde(default = "default_false")]
     pub web_fetch_allow_private_networks: bool,
-    /// 是否啟用安全分類器處理（自動關閉 thinking 以節省 token）
-    #[serde(default = "default_true")]
-    pub enable_safety_classifier_handling: bool,
     /// 主題模式 ("light", "dark", "system")
     #[serde(default = "default_theme_mode")]
     pub theme_mode: String,
@@ -124,9 +124,9 @@ impl Default for Settings {
             enable_suggestion_mode_skip: true,
             enable_filepath_extraction_mock: true,
             enable_web_server_tools: false,
+            enable_computer_mcp_server: false,
             web_fetch_allowed_schemes: "http,https".to_string(),
             web_fetch_allow_private_networks: false,
-            enable_safety_classifier_handling: true,
             theme_mode: default_theme_mode(),
         }
     }

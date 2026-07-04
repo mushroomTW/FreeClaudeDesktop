@@ -15,6 +15,13 @@ fn load_icon() -> Option<window::Icon> {
 }
 
 fn main() -> iced::Result {
+    if std::env::args().any(|arg| arg == "--mcp-computer-server") {
+        if let Err(error) = free_claude_launcher::mcp::run_computer_server() {
+            eprintln!("Computer MCP server failed: {error}");
+        }
+        return Ok(());
+    }
+
     // 1. 初始化日誌系統
     let _guard = free_claude_launcher::server::init_logging();
     tracing::info!("FreeClaudeLauncher 啟動...");

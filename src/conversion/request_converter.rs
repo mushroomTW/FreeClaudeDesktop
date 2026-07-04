@@ -41,112 +41,6 @@ fn clamp_reasoning_effort<'a>(requested: &str, supported: &'a [String]) -> Optio
         .map(|(_, effort)| effort)
 }
 
-fn image_block_to_openai_part(block: &Value) -> Option<Value> {
-    let source = block.get("source")?;
-    if source.get("type").and_then(Value::as_str) != Some("base64") {
-        return None;
-    }
-    let media_type = source.get("media_type").and_then(Value::as_str)?;
-    let data = source.get("data").and_then(Value::as_str)?;
-    Some(json!({
-        "type": "image_url",
-        "image_url": {
-            "url": format!("data:{media_type};base64,{data}")
-        }
-    }))
-}
-
-fn tool_result_content_to_openai(content: &Option<ClaudeToolResultContent>) -> Value {
-    let mut text_parts = Vec::new();
-    let mut content_parts = Vec::new();
-
-    if let Some(res_c) = content {
-        match res_c {
-            ClaudeToolResultContent::Text(text) => text_parts.push(text.clone()),
-            ClaudeToolResultContent::Blocks(arr) => {
-                for res_block in arr {
-                    match res_block.get("type").and_then(Value::as_str) {
-                        Some("text") => {
-                            if let Some(text) = res_block.get("text").and_then(Value::as_str) {
-                                text_parts.push(text.to_string());
-                            }
-                        }
-                        Some("image") => {
-                            if let Some(image_part) = image_block_to_openai_part(res_block) {
-                                content_parts.push(image_part);
-                            }
-                        }
-                        _ => {
-                            if let Some(text) = res_block.get("text").and_then(Value::as_str) {
-                                text_parts.push(text.to_string());
-                            } else {
-                                text_parts.push(res_block.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-            ClaudeToolResultContent::Object(obj) => text_parts.push(obj.to_string()),
-        }
-    }
-
-    let text = text_parts.join("\n").trim().to_string();
-    if content_parts.is_empty() {
-        Value::String(text)
-    } else {
-        if !text.is_empty() {
-            content_parts.insert(0, json!({ "type": "text", "text": text }));
-        }
-        Value::Array(content_parts)
-    }
-}
-
-fn computer_tool_schema() -> Value {
-    json!({
-        "type": "object",
-        "properties": {
-            "action": {
-                "type": "string",
-                "enum": [
-                    "screenshot",
-                    "mouse_move",
-                    "left_click",
-                    "left_click_drag",
-                    "right_click",
-                    "middle_click",
-                    "double_click",
-                    "key",
-                    "type",
-                    "scroll",
-                    "wait"
-                ]
-            },
-            "coordinate": {
-                "type": "array",
-                "items": { "type": "integer" },
-                "minItems": 2,
-                "maxItems": 2
-            },
-            "text": { "type": "string" },
-            "key": { "type": "string" },
-            "scroll_direction": {
-                "type": "string",
-                "enum": ["up", "down", "left", "right"]
-            },
-            "scroll_amount": { "type": "integer" }
-        },
-        "required": ["action"],
-        "additionalProperties": false
-    })
-}
-
-fn is_computer_tool(tool_type: Option<&str>, name: &str) -> bool {
-    tool_type
-        .map(|kind| kind.starts_with("computer_"))
-        .unwrap_or(false)
-        || name == "computer"
-}
-
 pub fn anthropic_to_openai_request(
     body: &str,
     settings: &Settings,
@@ -333,12 +227,12 @@ pub fn anthropic_to_openai_request(
                                         }
                                     }
 
-                                    let _combined_text = text_parts.join("\n").trim().to_string();
+                                    let combined_text = text_parts.join("\n").trim().to_string();
 
                                     openai_messages.push(json!({
                                         "role": "tool",
                                         "tool_call_id": tool_use_id,
-                                        "content": tool_result_content_to_openai(content)
+                                        "content": combined_text
                                     }));
                                 }
                             }
@@ -458,11 +352,7 @@ pub fn anthropic_to_openai_request(
     if let Some(ref tools_val) = req.tools {
         for tool in tools_val {
             if !tool.name.trim().is_empty() {
-                let input_schema = if let Some(input_schema) = tool.input_schema.clone() {
-                    input_schema
-                } else if is_computer_tool(tool.kind.as_deref(), &tool.name) {
-                    computer_tool_schema()
-                } else {
+                let Some(input_schema) = tool.input_schema.clone() else {
                     return Err(format!(
                         "Anthropic-native tool '{}' cannot be converted to OpenAI-compatible function calling. Use an Anthropic-compatible gateway for Claude Desktop built-in tools.",
                         tool.name
@@ -590,33 +480,6 @@ mod tests {
     }
 
     #[test]
-    fn computer_tool_converts_to_openai_function_schema() {
-        let settings = Settings::default();
-        let body = json!({
-            "model": "claude-test",
-            "messages": [{"role": "user", "content": "use the computer"}],
-            "tools": [{
-                "type": "computer_20250124",
-                "name": "computer",
-                "display_width_px": 1024,
-                "display_height_px": 768,
-                "display_number": 1
-            }]
-        });
-
-        let (converted, _) = anthropic_to_openai_request(&body.to_string(), &settings).unwrap();
-        let converted: Value = serde_json::from_str(&converted).unwrap();
-        let function = &converted["tools"][0]["function"];
-
-        assert_eq!(function["name"], "computer");
-        assert_eq!(function["parameters"]["required"][0], "action");
-        assert_eq!(
-            function["parameters"]["properties"]["action"]["enum"][0],
-            "screenshot"
-        );
-    }
-
-    #[test]
     fn other_anthropic_native_tools_still_fail_clearly_for_openai_gateways() {
         let settings = Settings::default();
         let body = json!({
@@ -631,51 +494,6 @@ mod tests {
         let err = anthropic_to_openai_request(&body.to_string(), &settings).unwrap_err();
 
         assert!(err.contains("Anthropic-native tool"));
-    }
-
-    #[test]
-    fn computer_tool_result_keeps_screenshot_image() {
-        let settings = Settings::default();
-        let body = json!({
-            "model": "claude-test",
-            "messages": [
-                {"role": "user", "content": "look"},
-                {
-                    "role": "assistant",
-                    "content": [{
-                        "type": "tool_use",
-                        "id": "toolu_1",
-                        "name": "computer",
-                        "input": {"action": "screenshot"}
-                    }]
-                },
-                {
-                    "role": "user",
-                    "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": "toolu_1",
-                        "content": [{
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": "PNGDATA"
-                            }
-                        }]
-                    }]
-                }
-            ]
-        });
-
-        let (converted, _) = anthropic_to_openai_request(&body.to_string(), &settings).unwrap();
-        let converted: Value = serde_json::from_str(&converted).unwrap();
-        let content = converted["messages"][2]["content"].as_array().unwrap();
-
-        assert_eq!(content[0]["type"], "image_url");
-        assert_eq!(
-            content[0]["image_url"]["url"],
-            "data:image/png;base64,PNGDATA"
-        );
     }
 
     #[test]
@@ -708,4 +526,5 @@ mod tests {
         assert_eq!(converted["reasoning_effort"], "medium");
         assert!(converted.get("thinking").is_none());
     }
+
 }

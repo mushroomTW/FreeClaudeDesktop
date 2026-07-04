@@ -190,35 +190,6 @@ pub fn extract_filepaths(body_str: &str) -> Option<String> {
     Some(filepaths)
 }
 
-/// Check if this is a safety classifier request.
-///
-/// Detects Claude Code's auto-mode safety classifier prompt.
-pub fn is_safety_classifier_request(body_str: &str) -> bool {
-    let Ok(v) = serde_json::from_str::<Value>(body_str) else {
-        return false;
-    };
-
-    if v.get("tools").is_some() {
-        return false;
-    }
-
-    let system_text = extract_system_text(&v).unwrap_or_default();
-    let messages_text: String = v
-        .get("messages")
-        .and_then(|m| m.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|msg| msg.get("content").and_then(|c| c.as_str()))
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_default();
-
-    let combined = format!("{}\n{}", system_text, messages_text).to_lowercase();
-    let has_verdict = combined.contains("yes</block>") || combined.contains("no</block>");
-    combined.contains("<transcript>") && has_verdict
-}
-
 fn strip_env_assignments<'a>(parts: &[&'a str]) -> Vec<&'a str> {
     let mut start = 0;
     for (i, part) in parts.iter().enumerate() {

@@ -240,45 +240,7 @@ pub async fn try_optimizations(
         }
     }
 
-    // 7. Safety classifier
-    if settings.enable_safety_classifier_handling && is_safety_classifier_request(body_str) {
-        // For safety classifier, we don't short-circuit the response,
-        // we just note it. The actual handling (disabling thinking)
-        // is done by the caller modifying the request body before forwarding.
-        tracing::info!("Optimization: safety classifier detected, will disable thinking");
-        // Return None so the request still goes through, but caller can use this info.
-        // Actually for this optimization we want to disable thinking in the body,
-        // which is best done by the caller inspecting the body before sending.
-        // We return None here but provide a helper function instead.
-        // (Just return None; the caller should separately check and disable thinking.)
-        return None;
-    }
-
     None
-}
-
-/// Helper to strip `thinking` from a JSON body for safety-classifier-like requests.
-pub fn strip_thinking_for_safety_classifier(body: &mut serde_json::Value) {
-    if let Some(obj) = body.as_object_mut() {
-        if let Some(thinking) = obj.get_mut("thinking") {
-            if let Some(map) = thinking.as_object_mut() {
-                map.insert("type".to_string(), json!("disabled"));
-                map.remove("budget_tokens");
-            }
-        }
-    }
-}
-
-pub fn body_with_safety_classifier_handling(body_str: &str, settings: &Settings) -> String {
-    if !settings.enable_safety_classifier_handling || !is_safety_classifier_request(body_str) {
-        return body_str.to_string();
-    }
-
-    let Ok(mut body) = serde_json::from_str::<Value>(body_str) else {
-        return body_str.to_string();
-    };
-    strip_thinking_for_safety_classifier(&mut body);
-    body.to_string()
 }
 
 fn extract_model(body_str: &str) -> String {
@@ -391,22 +353,5 @@ mod tests {
         let text = value["content"][0]["text"].as_str().unwrap();
 
         assert!(text.contains("hello from web fetch"));
-    }
-
-    #[test]
-    fn safety_classifier_handling_disables_thinking_when_enabled() {
-        let settings = Settings::default();
-        let body = json!({
-            "model": "claude-test",
-            "system": "<transcript>classify</transcript>",
-            "messages": [{ "role": "user", "content": "yes</block>" }],
-            "thinking": { "type": "enabled", "budget_tokens": 1024 }
-        })
-        .to_string();
-
-        let rewritten = body_with_safety_classifier_handling(&body, &settings);
-        let value: Value = serde_json::from_str(&rewritten).unwrap();
-        assert_eq!(value["thinking"]["type"], "disabled");
-        assert!(value["thinking"].get("budget_tokens").is_none());
     }
 }

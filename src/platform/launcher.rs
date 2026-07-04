@@ -378,6 +378,7 @@ pub fn restore_official_config() -> AppResult<()> {
     kill_claude_processes();
     let _ = remove_managed_config_from_all_paths();
     let _ = remove_anthropic_base_url_env();
+    let _ = apply_computer_mcp_server_config(false);
     let _ = restore_1p_deployment_mode();
 
     let _ = fs::remove_file(crate::config::settings_file());
@@ -509,6 +510,10 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
             "ANTHROPIC_BASE_URL".to_string(),
             Value::String(format!("http://127.0.0.1:{}", port)),
         );
+        env_obj.insert(
+            "ENABLE_TOOL_SEARCH".to_string(),
+            Value::String("true".to_string()),
+        );
     }
 
     let content = serde_json::to_string_pretty(&data)?;
@@ -524,6 +529,9 @@ pub fn remove_anthropic_base_url_env() -> AppResult<()> {
             let mut changed = false;
             if let Some(env_obj) = data.get_mut("env").and_then(Value::as_object_mut) {
                 if env_obj.remove("ANTHROPIC_BASE_URL").is_some() {
+                    changed = true;
+                }
+                if env_obj.remove("ENABLE_TOOL_SEARCH").is_some() {
                     changed = true;
                 }
             }
@@ -596,6 +604,65 @@ pub fn mcp_config_paths() -> Vec<PathBuf> {
     );
 
     paths
+}
+
+const COMPUTER_MCP_SERVER_NAME: &str = "free-claude-computer";
+
+pub fn with_computer_mcp_server(mut data: Value, enabled: bool, command: &Path) -> Value {
+    if !data.is_object() {
+        data = json!({});
+    }
+
+    let obj = data.as_object_mut().unwrap();
+    if enabled {
+        let servers = obj.entry("mcpServers").or_insert_with(|| json!({}));
+        if !servers.is_object() {
+            *servers = json!({});
+        }
+        servers.as_object_mut().unwrap().insert(
+            COMPUTER_MCP_SERVER_NAME.to_string(),
+            json!({
+                "command": command.to_string_lossy(),
+                "args": ["--mcp-computer-server"]
+            }),
+        );
+    } else if let Some(servers) = obj.get_mut("mcpServers").and_then(Value::as_object_mut) {
+        servers.remove(COMPUTER_MCP_SERVER_NAME);
+        if servers.is_empty() {
+            obj.remove("mcpServers");
+        }
+    }
+
+    data
+}
+
+pub fn apply_computer_mcp_server_config(enabled: bool) -> AppResult<()> {
+    let command = if enabled {
+        env::current_exe().map_err(|error| AppError::Launcher(error.to_string()))?
+    } else {
+        PathBuf::new()
+    };
+
+    for path in mcp_config_paths() {
+        let data: Value = if path.exists() {
+            let text = fs::read_to_string(&path)?;
+            serde_json::from_str(&text).unwrap_or(json!({}))
+        } else {
+            if !enabled {
+                continue;
+            }
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            json!({})
+        };
+
+        let content =
+            serde_json::to_string_pretty(&with_computer_mcp_server(data, enabled, &command))?;
+        fs::write(&path, content)?;
+    }
+
+    Ok(())
 }
 
 const PREVIOUS_DEPLOYMENT_MODE_KEY: &str = "freeClaudeLauncherPreviousDeploymentMode";
@@ -739,5 +806,29 @@ mod tests {
 
         assert_eq!(updated["inferenceGatewayBaseUrl"], "http://127.0.0.1:4567");
         assert_eq!(updated["other"], true);
+    }
+
+    #[test]
+    fn computer_mcp_config_preserves_other_servers() {
+        let command = Path::new("C:\\FreeClaudeLauncher.exe");
+        let enabled = with_computer_mcp_server(
+            json!({
+                "mcpServers": {
+                    "other": { "command": "node" }
+                }
+            }),
+            true,
+            command,
+        );
+
+        assert_eq!(enabled["mcpServers"]["other"]["command"], "node");
+        assert_eq!(
+            enabled["mcpServers"]["free-claude-computer"]["args"][0],
+            "--mcp-computer-server"
+        );
+
+        let disabled = with_computer_mcp_server(enabled, false, command);
+        assert_eq!(disabled["mcpServers"]["other"]["command"], "node");
+        assert!(disabled["mcpServers"].get("free-claude-computer").is_none());
     }
 }

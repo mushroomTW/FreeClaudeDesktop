@@ -1,59 +1,241 @@
 # FreeClaudeLauncher
 
-FreeClaudeLauncher 是跨平台桌面啟動器與本機 API proxy，用來讓 Claude Desktop 透過本機 proxy 連到使用者設定的上游 gateway。
+**FreeClaudeLauncher** 是一款專為 [Claude Desktop](https://claude.ai/download) 設計的跨平台 (Windows, macOS, Linux) 桌面啟動器、本機 API Proxy 與強大桌面自動化 MCP 伺服器。
 
-## 功能
+它能將 Claude Desktop 的請求無縫轉接至任何 OpenAI-compatible 或 Anthropic-compatible 上游 Gateway（如 One API, LiteLLM, DeepSeek, Ollama, vLLM 等），並內建完整媲美 Claude Desktop 原生 Chicago 規格的跨平台 **`free-claude-computer` MCP 伺服器**。
 
-- 啟動本機 proxy，提供 `/v1/messages` 與 `/v1/models`。
-- 支援 OpenAI-compatible 與 Anthropic-compatible API。
-- 轉換 Anthropic Messages 與 OpenAI Chat Completions 的 request、response 與 streaming 格式。
-- 透過 GUI 設定 gateway URL、API key、驗證方式、Claude Desktop 路徑與最佳化選項。
-- 使用系統 keyring 保存 API key，Windows 另支援既有 DPAPI 格式讀取。
-- 寫入 Claude Desktop `configLibrary`，並提供還原官方設定能力。
-- 對 Claude Desktop 的探測、標題產生、建議模式、檔案路徑提取等請求提供本機 fast path。
-- 支援 stale model route fallback，遇到上游模型下架時可改用其他已知 route 重試。
+---
 
-## 建置與測試
+## 📊 程式運行與架構流程圖
 
-```powershell
-cargo test
+### 1. 🔄 系統整體運行與資料流架構 (System Architecture & Data Flow)
+
+```mermaid
+flowchart TD
+    subgraph Client ["🖥️ Client Layer"]
+        CD["Claude Desktop (App)"]
+    end
+
+    subgraph Launcher ["🚀 FreeClaudeLauncher (Rust Core)"]
+        GUI["Iced GUI / Tray Manager"]
+        Config["Config & Credential Manager (Keyring / DPAPI)"]
+        
+        subgraph ProxyServer ["🌐 Axum Local API Proxy (Port 127.0.0.1)"]
+            Router["Axum HTTP Router (/v1/messages, /v1/models)"]
+            AuthValidator["Authorization & Token Validator"]
+            FastPath["Optimization Fast-Path (Title/Quota/Suggest)"]
+            ReqConv["Request Converter (Anthropic ⇄ OpenAI / Thinking Budget)"]
+            RespConv["Response Converter & SSE Streamer (Reasoning ⇄ Thinking)"]
+            Fallback["Stale Model Route Fallback Handler"]
+        end
+
+        subgraph MCPServer ["🖥️ free-claude-computer MCP Server (Stdio)"]
+            StdioRPC["JSON-RPC 2.0 Dispatcher (stdio)"]
+            ToolsManifest["Tools Manifest (29+ Tools / 20+ Actions)"]
+            ActionHandlers["Action Handlers (batch, zoom, active_window, etc.)"]
+            
+            subgraph NativeDesktop ["🖥️ Native Desktop Drivers"]
+                WinDrv["Windows Driver (WinAPI / GDI)"]
+                MacDrv["macOS Driver (screencapture / osascript)"]
+                UnixDrv["Linux Driver (xdotool / xclip / grim)"]
+            end
+        end
+    end
+
+    subgraph Upstream ["☁️ Upstream Gateways"]
+        GW1["OpenAI-Compatible Gateway (One API / LiteLLM / DeepSeek)"]
+        GW2["Anthropic-Compatible Gateway"]
+    end
+
+    CD -- "HTTP /v1/messages" --> Router
+    CD -- "Stdio JSON-RPC" --> StdioRPC
+    
+    GUI <--> Config
+    Config -- "Set Proxy Port & Keys" --> Router
+    Config -- "Write Config" --> CD
+
+    Router --> AuthValidator
+    AuthValidator --> FastPath
+    FastPath -- "Local Response (Fast-Path)" --> CD
+    FastPath -- "Pass Through" --> ReqConv
+
+    ReqConv --> GW1 & GW2
+    GW1 & GW2 -- "JSON / SSE Stream" --> RespConv
+    RespConv -- "Error (404/Stale Model)" --> Fallback
+    Fallback -- "Retry Alternate Route" --> GW1 & GW2
+    RespConv --> CD
+
+    StdioRPC --> ToolsManifest --> ActionHandlers
+    ActionHandlers --> WinDrv & MacDrv & UnixDrv
+    WinDrv & MacDrv & UnixDrv -- "OS Controls & Screenshots" --> ActionHandlers
+    ActionHandlers -- "Image / Text Output" --> StdioRPC
 ```
 
-```powershell
-cargo build --release
+---
+
+### 2. 🔌 API Proxy 請求與 Thinking / Reasoning 轉換流程 (API Proxy Flow)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CD as Claude Desktop
+    participant P as Local Proxy Server
+    participant OPT as Fast-Path Optimizer
+    participant CONV as Request / Response Converter
+    participant GW as Upstream Gateway (OpenAI/Anthropic)
+
+    CD->>P: POST /v1/messages (Anthropic Format)
+    P->>P: Validate Proxy Auth Token
+    P->>OPT: Check for Special Requests (Quota/Title/Suggest)
+    
+    alt Is Special Fast-Path Request
+        OPT-->>CD: Return Fast-Path Local JSON (0 Cost, 0 Latency)
+    else Normal Message Request
+        P->>CONV: Convert Anthropic JSON to Target Gateway Format
+        Note over CONV: Clamp thinking budget to reasoning_effort<br/>Map model aliases & tools
+        CONV->>GW: Forward POST /v1/chat/completions or /v1/messages
+        
+        alt Success Response (Stream / JSON)
+            GW-->>CONV: SSE Stream Events / JSON (reasoning_content)
+            Note over CONV: Convert reasoning_content to<br/>Anthropic thinking events (SSE)
+            CONV-->>CD: Stream Anthropic Events
+        else Stale Model Error (404 / Model Deprecated)
+            GW-->>CONV: Error 404 / Deprecated Model
+            CONV->>CONV: Trigger Stale Route Fallback
+            CONV->>GW: Retry Request with Fallback Model Route
+            GW-->>CONV: Success Response
+            CONV-->>CD: Stream Anthropic Events
+        end
+    end
 ```
 
-Windows 開發啟動：
+---
 
-```bat
-run.bat
+### 3. 🖥️ Computer MCP 視窗與桌面自動化執行流程 (MCP Server Execution Flow)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CD as Claude Desktop
+    participant MCP as free-claude-computer MCP Server
+    participant H as Handlers / Dispatcher
+    participant OS as Native Desktop Driver (Win/Mac/Linux)
+
+    CD->>MCP: Call Tool (e.g. computer, active_window_screenshot, list_windows, batch)
+    MCP->>MCP: Parse JSON-RPC 2.0 Request
+    MCP->>H: Dispatch to Specific Action Handler
+
+    alt Action: active_window_screenshot
+        H->>OS: Get Foreground Window Rect (GetForegroundWindow / System Events)
+        OS-->>H: Window Bounding Rect [L, T, R, B]
+        H->>OS: Capture Full Screen & Crop to Window Rect
+        OS-->>H: Cropped Window PNG Buffer
+        H-->>CD: Return Base64 PNG + Window Dims
+    else Action: list_windows
+        H->>OS: Enum Visible Windows (EnumWindows / osascript / xdotool)
+        OS-->>H: List of Window Titles
+        H-->>CD: Return Formatted Window Titles List
+    else Action: computer_batch
+        loop For Each Sub-Action in Batch
+            H->>OS: Execute Sub-Action (Click ➔ Type Fast-Path ➔ Key ➔ Screenshot)
+            OS-->>H: Action Result / Image
+        end
+        H-->>CD: Return Interleaved Execution Results & Final Screenshot
+    else Action: type (Multi-line / Long Text)
+        H->>OS: Write Text to Clipboard (pbcopy / Win32 / xclip)
+        H->>OS: Trigger Ctrl+V / Cmd+V Hotkey
+        H->>OS: Restore Previous Clipboard State
+        OS-->>H: Success
+        H-->>CD: Return Success Note
+    end
 ```
 
-`run.bat` 只適用 Windows；Linux 與 macOS 請直接使用 Cargo。
+---
 
-## 目錄
+## 🌟 核心特色
+
+### 1. 🔌 高能本機 API Proxy (`/v1/messages` & `/v1/models`)
+
+* **跨協議雙向轉換**：完整支援 Anthropic Messages 與 OpenAI Chat Completions 之 Request、Response 及 Streaming (SSE) 格式轉換。
+* **Thinking / Reasoning 適配**：
+  * 自動處理 DeepSeek R1 / OpenAI o1/o3 之 `reasoning_content` 與 Claude `thinking` (budget / effort clamp) 雙向事件轉換。
+* **模型路由與失效自動重試 (Stale Model Route Fallback)**：
+  * 當上游 Gateway 回報模型已下架或變更名稱時，系統會自動使用預備路由進行備用重試。
+* **動態 Model Alias Rewrite**：
+  * 自動根據 Gateway 提供的模型思考能力，將請求映射至正確的 Claude 模型別名。
+
+### 2. 🖥️ 本機 Computer MCP 伺服器
+
+* **跨平台 Native 操控**：原生支援 Windows (WinAPI)、macOS (System Events/screencapture) 與 Linux (xdotool/xclip)。
+* **完備功能支援**：內建畫面截圖、Active 視窗獨佔截圖 (`active_window_screenshot`)、視窗列表 (`list_windows`)、區域縮放 (`zoom`) 與 Teach Mode。
+* **效能最佳化**：支援動作鏈批次執行 (`computer_batch`) 與剪貼簿 Fast-Path 快速打字。
+
+### 3. ⚡ 本機 Fast-Path 最佳化
+
+* **無效請求攔截**：對 Claude Desktop 的探測請求、標題產生、語意建議、Quota 檢測與檔案路徑提取等提供本機 Fast-Path 直回，節省無效上游 Token 費用。
+* **Web Tools 安全邊界**：內建 private network 防護，預設阻擋私有網路 Web Fetch 請求。
+
+### 4. 🔒 跨平台安全憑證儲存
+
+* API Keys 使用系統原生憑證庫 (`keyring` / DPAPI) 加密保存。
+* 可隨時寫入與還原 Claude Desktop `configLibrary` 設定。
+
+---
+
+## 📂 專案結構
 
 ```text
 src/
-  core/          設定、常數、錯誤型別
-  platform/      跨平台路徑、憑證保護、Claude Desktop 探測與設定寫入
-  runtime/       GUI 狀態與 tray 整合
-  ui/            Iced UI
-  server/        Axum proxy、router、models endpoint、streaming
-  conversion/    Anthropic/OpenAI request 與 response 轉換
-  optimization/  Claude Desktop 特殊請求 fast path
-  models/        Claude 與 OpenAI/Gateway 資料模型
-  lib.rs         公開 API 與設定套用流程
-  main.rs        GUI 入口點
+├── core/          設定檔模型、常數與錯誤型別
+├── platform/      跨平台路徑、API Key 保護、Claude Desktop 探測與設定寫入
+├── runtime/       GUI 狀態管理、事件更新邏輯與系統托盤 (tray-icon) 整合
+├── ui/            Iced 跨平台 UI 樣式與視窗元件
+├── server/        Axum 本機 Proxy、Router、Models Endpoint 與 Streaming 處理
+├── conversion/    Anthropic ⇄ OpenAI Request / Response 雙向轉換與模型路由重寫
+├── optimization/  Claude Desktop 特殊請求 Fast-Path 與 Web 工具安全防護
+├── models/        Claude 與 OpenAI / Gateway 內部資料結構
+├── mcp/           獨立 Computer MCP 伺服器模組
+│   ├── mod.rs       MCP 入口點、JSON-RPC 協議與整合測試
+│   ├── types.rs     Screenshot 結構體、Base64 編碼與 JSON-RPC 格式化
+│   ├── tools.rs     29+ 原生 MCP 工具 Manifest 與 Input Schemas 定義
+│   ├── handlers.rs  工具調用分發與執行邏輯 (computer, batch, zoom 等)
+│   └── desktop.rs   跨平台 (Windows, macOS, Linux) 底層 Native 控制實作
+├── lib.rs         公開 API、設定套用流程與向後相容導出
+└── main.rs        GUI 應用程式入口點
 ```
 
-## 安全注意
+---
 
-- 不要在 log、文件、測試資料中寫入真實 API key。
-- Proxy 預設只綁定 `127.0.0.1`。
-- `web_fetch` 預設不允許 private network；若要開放，必須由設定明確啟用。
-- 修改 proxy authorization、API key 儲存、Claude config 寫入或 request/response 轉換時，請補最小可驗證測試。
+## 🛠️ 建置與測試
 
-## Git
+### 1. 執行單元測試
 
-除非使用者明確同意，禁止 git commit。
+專案包含 57+ 個嚴謹的單元與整合測試：
+
+```bash
+cargo test
+```
+
+### 2. 建立 Release 版本
+
+```bash
+cargo build --release
+```
+
+### 3. 開發與直接運行
+
+跨平台通用命令：
+
+```bash
+cargo run
+```
+
+---
+
+## 🛡️ 安全注意事項
+
+**保護憑證**：請勿在 Log、錯誤訊息、測試資料或文件中寫入真實 API Key。
+**綁定邊界**：Proxy 預設僅綁定本機迴路地址 `127.0.0.1`。
+**私有網路防護**：`web_fetch` 預設不允許訪問 private network；若需開放，必須於 GUI 設定集中明確勾選啟用。
+
+---

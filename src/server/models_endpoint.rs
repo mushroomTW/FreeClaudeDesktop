@@ -3,8 +3,47 @@ use crate::conversion::response_converter::{
     build_inference_models, normalize_models_response_with_overrides,
 };
 use crate::crypto::unprotect_secret;
+use crate::models::openai::NormalizedModels;
 use axum::{http::HeaderMap, response::IntoResponse, Json};
 use serde_json::{json, Value};
+use std::sync::{Mutex, OnceLock};
+
+#[derive(Clone)]
+struct ModelsCache {
+    base_url: String,
+    auth_scheme: String,
+    models: NormalizedModels,
+}
+
+static MODELS_CACHE: OnceLock<Mutex<Option<ModelsCache>>> = OnceLock::new();
+
+fn models_cache() -> &'static Mutex<Option<ModelsCache>> {
+    MODELS_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+pub fn store_models_cache(base_url: &str, auth_scheme: &str, models: &NormalizedModels) {
+    if let Ok(mut cache) = models_cache().lock() {
+        *cache = Some(ModelsCache {
+            base_url: base_url.trim().to_string(),
+            auth_scheme: auth_scheme.to_string(),
+            models: models.clone(),
+        });
+    }
+}
+
+fn cached_models(base_url: &str, auth_scheme: &str) -> Option<NormalizedModels> {
+    let cache = models_cache().lock().ok()?;
+    let cache = cache.as_ref()?;
+    (cache.base_url == base_url.trim() && cache.auth_scheme == auth_scheme)
+        .then(|| cache.models.clone())
+}
+
+#[cfg(test)]
+fn clear_models_cache_for_tests() {
+    if let Ok(mut cache) = models_cache().lock() {
+        *cache = None;
+    }
+}
 
 pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
     // 1. Load settings for the configured proxy token.
@@ -31,6 +70,10 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
             Json(json!({ "error": "Unauthorized" })),
         )
             .into_response();
+    }
+
+    if let Some(models) = cached_models(&settings.real_base_url, &settings.real_auth_scheme) {
+        return (axum::http::StatusCode::OK, Json(models)).into_response();
     }
 
     // 3. Decrypt API key
@@ -62,6 +105,11 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
         ) {
             Ok(normalized) => {
                 tracing::info!("<- 獲取模型列表成功，模型數量: {}", normalized.data.len());
+                store_models_cache(
+                    &settings.real_base_url,
+                    &settings.real_auth_scheme,
+                    &normalized,
+                );
                 settings.real_model_routes = normalized.routes.clone();
                 settings.real_model_reasoning_efforts = normalized.reasoning_effort_routes.clone();
                 settings.discovered_models = normalized
@@ -150,4 +198,41 @@ async fn fetch_json(
         return Err(format!("API responded with status {status}: {text}"));
     }
     serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::openai::{NormalizedModel, NormalizedModels};
+    use std::collections::HashMap;
+
+    fn normalized_models() -> NormalizedModels {
+        NormalizedModels {
+            data: vec![NormalizedModel {
+                kind: "model".to_string(),
+                id: "claude-3-5-haiku[0]".to_string(),
+                display_name: "glm-5.2".to_string(),
+                created_at: "1970-01-01T00:00:00.000Z".to_string(),
+                provider_model_id: "glm-5.2".to_string(),
+                max_input_tokens: None,
+                max_tokens: None,
+                capabilities: json!({ "thinking": { "supported": false } }),
+            }],
+            has_more: false,
+            first_id: Some("claude-3-5-haiku[0]".to_string()),
+            last_id: Some("claude-3-5-haiku[0]".to_string()),
+            routes: HashMap::from([("claude-3-5-haiku[0]".to_string(), "glm-5.2".to_string())]),
+            reasoning_effort_routes: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn cached_models_are_reused_only_for_matching_gateway_settings() {
+        clear_models_cache_for_tests();
+        store_models_cache("http://localhost:4000", "bearer", &normalized_models());
+
+        assert!(cached_models("http://localhost:4000", "bearer").is_some());
+        assert!(cached_models("http://localhost:4001", "bearer").is_none());
+        assert!(cached_models("http://localhost:4000", "x-api-key").is_none());
+    }
 }

@@ -19,11 +19,21 @@ use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 
 static ASYNC_CLIENT: OnceLock<Client> = OnceLock::new();
+static STREAMING_CLIENT: OnceLock<Client> = OnceLock::new();
 
 fn async_client() -> &'static Client {
     ASYNC_CLIENT.get_or_init(|| {
         Client::builder()
             .timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
+            .build()
+            .unwrap_or_else(|_| Client::new())
+    })
+}
+
+fn streaming_client() -> &'static Client {
+    STREAMING_CLIENT.get_or_init(|| {
+        Client::builder()
+            .connect_timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
             .build()
             .unwrap_or_else(|_| Client::new())
     })
@@ -169,9 +179,6 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         );
     }
 
-    let forwarded_body = optimization::body_with_safety_classifier_handling(&body_str, &settings);
-    let body_str = forwarded_body.as_str();
-
     // 4. Determine transport type
     let is_anthropic_native = settings.transport_type == "anthropic_messages"
         || (settings.transport_type.is_empty()
@@ -179,7 +186,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
     let is_openai_format = !is_anthropic_native;
 
-    let req_model = match serde_json::from_str::<Value>(body_str) {
+    let req_model = match serde_json::from_str::<Value>(&body_str) {
         Ok(v) => v
             .get("model")
             .and_then(Value::as_str)
@@ -199,7 +206,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     //   1. `messages` 解析為空 array
     //   2. `max_tokens` 很小（避免誤吃沒有 body 但有 tools 的請求）
     //   3. body 極短（背景 ping 不會帶大 system 與 tools schemas）
-    let probe_decision = match serde_json::from_str::<Value>(body_str) {
+    let probe_decision = match serde_json::from_str::<Value>(&body_str) {
         Ok(v) => {
             let max_tokens = v.get("max_tokens").and_then(Value::as_u64).unwrap_or(9999);
             let stream = v.get("stream").and_then(Value::as_bool).unwrap_or(false);
@@ -327,7 +334,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
     // 4. Request format conversion
     let (proxy_body, is_stream) = if is_openai_format {
-        match anthropic_to_openai_request(body_str, &settings) {
+        match anthropic_to_openai_request(&body_str, &settings) {
             Ok(res) => res,
             Err(error) => {
                 tracing::error!("<- 錯誤: 轉換請求格式失敗: {:?}", error);
@@ -335,7 +342,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
             }
         }
     } else {
-        (prepare_proxy_body(body_str, &settings), false)
+        (prepare_proxy_body(&body_str, &settings), false)
     };
 
     let target_url = if is_openai_format {
@@ -381,7 +388,12 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     );
 
     // 5. Build Upstream request
-    let mut upstream_req = async_client().post(&target_url).body(proxy_body.clone());
+    let client = if is_openai_format && is_stream {
+        streaming_client()
+    } else {
+        async_client()
+    };
+    let mut upstream_req = client.post(&target_url).body(proxy_body.clone());
     for (name, value) in &headers {
         let lower = name.as_str().to_ascii_lowercase();
         if matches!(

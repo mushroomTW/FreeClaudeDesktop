@@ -1,5 +1,6 @@
 pub mod conversion;
 pub mod core;
+pub mod mcp;
 pub mod models;
 pub mod optimization;
 pub mod platform;
@@ -48,8 +49,8 @@ pub fn save_config(
     enable_suggestion_mode_skip: bool,
     enable_filepath_extraction_mock: bool,
     enable_web_server_tools: bool,
+    enable_computer_mcp_server: bool,
     web_fetch_allow_private_networks: bool,
-    enable_safety_classifier_handling: bool,
     reasoning_replay_mode: &str,
     transport_type: &str,
     web_fetch_allowed_schemes: &str,
@@ -89,6 +90,7 @@ pub fn save_config(
                 .map(|model| model.provider_model_id.clone())
                 .collect();
             inference_models = build_inference_models(&normalized.data);
+            server::models_endpoint::store_models_cache(base_url, auth_scheme, &normalized);
         }
     }
     let stored_api_key = protect_secret(&real_api_key)?;
@@ -139,9 +141,9 @@ pub fn save_config(
         enable_suggestion_mode_skip,
         enable_filepath_extraction_mock,
         enable_web_server_tools,
+        enable_computer_mcp_server,
         web_fetch_allowed_schemes: web_fetch_allowed_schemes.to_string(),
         web_fetch_allow_private_networks,
-        enable_safety_classifier_handling,
         theme_mode: theme_mode.to_string(),
     };
     save_launcher_settings(&settings)?;
@@ -155,6 +157,7 @@ pub fn save_config(
     launcher::write_config_to_all_paths(&format!("{CONFIG_ID}.json"), &content)?;
     let _ = launcher::remove_anthropic_base_url_env();
     launcher::apply_3p_deployment_mode()?;
+    launcher::apply_computer_mcp_server_config(enable_computer_mcp_server)?;
     launcher::write_managed_meta_to_all_paths()?;
     Ok(())
 }

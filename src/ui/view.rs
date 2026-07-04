@@ -274,14 +274,13 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     ]
     .spacing(8);
 
-    // ── 進階設定 (Per-feature 開關) ──
-    let advanced_title = text("進階設定").size(18).color(palette.text).font(Font {
+    // ── 分頁 1: 模型與思考 (Models) ──
+    let models_title = text("模型與思考").size(18).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
 
     let transport_options = vec!["openai_chat".to_string(), "anthropic_messages".to_string()];
-    let reasoning_options = vec!["separate".to_string(), "inline".to_string()];
     let model_reasoning_options = vec![
         "none".to_string(),
         "low".to_string(),
@@ -343,7 +342,8 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     ]
     .spacing(6);
 
-    let mut advanced_form = column![
+    let reasoning_options = vec!["separate".to_string(), "inline".to_string()];
+    let models_form = column![
         form_row(
             "傳輸協定",
             pick_list(
@@ -370,8 +370,73 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             .into(),
             palette.text,
         ),
+        rule::horizontal(1),
         model_reasoning_section,
-        // Per-feature toggles
+    ]
+    .spacing(14);
+
+    // ── 分頁 2: 擴充與技能 (Extensions) ──
+    let extensions_title = text("擴充與技能").size(18).color(palette.text).font(Font {
+        weight: Weight::Semibold,
+        ..Default::default()
+    });
+
+    let mut extensions_form = column![
+        checkbox(app.enable_web_server_tools)
+            .label("Web 工具攔截 (本地執行 web_search / web_fetch)")
+            .on_toggle(Message::WebServerToolsToggled)
+            .text_size(14)
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
+    ]
+    .spacing(10);
+
+    if app.enable_web_server_tools {
+        extensions_form = extensions_form.push(
+            row![
+                text("     ") // 縮排
+                    .width(Length::Fixed(20.0)),
+                column![
+                    checkbox(app.web_fetch_allow_private_networks)
+                        .label("允許 web_fetch 存取私有網路目標")
+                        .on_toggle(Message::WebFetchPrivateNetworkToggled)
+                        .text_size(14)
+                        .spacing(8)
+                        .style(move |_theme, status| custom_checkbox_style(palette, status)),
+                    form_row(
+                        "允許的 URL 方案",
+                        text_input("http,https", &app.web_fetch_allowed_schemes)
+                            .on_input(Message::WebFetchAllowedSchemesChanged)
+                            .padding(10)
+                            .size(14)
+                            .style(move |_theme, status| custom_text_input_style(palette, status))
+                            .into(),
+                        palette.text,
+                    )
+                ]
+                .spacing(10)
+                .width(Length::Fill)
+            ]
+            .spacing(0),
+        );
+    }
+
+    extensions_form = extensions_form.push(
+        checkbox(app.enable_computer_mcp_server)
+            .label("Computer MCP server (本機螢幕、滑鼠、鍵盤)")
+            .on_toggle(Message::ComputerMcpServerToggled)
+            .text_size(14)
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
+    );
+
+    // ── 分頁 3: 效能優化 (Optimizations) ──
+    let optimizations_title = text("效能優化").size(18).color(palette.text).font(Font {
+        weight: Weight::Semibold,
+        ..Default::default()
+    });
+
+    let optimizations_form = column![
         checkbox(app.enable_quota_check_mock)
             .label("配額檢查攔截")
             .on_toggle(Message::QuotaCheckMockToggled)
@@ -402,57 +467,21 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             .text_size(14)
             .spacing(8)
             .style(move |_theme, status| custom_checkbox_style(palette, status)),
-        checkbox(app.enable_safety_classifier_handling)
-            .label("安全分類器處理")
-            .on_toggle(Message::SafetyClassifierHandlingToggled)
-            .text_size(14)
-            .spacing(8)
-            .style(move |_theme, status| custom_checkbox_style(palette, status)),
-        checkbox(app.enable_web_server_tools)
-            .label("Web 工具攔截 (本地執行 web_search / web_fetch)")
-            .on_toggle(Message::WebServerToolsToggled)
-            .text_size(14)
-            .spacing(8)
-            .style(move |_theme, status| custom_checkbox_style(palette, status)),
     ]
     .spacing(10);
-
-    if app.enable_web_server_tools {
-        advanced_form = advanced_form.push(
-            row![
-                text("     ") // 縮排
-                    .width(Length::Fixed(20.0)),
-                column![
-                    checkbox(app.web_fetch_allow_private_networks)
-                        .label("允許 web_fetch 存取私有網路目標")
-                        .on_toggle(Message::WebFetchPrivateNetworkToggled)
-                        .text_size(14)
-                        .spacing(8)
-                        .style(move |_theme, status| custom_checkbox_style(palette, status)),
-                    form_row(
-                        "允許的 URL 方案",
-                        text_input("http,https", &app.web_fetch_allowed_schemes)
-                            .on_input(Message::WebFetchAllowedSchemesChanged)
-                            .padding(10)
-                            .size(14)
-                            .style(move |_theme, status| custom_text_input_style(palette, status))
-                            .into(),
-                        palette.text,
-                    )
-                ]
-                .spacing(10)
-                .width(Length::Fill)
-            ]
-            .spacing(0),
-        );
-    }
 
     // ── 組裝主要內容（依目前分頁切換） ──
     let tab_content: Element<'_, Message> = match app.current_tab {
         Tab::General => column![section_title, rule::horizontal(1), form, custom_section,]
             .spacing(14)
             .into(),
-        Tab::Advanced => column![advanced_title, rule::horizontal(1), advanced_form,]
+        Tab::Models => column![models_title, rule::horizontal(1), models_form,]
+            .spacing(14)
+            .into(),
+        Tab::Extensions => column![extensions_title, rule::horizontal(1), extensions_form,]
+            .spacing(14)
+            .into(),
+        Tab::Optimizations => column![optimizations_title, rule::horizontal(1), optimizations_form,]
             .spacing(14)
             .into(),
     };
@@ -568,8 +597,13 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
 
     content = content.push(buttons);
 
-    // ── 側邊欄選單 ──
-    let menu_items = vec![("連線設定", Tab::General), ("進階設定", Tab::Advanced)];
+    // ── 側邊欄選單 (4 個主分頁) ──
+    let menu_items = vec![
+        ("連線設定", Tab::General),
+        ("模型與思考", Tab::Models),
+        ("擴充與技能", Tab::Extensions),
+        ("效能優化", Tab::Optimizations),
+    ];
 
     let sidebar_items: Vec<Element<'_, Message>> = menu_items
         .into_iter()

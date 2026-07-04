@@ -6,3 +6,4 @@ target/
 .omc/
 .agents
 .claude
+AGENTS.md
