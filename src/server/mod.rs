@@ -144,7 +144,16 @@ pub fn fetch_models_list(
     api_key: &str,
     auth_scheme: &str,
 ) -> Result<Value, String> {
+    let model_info_url = crate::conversion::response_converter::normalize_model_info_url(base_url)?;
+    if let Ok(value) = fetch_json(&model_info_url, api_key, auth_scheme) {
+        return Ok(value);
+    }
+
     let url = crate::conversion::response_converter::normalize_models_url(base_url)?;
+    fetch_json(&url, api_key, auth_scheme)
+}
+
+fn fetch_json(url: &str, api_key: &str, auth_scheme: &str) -> Result<Value, String> {
     let mut req = blocking_http_client().get(url);
     if auth_scheme == "x-api-key" {
         req = req.header("x-api-key", api_key);

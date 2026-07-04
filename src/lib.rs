@@ -23,7 +23,7 @@ pub use constants::CONFIG_ID;
 pub use conversion::request_converter::anthropic_to_openai_request;
 pub use conversion::response_converter::{
     build_inference_models, normalize_messages_url, normalize_models_response,
-    openai_to_anthropic_response, prepare_proxy_body,
+    normalize_models_response_with_overrides, openai_to_anthropic_response, prepare_proxy_body,
 };
 pub use crypto::{protect_secret, unprotect_secret};
 pub use launcher::{
@@ -53,6 +53,8 @@ pub fn save_config(
     reasoning_replay_mode: &str,
     transport_type: &str,
     web_fetch_allowed_schemes: &str,
+    theme_mode: &str,
+    model_reasoning_overrides: &HashMap<String, String>,
 ) -> AppResult<()> {
     let existing = get_launcher_settings();
     let real_api_key = if api_key.trim().is_empty() {
@@ -73,9 +75,19 @@ pub fn save_config(
 
     let mut inference_models = Vec::new();
     let mut routes = HashMap::new();
+    let mut reasoning_efforts = HashMap::new();
+    let mut discovered_models = Vec::new();
     if let Ok(raw_models) = server::fetch_models_list(base_url, &real_api_key, auth_scheme) {
-        if let Ok(normalized) = normalize_models_response(raw_models) {
+        if let Ok(normalized) =
+            normalize_models_response_with_overrides(raw_models, model_reasoning_overrides)
+        {
             routes = normalized.routes.clone();
+            reasoning_efforts = normalized.reasoning_effort_routes.clone();
+            discovered_models = normalized
+                .data
+                .iter()
+                .map(|model| model.provider_model_id.clone())
+                .collect();
             inference_models = build_inference_models(&normalized.data);
         }
     }
@@ -100,6 +112,23 @@ pub fn save_config(
         } else {
             routes
         },
+        real_model_reasoning_efforts: if reasoning_efforts.is_empty() {
+            existing
+                .as_ref()
+                .map(|s| s.real_model_reasoning_efforts.clone())
+                .unwrap_or_default()
+        } else {
+            reasoning_efforts
+        },
+        discovered_models: if discovered_models.is_empty() {
+            existing
+                .as_ref()
+                .map(|s| s.discovered_models.clone())
+                .unwrap_or_default()
+        } else {
+            discovered_models
+        },
+        model_reasoning_overrides: model_reasoning_overrides.clone(),
         proxy_auth_token: proxy_auth_token.clone(),
         active_port: Some(port),
         transport_type: transport_type.to_string(),
@@ -113,6 +142,7 @@ pub fn save_config(
         web_fetch_allowed_schemes: web_fetch_allowed_schemes.to_string(),
         web_fetch_allow_private_networks,
         enable_safety_classifier_handling,
+        theme_mode: theme_mode.to_string(),
     };
     save_launcher_settings(&settings)?;
 

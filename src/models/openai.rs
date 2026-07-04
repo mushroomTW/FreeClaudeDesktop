@@ -5,10 +5,10 @@ use std::collections::HashMap;
 fn default_capabilities() -> Value {
     serde_json::json!({
         "thinking": {
-            "supported": true,
+            "supported": false,
             "types": {
                 "enabled": {
-                    "supported": true
+                    "supported": false
                 }
             }
         }
@@ -22,6 +22,8 @@ pub struct NormalizedModels {
     pub first_id: Option<String>,
     pub last_id: Option<String>,
     pub routes: HashMap<String, String>,
+    #[serde(default)]
+    pub reasoning_effort_routes: HashMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -76,8 +78,15 @@ pub struct ProviderModelsResponse {
 
 #[derive(Clone, Deserialize)]
 pub struct ProviderModel {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
+    pub model_name: Option<String>,
     pub name: Option<String>,
+    #[serde(default)]
+    pub model_info: Option<Value>,
+    #[serde(default)]
+    pub capabilities: Option<Value>,
     #[serde(default)]
     pub pricing: Option<Pricing>,
     /// 總 context window 容量。NVIDIA NIM 不一定會回這個欄位，但部份 OpenAI

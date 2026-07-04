@@ -1,9 +1,9 @@
 use iced::{
     window::{self, Id, Mode},
     Subscription, Task, Theme,
-    Theme::Dark,
 };
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -12,6 +12,31 @@ use tokio::sync::Mutex;
 // ════════════════════════════════════════════════════════════════
 //  應用程式狀態
 // ════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeMode {
+    Light,
+    Dark,
+    System,
+}
+
+impl ThemeMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+            Self::System => "system",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "dark" => Self::Dark,
+            "system" => Self::System,
+            _ => Self::Light,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Toast {
@@ -28,6 +53,7 @@ pub enum Tab {
 #[derive(Debug, Clone)]
 pub enum Message {
     TabSelected(Tab),
+    ThemeModeSelected(ThemeMode),
     ProviderSelected(String),
     BaseUrlChanged(String),
     ApiKeyChanged(String),
@@ -57,6 +83,8 @@ pub enum Message {
     SafetyClassifierHandlingToggled(bool),
     ReasoningReplayModeSelected(String),
     TransportTypeSelected(String),
+    ModelReasoningLevelSelected(String, String),
+    RefreshModels,
 }
 
 pub struct LauncherApp {
@@ -88,6 +116,9 @@ pub struct LauncherApp {
     pub enable_safety_classifier_handling: bool,
     pub reasoning_replay_mode: String,
     pub transport_type: String,
+    pub theme_mode: ThemeMode,
+    pub discovered_models: Vec<String>,
+    pub model_reasoning_overrides: HashMap<String, String>,
 }
 
 impl LauncherApp {
@@ -123,6 +154,9 @@ impl LauncherApp {
             enable_safety_classifier_handling: true,
             reasoning_replay_mode: "separate".to_string(),
             transport_type: "openai_chat".to_string(),
+            theme_mode: ThemeMode::Light,
+            discovered_models: Vec::new(),
+            model_reasoning_overrides: HashMap::new(),
             current_tab: Tab::General,
         };
 
@@ -161,6 +195,9 @@ impl LauncherApp {
             app.enable_safety_classifier_handling = settings.enable_safety_classifier_handling;
             app.reasoning_replay_mode = settings.reasoning_replay_mode;
             app.transport_type = settings.transport_type;
+            app.theme_mode = ThemeMode::from_str(&settings.theme_mode);
+            app.discovered_models = settings.discovered_models;
+            app.model_reasoning_overrides = settings.model_reasoning_overrides;
 
             // 自訂路徑檢查
             if let Some(target) = crate::detect_claude_path() {
@@ -186,7 +223,16 @@ impl LauncherApp {
     }
 
     pub fn theme(&self) -> Theme {
-        Dark
+        let is_dark = match self.theme_mode {
+            ThemeMode::Dark => true,
+            ThemeMode::Light => false,
+            ThemeMode::System => crate::platform::is_system_dark_mode(),
+        };
+        if is_dark {
+            Theme::Dark
+        } else {
+            Theme::Light
+        }
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -251,14 +297,30 @@ impl LauncherApp {
             &self.reasoning_replay_mode,
             &self.transport_type,
             &self.web_fetch_allowed_schemes,
+            self.theme_mode.as_str(),
+            &self.model_reasoning_overrides,
         )
         .map_err(|e| e.to_string())
+    }
+
+    fn reload_model_settings(&mut self) {
+        if let Some(settings) = crate::get_launcher_settings() {
+            self.discovered_models = settings.discovered_models;
+            self.model_reasoning_overrides = settings.model_reasoning_overrides;
+        }
+    }
+
+    fn save_theme_mode(&self) {
+        if let Some(mut settings) = crate::get_launcher_settings() {
+            settings.theme_mode = self.theme_mode.as_str().to_string();
+            let _ = crate::save_launcher_settings(&settings);
+        }
     }
 
     pub fn refresh_status(&mut self) {
         match crate::detect_claude_path() {
             Some(path) => {
-                self.status_text = format!("已偵測 Claude Desktop\n{}", compact_path(&path, 60));
+                self.status_text = format!("已偵測 Claude Desktop\n{}", path.display());
                 self.status_ok = true;
             }
             None => {
@@ -316,6 +378,7 @@ impl LauncherApp {
                 self.confirming_restore = false;
                 match self.save_config() {
                     Ok(()) => {
+                        self.reload_model_settings();
                         let custom = if self.use_custom_path {
                             Some(Path::new(&self.custom_path))
                         } else {
@@ -358,6 +421,7 @@ impl LauncherApp {
                 self.confirming_restore = false;
                 match self.save_config() {
                     Ok(()) => {
+                        self.reload_model_settings();
                         self.api_key.clear();
                         self.api_key_placeholder = "已儲存 API Key，留空沿用".into();
                         self.toast = Some(Toast {
@@ -431,6 +495,25 @@ impl LauncherApp {
                 }
             }
             Message::TabSelected(tab) => self.current_tab = tab,
+            Message::ThemeModeSelected(mode) => {
+                self.theme_mode = mode;
+                self.save_theme_mode();
+            }
+            Message::RefreshModels => match self.save_config() {
+                Ok(()) => {
+                    self.reload_model_settings();
+                    self.toast = Some(Toast {
+                        message: format!("已更新模型列表：{} 個模型", self.discovered_models.len()),
+                        is_success: true,
+                    });
+                }
+                Err(e) => {
+                    self.toast = Some(Toast {
+                        message: format!("更新模型列表失敗：{e}"),
+                        is_success: false,
+                    });
+                }
+            },
             // Per-feature optimization toggles
             Message::QuotaCheckMockToggled(v) => self.enable_quota_check_mock = v,
             Message::PrefixDetectionToggled(v) => self.enable_prefix_detection = v,
@@ -445,6 +528,14 @@ impl LauncherApp {
             }
             Message::ReasoningReplayModeSelected(v) => self.reasoning_replay_mode = v,
             Message::TransportTypeSelected(v) => self.transport_type = v,
+            Message::ModelReasoningLevelSelected(model, level) => {
+                if level == "auto" {
+                    self.model_reasoning_overrides.remove(&model);
+                } else {
+                    self.model_reasoning_overrides.insert(model, level);
+                }
+                self.toast = None;
+            }
         }
         Task::none()
     }

@@ -277,6 +277,17 @@ async fn convert_stream_inner(
                                 sent_start = true;
                             }
 
+                            if text_block_open {
+                                let _ = tx
+                                    .send(Ok(Bytes::from(format!(
+                                        "event: content_block_stop\ndata: {{\"type\":\"content_block_stop\",\"index\":{}}}\n\n",
+                                        content_block_index
+                                    ))))
+                                    .await;
+                                text_block_open = false;
+                                content_block_index += 1;
+                            }
+
                             if !thinking_block_open {
                                 let block_start = json!({
                                     "type": "content_block_start",
@@ -614,5 +625,54 @@ mod tests {
         assert!(out.contains("\"type\":\"signature_delta\""));
         assert!(out.contains("\"type\":\"text_delta\""));
         assert!(out.contains("\"text\":\"4\""));
+    }
+
+    #[tokio::test]
+    async fn stream_handles_reasoning_after_text_content() {
+        let app = Router::new().route(
+            "/",
+            get(|| async {
+                axum::response::Response::builder()
+                    .header("Content-Type", "text/event-stream")
+                    .body(axum::body::Body::from(concat!(
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n",
+                        "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"thought later\"}}]}\n\n",
+                        "data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}]}\n\n",
+                        "data: [DONE]\n\n"
+                    )))
+                    .unwrap()
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let response = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let mut rx = start_sse_stream_conversion(
+            response,
+            "claude-test".to_string(),
+            Some(ReasoningReplayMode::Separate),
+        );
+        let mut out = String::new();
+        while let Some(Ok(bytes)) = rx.recv().await {
+            out.push_str(&String::from_utf8_lossy(&bytes));
+        }
+
+        // Index 0: text ("Hello")
+        assert!(out.contains("{\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}"));
+        assert!(out.contains("{\"delta\":{\"text\":\"Hello\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}"));
+        assert!(out.contains("{\"type\":\"content_block_stop\",\"index\":0}"));
+
+        // Index 1: thinking ("thought later")
+        assert!(out.contains("{\"content_block\":{\"signature\":\"\",\"thinking\":\"\",\"type\":\"thinking\"},\"index\":1,\"type\":\"content_block_start\"}"));
+        assert!(out.contains("{\"delta\":{\"thinking\":\"thought later\",\"type\":\"thinking_delta\"},\"index\":1,\"type\":\"content_block_delta\"}"));
+        assert!(out.contains("{\"type\":\"content_block_stop\",\"index\":1}"));
+
+        // Index 2: text (" world")
+        assert!(out.contains("{\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":2,\"type\":\"content_block_start\"}"));
+        assert!(out.contains("{\"delta\":{\"text\":\" world\",\"type\":\"text_delta\"},\"index\":2,\"type\":\"content_block_delta\"}"));
+        assert!(out.contains("{\"type\":\"content_block_stop\",\"index\":2}"));
     }
 }

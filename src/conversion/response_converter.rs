@@ -3,6 +3,7 @@ use crate::models::openai::{
     InferenceModel, NormalizedModel, NormalizedModels, ProviderModel, ProviderModelsResponse,
 };
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use url::Url;
 
 fn is_local_hostname(hostname: &str) -> bool {
@@ -72,6 +73,27 @@ pub fn normalize_messages_url(base_url: &str) -> Result<String, String> {
 
 pub fn normalize_models_url(base_url: &str) -> Result<String, String> {
     normalize_gateway_url(base_url, "models")
+}
+
+pub fn normalize_model_info_url(base_url: &str) -> Result<String, String> {
+    let mut target_url =
+        Url::parse(base_url.trim()).map_err(|_| "Invalid Gateway Base URL".to_string())?;
+    if target_url.scheme() != "https" {
+        let is_local = target_url
+            .host_str()
+            .map(is_local_hostname)
+            .unwrap_or(false);
+        if !is_local || target_url.scheme() != "http" {
+            return Err("Gateway Base URL must use HTTPS, or HTTP on localhost".to_string());
+        }
+    }
+
+    let base_path = target_url.path().trim_end_matches('/');
+    let base_path = base_path.strip_suffix("/v1").unwrap_or(base_path);
+    target_url.set_path(&format!("{base_path}/model/info"));
+    target_url.set_query(None);
+    target_url.set_fragment(None);
+    Ok(target_url.to_string())
 }
 
 pub fn normalize_chat_completions_url(base_url: &str) -> Result<String, String> {
@@ -156,27 +178,156 @@ fn model_priority(model: &ProviderModel) -> usize {
     }
 }
 
+fn provider_model_id(model: &ProviderModel) -> String {
+    if model.id.is_empty() {
+        model.model_name.clone().unwrap_or_default()
+    } else {
+        model.id.clone()
+    }
+}
+
+fn override_reasoning_levels(level: &str) -> Vec<String> {
+    match level {
+        "low" => vec!["none".to_string(), "low".to_string()],
+        "medium" => vec!["none".to_string(), "medium".to_string()],
+        "high" => vec!["none".to_string(), "high".to_string()],
+        "max" => vec!["none".to_string(), "high".to_string(), "max".to_string()],
+        _ => vec!["none".to_string()],
+    }
+}
+
+fn effective_reasoning_effort_levels(
+    model: &ProviderModel,
+    overrides: &HashMap<String, String>,
+) -> Vec<String> {
+    let provider_id = provider_model_id(model);
+    if let Some(level) = overrides.get(&provider_id) {
+        return override_reasoning_levels(level);
+    }
+    reasoning_effort_levels(model)
+}
+
+fn model_capabilities(model: &ProviderModel, overrides: &HashMap<String, String>) -> Value {
+    if let Some(capabilities) = &model.capabilities {
+        return capabilities.clone();
+    }
+
+    let effort_levels = effective_reasoning_effort_levels(model, overrides);
+    let supports_reasoning_effort = model
+        .model_info
+        .as_ref()
+        .and_then(|info| info.get("supports_reasoning_effort"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let has_override = overrides.contains_key(&provider_model_id(model));
+    let supports_thinking = model
+        .model_info
+        .as_ref()
+        .and_then(|info| info.get("supports_thinking"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        || ((supports_reasoning_effort || has_override)
+            && effort_levels.iter().any(|level| level != "none"));
+
+    json!({
+        "thinking": {
+            "supported": supports_thinking,
+            "types": {
+                "enabled": {
+                    "supported": supports_thinking
+                }
+            },
+            "reasoning_effort_levels": effort_levels
+        }
+    })
+}
+
+fn reasoning_effort_levels(model: &ProviderModel) -> Vec<String> {
+    model
+        .model_info
+        .as_ref()
+        .and_then(|info| info.get("reasoning_effort_levels"))
+        .and_then(Value::as_array)
+        .map(|levels| {
+            levels
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|level| !level.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn supports_reasoning_effort(model: &ProviderModel, overrides: &HashMap<String, String>) -> bool {
+    let provider_id = provider_model_id(model);
+    if let Some(level) = overrides.get(&provider_id) {
+        return level != "none";
+    }
+
+    model
+        .model_info
+        .as_ref()
+        .and_then(|info| info.get("supports_reasoning_effort"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && reasoning_effort_levels(model)
+            .iter()
+            .any(|level| level != "none")
+}
+
+fn model_alias(model: &ProviderModel, index: usize, overrides: &HashMap<String, String>) -> String {
+    if supports_reasoning_effort(model, overrides) {
+        let levels = effective_reasoning_effort_levels(model, overrides);
+        if levels.iter().any(|level| level == "max") {
+            format!("claude-opus-4-8[{index}]")
+        } else {
+            format!("claude-sonnet-4-6[{index}]")
+        }
+    } else {
+        format!("claude-3-5-haiku[{index}]")
+    }
+}
+
 pub fn normalize_models_response(provider_response: Value) -> Result<NormalizedModels, String> {
+    normalize_models_response_with_overrides(provider_response, &HashMap::new())
+}
+
+pub fn normalize_models_response_with_overrides(
+    provider_response: Value,
+    reasoning_overrides: &HashMap<String, String>,
+) -> Result<NormalizedModels, String> {
     let parsed: ProviderModelsResponse =
         serde_json::from_value(provider_response).map_err(|e| e.to_string())?;
     let mut models: Vec<_> = parsed
         .data
         .into_iter()
-        .filter(|model| !model.id.is_empty())
+        .filter(|model| !provider_model_id(model).is_empty())
         .collect();
     models.sort_by(|a, b| {
         model_priority(a).cmp(&model_priority(b)).then_with(|| {
+            let a_id = provider_model_id(a);
+            let b_id = provider_model_id(b);
             a.name
                 .as_deref()
-                .unwrap_or(&a.id)
-                .cmp(b.name.as_deref().unwrap_or(&b.id))
+                .unwrap_or(&a_id)
+                .cmp(b.name.as_deref().unwrap_or(&b_id))
         })
     });
+    models.dedup_by(|a, b| provider_model_id(a) == provider_model_id(b));
 
+    let mut reasoning_effort_routes = std::collections::HashMap::new();
     let data: Vec<_> = models
         .into_iter()
         .enumerate()
         .map(|(index, model)| {
+            let provider_model_id = provider_model_id(&model);
+            let alias = model_alias(&model, index, reasoning_overrides);
+            let effort_levels = effective_reasoning_effort_levels(&model, reasoning_overrides);
+            if supports_reasoning_effort(&model, reasoning_overrides) {
+                reasoning_effort_routes.insert(alias.clone(), effort_levels);
+            }
             // 將 OpenAI/NVIDIA 格式的 unix timestamp 轉成 Anthropic 規範的 RFC 3339 字串。
             // 沒有時維持 epoch fallback，避免 Claude Desktop 拒絕。
             let created_at = model
@@ -193,22 +344,16 @@ pub fn normalize_models_response(provider_response: Value) -> Result<NormalizedM
 
             NormalizedModel {
                 kind: "model".to_string(),
-                id: format!("claude-opus-4-8[{}]", index),
-                display_name: model.name.clone().unwrap_or_else(|| model.id.clone()),
+                id: alias,
+                display_name: model
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| provider_model_id.clone()),
                 created_at,
-                provider_model_id: model.id.clone(),
+                provider_model_id,
                 max_input_tokens: max_input,
                 max_tokens: max_output,
-                capabilities: serde_json::json!({
-                    "thinking": {
-                        "supported": true,
-                        "types": {
-                            "enabled": {
-                                "supported": true
-                            }
-                        }
-                    }
-                }),
+                capabilities: model_capabilities(&model, reasoning_overrides),
             }
         })
         .collect();
@@ -222,6 +367,7 @@ pub fn normalize_models_response(provider_response: Value) -> Result<NormalizedM
         data,
         has_more: false,
         routes,
+        reasoning_effort_routes,
     })
 }
 
@@ -470,6 +616,157 @@ mod tests {
         assert_eq!(converted["stop_reason"], "end_turn");
         assert_eq!(converted["content"][0]["type"], "text");
         assert_eq!(converted["content"][0]["text"], "hi");
+    }
+
+    #[test]
+    fn models_default_to_no_thinking_capability() {
+        let normalized = normalize_models_response(json!({
+            "data": [{
+                "id": "nemotron-3-super-120b"
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(
+            normalized.data[0].provider_model_id,
+            "nemotron-3-super-120b"
+        );
+        assert_eq!(
+            normalized.data[0].capabilities["thinking"]["supported"],
+            false
+        );
+    }
+
+    #[test]
+    fn models_use_litellm_model_info_thinking_capability() {
+        let normalized = normalize_models_response(json!({
+            "data": [{
+                "model_name": "claude-native",
+                "model_info": {
+                    "supports_thinking": true
+                }
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(normalized.data[0].provider_model_id, "claude-native");
+        assert_eq!(
+            normalized.data[0].capabilities["thinking"]["supported"],
+            true
+        );
+    }
+
+    #[test]
+    fn models_store_litellm_reasoning_effort_levels() {
+        let normalized = normalize_models_response(json!({
+            "data": [{
+                "model_name": "nim-high",
+                "model_info": {
+                    "supports_reasoning_effort": true,
+                    "reasoning_effort_levels": ["none", "low", "high"]
+                }
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(
+            normalized.reasoning_effort_routes["claude-sonnet-4-6[0]"],
+            vec!["none", "low", "high"]
+        );
+        assert_eq!(normalized.data[0].id, "claude-sonnet-4-6[0]");
+        assert_eq!(
+            normalized.data[0].capabilities["thinking"]["supported"],
+            true
+        );
+    }
+
+    #[test]
+    fn models_with_max_reasoning_use_opus_alias() {
+        let normalized = normalize_models_response(json!({
+            "data": [{
+                "model_name": "deepseek-v4-pro",
+                "model_info": {
+                    "supports_reasoning_effort": true,
+                    "reasoning_effort_levels": ["none", "high", "max"]
+                }
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(normalized.data[0].id, "claude-opus-4-8[0]");
+        assert_eq!(
+            normalized.reasoning_effort_routes["claude-opus-4-8[0]"],
+            vec!["none", "high", "max"]
+        );
+    }
+
+    #[test]
+    fn model_reasoning_override_enables_reasoning_alias() {
+        let mut overrides = HashMap::new();
+        overrides.insert("glm-5.2".to_string(), "high".to_string());
+
+        let normalized = normalize_models_response_with_overrides(
+            json!({
+                "data": [{
+                    "model_name": "glm-5.2",
+                    "model_info": {
+                        "supports_reasoning_effort": false,
+                        "reasoning_effort_levels": ["none"]
+                    }
+                }]
+            }),
+            &overrides,
+        )
+        .unwrap();
+
+        assert_eq!(normalized.data[0].id, "claude-sonnet-4-6[0]");
+        assert_eq!(
+            normalized.reasoning_effort_routes["claude-sonnet-4-6[0]"],
+            vec!["none", "high"]
+        );
+    }
+
+    #[test]
+    fn models_without_reasoning_use_anthropic_shaped_alias() {
+        let normalized = normalize_models_response(json!({
+            "data": [{
+                "model_name": "glm-5.2",
+                "model_info": {
+                    "supports_reasoning_effort": false,
+                    "reasoning_effort_levels": ["none"]
+                }
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(normalized.data[0].id, "claude-3-5-haiku[0]");
+        assert_eq!(normalized.routes["claude-3-5-haiku[0]"], "glm-5.2");
+    }
+
+    #[test]
+    fn duplicate_litellm_deployments_are_deduped_by_model_name() {
+        let normalized = normalize_models_response(json!({
+            "data": [
+                {
+                    "model_name": "glm-5.2",
+                    "model_info": {
+                        "supports_reasoning_effort": false,
+                        "reasoning_effort_levels": ["none"]
+                    }
+                },
+                {
+                    "model_name": "glm-5.2",
+                    "model_info": {
+                        "supports_reasoning_effort": false,
+                        "reasoning_effort_levels": ["none"]
+                    }
+                }
+            ]
+        }))
+        .unwrap();
+
+        assert_eq!(normalized.data.len(), 1);
+        assert_eq!(normalized.data[0].id, "claude-3-5-haiku[0]");
     }
 
     #[test]

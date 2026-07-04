@@ -1,5 +1,7 @@
 use crate::config::{get_launcher_settings, save_launcher_settings};
-use crate::conversion::response_converter::{build_inference_models, normalize_models_response};
+use crate::conversion::response_converter::{
+    build_inference_models, normalize_models_response_with_overrides,
+};
 use crate::crypto::unprotect_secret;
 use axum::{http::HeaderMap, response::IntoResponse, Json};
 use serde_json::{json, Value};
@@ -54,10 +56,19 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
     )
     .await
     {
-        Ok(raw_models) => match normalize_models_response(raw_models) {
+        Ok(raw_models) => match normalize_models_response_with_overrides(
+            raw_models,
+            &settings.model_reasoning_overrides,
+        ) {
             Ok(normalized) => {
                 tracing::info!("<- 獲取模型列表成功，模型數量: {}", normalized.data.len());
                 settings.real_model_routes = normalized.routes.clone();
+                settings.real_model_reasoning_efforts = normalized.reasoning_effort_routes.clone();
+                settings.discovered_models = normalized
+                    .data
+                    .iter()
+                    .map(|model| model.provider_model_id.clone())
+                    .collect();
                 let _ = save_launcher_settings(&settings);
 
                 let inference_models = build_inference_models(&normalized.data);
@@ -102,13 +113,27 @@ pub async fn fetch_models_list_async(
     api_key: &str,
     auth_scheme: &str,
 ) -> Result<Value, String> {
-    let url = crate::conversion::response_converter::normalize_models_url(base_url)?;
+    let model_info_url = crate::conversion::response_converter::normalize_model_info_url(base_url)?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(
             crate::constants::HTTP_TIMEOUT_SECS,
         ))
         .build()
         .map_err(|e| e.to_string())?;
+    if let Ok(value) = fetch_json(&client, &model_info_url, api_key, auth_scheme).await {
+        return Ok(value);
+    }
+
+    let url = crate::conversion::response_converter::normalize_models_url(base_url)?;
+    fetch_json(&client, &url, api_key, auth_scheme).await
+}
+
+async fn fetch_json(
+    client: &reqwest::Client,
+    url: &str,
+    api_key: &str,
+    auth_scheme: &str,
+) -> Result<Value, String> {
     let mut req = client.get(url);
     if auth_scheme == "x-api-key" {
         req = req.header("x-api-key", api_key);

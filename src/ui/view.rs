@@ -1,21 +1,47 @@
-use crate::app::{LauncherApp, Message, Tab};
+use crate::app::{LauncherApp, Message, Tab, ThemeMode};
 use crate::constants::{AUTH_SCHEMES, PROVIDERS};
 use crate::ui::styles::{
+    custom_checkbox_style, custom_menu_style, custom_pick_list_style, custom_text_input_style,
     danger_btn_style, ghost_btn_style, outline_btn_style, primary_btn_style, secondary_btn_style,
-    CLR_BORDER, CLR_CARD, CLR_DANGER, CLR_SIDEBAR, CLR_SUCCESS, CLR_TEXT, CLR_TEXT_DIM,
-    CLR_WARNING,
+    segmented_button_style, ColorPalette,
 };
 use iced::font::Weight;
 use iced::widget::{
-    button, checkbox, column, container, pick_list, row, rule, scrollable, text, text_input,
+    button, checkbox, column, container, image, pick_list, row, rule, scrollable, svg, text,
+    text_input,
 };
-use iced::{Alignment, Background, Border, Color, Element, Font, Length, Shadow};
+use iced::{Alignment, Background, Border, Color, Element, Font, Length, Padding, Shadow};
+use std::sync::OnceLock;
+
+static APP_ICON: OnceLock<iced::widget::image::Handle> = OnceLock::new();
+
+static SYSTEM_SVG: &[u8] = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\" ry=\"2\"/><line x1=\"8\" y1=\"21\" x2=\"16\" y2=\"21\"/><line x1=\"12\" y1=\"17\" x2=\"12\" y2=\"21\"/></svg>";
+static SUN_SVG: &[u8] = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"5\"/><line x1=\"12\" y1=\"1\" x2=\"12\" y2=\"3\"/><line x1=\"12\" y1=\"21\" x2=\"12\" y2=\"23\"/><line x1=\"4.22\" y1=\"4.22\" x2=\"5.64\" y2=\"5.64\"/><line x1=\"18.36\" y1=\"18.36\" x2=\"19.78\" y2=\"19.78\"/><line x1=\"1\" y1=\"12\" x2=\"3\" y2=\"12\"/><line x1=\"21\" y1=\"12\" x2=\"23\" y2=\"12\"/><line x1=\"4.22\" y1=\"19.78\" x2=\"5.64\" y2=\"18.36\"/><line x1=\"18.36\" y1=\"5.64\" x2=\"19.78\" y2=\"4.22\"/></svg>";
+static MOON_SVG: &[u8] = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z\"/></svg>";
+
+pub fn get_app_icon() -> &'static iced::widget::image::Handle {
+    APP_ICON.get_or_init(|| {
+        let ico_data = include_bytes!("../../icon.ico");
+        if let Ok(img) = ::image::load_from_memory(ico_data) {
+            let rgba = img.to_rgba8();
+            let (w, h) = rgba.dimensions();
+            iced::widget::image::Handle::from_rgba(w, h, rgba.into_raw())
+        } else {
+            iced::widget::image::Handle::from_rgba(0, 0, vec![])
+        }
+    })
+}
 
 /// 表單列：左側標籤 + 右側控件
-pub fn form_row<'a>(label: &str, widget: Element<'a, Message>) -> Element<'a, Message> {
+pub fn form_row<'a>(
+    label: &str,
+    widget: Element<'a, Message>,
+    text_color: iced::Color,
+) -> Element<'a, Message> {
     row![
         text(label.to_string())
             .size(14)
+            .color(text_color)
             .font(Font {
                 weight: Weight::Semibold,
                 ..Default::default()
@@ -29,23 +55,110 @@ pub fn form_row<'a>(label: &str, widget: Element<'a, Message>) -> Element<'a, Me
 }
 
 pub fn view(app: &LauncherApp) -> Element<'_, Message> {
+    let palette = ColorPalette::for_mode(app.theme_mode);
+
+    let is_sys_active = app.theme_mode == ThemeMode::System;
+    let is_light_active = app.theme_mode == ThemeMode::Light;
+    let is_dark_active = app.theme_mode == ThemeMode::Dark;
+
+    let sys_icon_color = if is_sys_active {
+        Color::WHITE
+    } else {
+        palette.text_dim
+    };
+    let light_icon_color = if is_light_active {
+        Color::WHITE
+    } else {
+        palette.text_dim
+    };
+    let dark_icon_color = if is_dark_active {
+        Color::WHITE
+    } else {
+        palette.text_dim
+    };
+
+    // ── 頂部三態主題切換按鈕 (Claude 溫暖極簡風格 SVG 向量切換按鈕：系統 🖥 | 淺色 ☀ | 深色 ☽) ──
+    let theme_buttons = container(
+        row![
+            button(
+                svg(svg::Handle::from_memory(SYSTEM_SVG))
+                    .width(14)
+                    .height(14)
+                    .style(move |_theme, _status| svg::Style {
+                        color: Some(sys_icon_color)
+                    })
+            )
+            .on_press(Message::ThemeModeSelected(ThemeMode::System))
+            .style(move |_theme, status| { segmented_button_style(palette, is_sys_active, status) })
+            .padding([6, 12]),
+            button(
+                svg(svg::Handle::from_memory(SUN_SVG))
+                    .width(14)
+                    .height(14)
+                    .style(move |_theme, _status| svg::Style {
+                        color: Some(light_icon_color)
+                    })
+            )
+            .on_press(Message::ThemeModeSelected(ThemeMode::Light))
+            .style(move |_theme, status| {
+                segmented_button_style(palette, is_light_active, status)
+            })
+            .padding([6, 12]),
+            button(
+                svg(svg::Handle::from_memory(MOON_SVG))
+                    .width(14)
+                    .height(14)
+                    .style(move |_theme, _status| svg::Style {
+                        color: Some(dark_icon_color)
+                    })
+            )
+            .on_press(Message::ThemeModeSelected(ThemeMode::Dark))
+            .style(move |_theme, status| {
+                segmented_button_style(palette, is_dark_active, status)
+            })
+            .padding([6, 12]),
+        ]
+        .spacing(2)
+        .align_y(Alignment::Center),
+    )
+    .style(move |_theme| container::Style {
+        text_color: None,
+        background: Some(Background::Color(palette.segmented_bg)),
+        border: Border {
+            radius: 12.0.into(),
+            width: 1.0,
+            color: palette.border,
+        },
+        shadow: Shadow::default(),
+        snap: false,
+    })
+    .padding(2);
+
     // ── 標題區 ──
-    let header = column![
-        text("Free Claude Launcher").size(28).font(Font {
-            weight: Weight::Bold,
-            ..Default::default()
-        }),
-        text(format!("本機 Proxy：127.0.0.1:{}", app.current_port))
-            .size(13)
-            .color(CLR_TEXT_DIM),
+    let header = row![
+        column![
+            text("Free Claude Launcher")
+                .size(28)
+                .color(palette.text)
+                .font(Font {
+                    weight: Weight::Bold,
+                    ..Default::default()
+                }),
+            text(format!("本機 Proxy：127.0.0.1:{}", app.current_port))
+                .size(13)
+                .color(palette.text_dim),
+        ]
+        .spacing(4)
+        .width(Length::Fill),
+        theme_buttons,
     ]
-    .spacing(4);
+    .align_y(Alignment::Center);
 
     // ── 狀態卡片 ──
     let status_color = if app.status_ok {
-        CLR_SUCCESS
+        palette.success
     } else {
-        CLR_WARNING
+        palette.warning
     };
     let status_lines: Vec<&str> = app.status_text.lines().collect();
 
@@ -61,26 +174,26 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     .spacing(3);
 
     if let Some(path_line) = status_lines.get(1) {
-        status_col = status_col.push(text(path_line.to_string()).size(12).color(CLR_TEXT_DIM));
+        status_col = status_col.push(text(path_line.to_string()).size(12).color(palette.text_dim));
     }
 
     let status_card = container(status_col)
-        .style(|_theme| container::Style {
+        .style(move |_theme| container::Style {
             text_color: None,
-            background: Some(Background::Color(CLR_CARD)),
+            background: Some(Background::Color(palette.card)),
             border: Border {
                 radius: 10.0.into(),
                 width: 1.0,
-                color: CLR_BORDER,
+                color: palette.border,
             },
             shadow: Shadow::default(),
             snap: false,
         })
-        .padding([14, 18])
+        .padding([10, 16])
         .width(Length::Fill);
 
     // ── 區段標題 ──
-    let section_title = text("連線設定").size(18).font(Font {
+    let section_title = text("連線設定").size(18).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
@@ -99,7 +212,10 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             )
             .placeholder("選擇供應商...")
             .width(Length::Fill)
+            .style(move |_theme, status| custom_pick_list_style(palette, status))
+            .menu_style(move |_theme| custom_menu_style(palette))
             .into(),
+            palette.text,
         ),
         form_row(
             "Gateway URL",
@@ -107,7 +223,9 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                 .on_input(Message::BaseUrlChanged)
                 .padding(10)
                 .size(14)
+                .style(move |_theme, status| custom_text_input_style(palette, status))
                 .into(),
+            palette.text,
         ),
         form_row(
             "API Key",
@@ -116,7 +234,9 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                 .secure(true)
                 .padding(10)
                 .size(14)
+                .style(move |_theme, status| custom_text_input_style(palette, status))
                 .into(),
+            palette.text,
         ),
         form_row(
             "驗證方式",
@@ -126,7 +246,10 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                 Message::AuthSchemeSelected,
             )
             .width(Length::Fill)
+            .style(move |_theme, status| custom_pick_list_style(palette, status))
+            .menu_style(move |_theme| custom_menu_style(palette))
             .into(),
+            palette.text,
         ),
     ]
     .spacing(14);
@@ -134,7 +257,8 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     // ── 自訂路徑 ──
     let mut custom_input = text_input("C:\\Users\\...\\Claude.exe", &app.custom_path)
         .padding(10)
-        .size(14);
+        .size(14)
+        .style(move |_theme, status| custom_text_input_style(palette, status));
     if app.use_custom_path {
         custom_input = custom_input.on_input(Message::CustomPathChanged);
     }
@@ -144,19 +268,80 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             .label("使用自訂 Claude.exe 路徑")
             .on_toggle(Message::CustomPathToggled)
             .text_size(14)
-            .spacing(8),
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
         custom_input,
     ]
     .spacing(8);
 
     // ── 進階設定 (Per-feature 開關) ──
-    let advanced_title = text("進階設定").size(18).font(Font {
+    let advanced_title = text("進階設定").size(18).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
 
     let transport_options = vec!["openai_chat".to_string(), "anthropic_messages".to_string()];
     let reasoning_options = vec!["separate".to_string(), "inline".to_string()];
+    let model_reasoning_options = vec![
+        "none".to_string(),
+        "low".to_string(),
+        "medium".to_string(),
+        "high".to_string(),
+        "max".to_string(),
+    ];
+    let model_reasoning_rows: Vec<Element<'_, Message>> = if app.discovered_models.is_empty() {
+        vec![text("尚未抓到模型；儲存設定後會列出可設定的模型。")
+            .size(13)
+            .color(palette.text_dim)
+            .into()]
+    } else {
+        app.discovered_models
+            .iter()
+            .map(|model| {
+                let selected = app
+                    .model_reasoning_overrides
+                    .get(model)
+                    .cloned()
+                    .unwrap_or_else(|| "none".to_string());
+                let model_id = model.clone();
+                row![
+                    text(model.clone())
+                        .size(13)
+                        .color(palette.text)
+                        .width(Length::Fill),
+                    pick_list(
+                        model_reasoning_options.clone(),
+                        Some(selected),
+                        move |level| Message::ModelReasoningLevelSelected(model_id.clone(), level),
+                    )
+                    .width(Length::Fixed(130.0))
+                    .style(move |_theme, status| custom_pick_list_style(palette, status))
+                    .menu_style(move |_theme| custom_menu_style(palette))
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into()
+            })
+            .collect()
+    };
+    let model_reasoning_section = column![
+        button(text("抓模型列表").size(13))
+            .on_press(Message::RefreshModels)
+            .style(move |_theme, status| secondary_btn_style(palette, status))
+            .padding([6, 12]),
+        text("模型思考上限")
+            .size(14)
+            .color(palette.text)
+            .font(Font {
+                weight: Weight::Semibold,
+                ..Default::default()
+            }),
+        text("這裡的設定會覆寫本專案的 Claude Desktop 模型路由。")
+            .size(12)
+            .color(palette.text_dim),
+        column(model_reasoning_rows).spacing(8),
+    ]
+    .spacing(6);
 
     let mut advanced_form = column![
         form_row(
@@ -167,7 +352,10 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                 Message::TransportTypeSelected,
             )
             .width(Length::Fill)
+            .style(move |_theme, status| custom_pick_list_style(palette, status))
+            .menu_style(move |_theme| custom_menu_style(palette))
             .into(),
+            palette.text,
         ),
         form_row(
             "Thinking 模式",
@@ -177,44 +365,55 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                 Message::ReasoningReplayModeSelected,
             )
             .width(Length::Fill)
+            .style(move |_theme, status| custom_pick_list_style(palette, status))
+            .menu_style(move |_theme| custom_menu_style(palette))
             .into(),
+            palette.text,
         ),
+        model_reasoning_section,
         // Per-feature toggles
         checkbox(app.enable_quota_check_mock)
             .label("配額檢查攔截")
             .on_toggle(Message::QuotaCheckMockToggled)
             .text_size(14)
-            .spacing(8),
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_prefix_detection)
             .label("命令前綴快速檢測")
             .on_toggle(Message::PrefixDetectionToggled)
             .text_size(14)
-            .spacing(8),
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_title_generation_skip)
             .label("標題生成跳過")
             .on_toggle(Message::TitleGenerationSkipToggled)
             .text_size(14)
-            .spacing(8),
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_suggestion_mode_skip)
             .label("建議模式跳過")
             .on_toggle(Message::SuggestionModeSkipToggled)
             .text_size(14)
-            .spacing(8),
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_filepath_extraction_mock)
             .label("檔案路徑提取模擬")
             .on_toggle(Message::FilepathExtractionMockToggled)
             .text_size(14)
-            .spacing(8),
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_safety_classifier_handling)
             .label("安全分類器處理")
             .on_toggle(Message::SafetyClassifierHandlingToggled)
             .text_size(14)
-            .spacing(8),
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_web_server_tools)
             .label("Web 工具攔截 (本地執行 web_search / web_fetch)")
             .on_toggle(Message::WebServerToolsToggled)
             .text_size(14)
-            .spacing(8),
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
     ]
     .spacing(10);
 
@@ -228,14 +427,17 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                         .label("允許 web_fetch 存取私有網路目標")
                         .on_toggle(Message::WebFetchPrivateNetworkToggled)
                         .text_size(14)
-                        .spacing(8),
+                        .spacing(8)
+                        .style(move |_theme, status| custom_checkbox_style(palette, status)),
                     form_row(
                         "允許的 URL 方案",
                         text_input("http,https", &app.web_fetch_allowed_schemes)
                             .on_input(Message::WebFetchAllowedSchemesChanged)
                             .padding(10)
                             .size(14)
+                            .style(move |_theme, status| custom_text_input_style(palette, status))
                             .into(),
+                        palette.text,
                     )
                 ]
                 .spacing(10)
@@ -248,28 +450,28 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     // ── 組裝主要內容（依目前分頁切換） ──
     let tab_content: Element<'_, Message> = match app.current_tab {
         Tab::General => column![section_title, rule::horizontal(1), form, custom_section,]
-            .spacing(18)
+            .spacing(14)
             .into(),
         Tab::Advanced => column![advanced_title, rule::horizontal(1), advanced_form,]
-            .spacing(18)
+            .spacing(14)
             .into(),
     };
 
     let mut content = column![header, status_card, tab_content,]
-        .spacing(18)
+        .spacing(14)
         .max_width(540);
 
     // ── Toast 通知 ──
     if let Some(ref toast) = app.toast {
         let (bg, border_clr) = if toast.is_success {
-            (Color::from_rgba(0.298, 0.831, 0.494, 0.10), CLR_SUCCESS)
+            (Color::from_rgba(0.310, 0.522, 0.349, 0.10), palette.success)
         } else {
-            (Color::from_rgba(1.0, 0.380, 0.380, 0.10), CLR_DANGER)
+            (Color::from_rgba(0.788, 0.290, 0.161, 0.10), palette.danger)
         };
         let txt_clr = if toast.is_success {
-            CLR_SUCCESS
+            palette.success
         } else {
-            CLR_DANGER
+            palette.danger
         };
 
         let toast_widget = container(
@@ -278,9 +480,9 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                     .size(13)
                     .color(txt_clr)
                     .width(Length::Fill),
-                button(text("✕").size(14).color(CLR_TEXT_DIM))
+                button(text("✕").size(14).color(palette.text_dim))
                     .on_press(Message::DismissToast)
-                    .style(ghost_btn_style)
+                    .style(move |_theme, status| ghost_btn_style(palette, status))
                     .padding([2, 8]),
             ]
             .align_y(Alignment::Center),
@@ -308,29 +510,32 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             row![
                 text("⚠ 確定要還原為官方設定？將移除 Gateway 設定。")
                     .size(13)
-                    .color(CLR_WARNING)
+                    .color(palette.warning)
                     .width(Length::Fill),
                 button(text("確定").size(13).color(iced::Color::WHITE))
                     .on_press(Message::ConfirmRestore)
-                    .style(danger_btn_style)
+                    .style(move |_theme, status| danger_btn_style(palette, status))
                     .padding([6, 16]),
-                button(text("取消").size(13).color(CLR_TEXT_DIM))
+                button(text("取消").size(13).color(palette.text_dim))
                     .on_press(Message::CancelRestore)
-                    .style(secondary_btn_style)
+                    .style(move |_theme, status| secondary_btn_style(palette, status))
                     .padding([6, 16]),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
         )
-        .style(|_theme| container::Style {
+        .style(move |_theme| container::Style {
             text_color: None,
             background: Some(Background::Color(iced::Color::from_rgba(
-                1.0, 0.694, 0.298, 0.08,
+                palette.warning.r,
+                palette.warning.g,
+                palette.warning.b,
+                0.08,
             ))),
             border: Border {
                 radius: 8.0.into(),
                 width: 1.0,
-                color: CLR_WARNING,
+                color: palette.warning,
             },
             shadow: Shadow::default(),
             snap: false,
@@ -348,15 +553,15 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             ..Default::default()
         }))
         .on_press(Message::SaveAndLaunch)
-        .style(primary_btn_style)
+        .style(move |_theme, status| primary_btn_style(palette, status))
         .padding([10, 20]),
         button(text("💾 僅儲存").size(14))
             .on_press(Message::SaveOnly)
-            .style(secondary_btn_style)
+            .style(move |_theme, status| secondary_btn_style(palette, status))
             .padding([10, 16]),
-        button(text("↩ 還原官方").size(14).color(CLR_TEXT_DIM))
+        button(text("↩ 還原官方").size(14).color(palette.text_dim))
             .on_press(Message::RestoreRequested)
-            .style(outline_btn_style)
+            .style(move |_theme, status| outline_btn_style(palette, status))
             .padding([10, 16]),
     ]
     .spacing(10);
@@ -373,7 +578,11 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             let btn = button(
                 text(label)
                     .size(14)
-                    .color(if is_active { CLR_TEXT } else { CLR_TEXT_DIM })
+                    .color(if is_active {
+                        palette.primary_text
+                    } else {
+                        palette.text_dim
+                    })
                     .font(Font {
                         weight: if is_active {
                             Weight::Semibold
@@ -384,37 +593,48 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                     }),
             )
             .on_press(Message::TabSelected(tab))
-            .style(
-                move |theme: &iced::Theme, status: button::Status| -> button::Style {
-                    if is_active {
-                        primary_btn_style(theme, status)
-                    } else {
-                        ghost_btn_style(theme, status)
-                    }
-                },
-            )
+            .style(move |_theme, status: button::Status| -> button::Style {
+                if is_active {
+                    primary_btn_style(palette, status)
+                } else {
+                    ghost_btn_style(palette, status)
+                }
+            })
             .padding([8, 12])
             .width(Length::Fill);
             btn.into()
         })
         .collect();
 
+    let icon_widget = image(get_app_icon().clone())
+        .width(Length::Fixed(32.0))
+        .height(Length::Fixed(32.0));
+
     let sidebar = container(
         column![
-            text("設定選單").size(14).color(CLR_TEXT_DIM).font(Font {
-                weight: Weight::Semibold,
-                ..Default::default()
-            }),
+            row![
+                icon_widget,
+                column![
+                    text("Free Claude").size(14).color(palette.text).font(Font {
+                        weight: Weight::Bold,
+                        ..Default::default()
+                    }),
+                    text("設定選單").size(11).color(palette.text_dim),
+                ]
+                .spacing(2),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
             column(sidebar_items).spacing(4),
         ]
-        .spacing(12),
+        .spacing(20),
     )
     .padding([20, 12])
     .width(Length::Fixed(160.0))
     .height(Length::Fill)
-    .style(|_theme| container::Style {
+    .style(move |_theme| container::Style {
         text_color: None,
-        background: Some(Background::Color(CLR_SIDEBAR)),
+        background: Some(Background::Color(palette.sidebar)),
         border: Border {
             radius: 0.0.into(),
             width: 0.0,
@@ -425,12 +645,38 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     });
 
     // ── 外層容器 ──
-    let main_content = row![
-        sidebar,
-        scrollable(container(content).padding(30).center_x(Length::Fill)).width(Length::Fill),
-    ]
-    .spacing(0)
-    .height(Length::Fill);
+    let main_content = container(
+        row![
+            sidebar,
+            scrollable(
+                container(content)
+                    .padding(Padding {
+                        top: 24.0,
+                        right: 30.0,
+                        bottom: 90.0,
+                        left: 30.0,
+                    })
+                    .center_x(Length::Fill)
+                    .style(move |_theme| container::Style {
+                        text_color: None,
+                        background: Some(Background::Color(palette.bg)),
+                        border: Border::default(),
+                        shadow: Shadow::default(),
+                        snap: false,
+                    })
+            )
+            .width(Length::Fill),
+        ]
+        .spacing(0)
+        .height(Length::Fill),
+    )
+    .style(move |_theme| container::Style {
+        text_color: None,
+        background: Some(Background::Color(palette.bg)),
+        border: Border::default(),
+        shadow: Shadow::default(),
+        snap: false,
+    });
 
     main_content.into()
 }
