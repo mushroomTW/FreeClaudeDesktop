@@ -48,48 +48,48 @@ impl ColorPalette {
 
         match effective {
             ThemeMode::Light | ThemeMode::System => Self {
-                bg: Color::from_rgb(0.980, 0.969, 0.949), // 暖奶白/沙色 #FAF7F2
-                card: Color::WHITE,                       // 純白卡片 #FFFFFF
-                sidebar: Color::from_rgb(0.941, 0.925, 0.882), // 柔暖灰沙色 #F0ECE1
-                text: Color::from_rgb(0.133, 0.133, 0.125), // 深炭暖灰 #222220
-                text_dim: Color::from_rgb(0.420, 0.400, 0.369), // 暖灰褐 #6B665E
-                primary: Color::from_rgb(0.855, 0.467, 0.337), // Claude 標誌赤陶柿橘 #DA7756
-                primary_hover: Color::from_rgb(0.898, 0.533, 0.412), // #E58869
-                primary_press: Color::from_rgb(0.769, 0.392, 0.271), // #C46445
+                bg: Color::from_rgb(0.976, 0.976, 0.976),    // 官方亮白灰底 #F9F9F9
+                card: Color::WHITE,                           // 純白卡片 #FFFFFF
+                sidebar: Color::from_rgb(0.949, 0.949, 0.949), // 官方淺灰側欄 #F2F2F2
+                text: Color::from_rgb(0.121, 0.121, 0.121),   // 官方近純黑字 #1F1F1F
+                text_dim: Color::from_rgb(0.549, 0.549, 0.549), // 官方中灰字 #8C8C8C
+                primary: Color::from_rgb(0.855, 0.467, 0.337), // Claude 品牌柿橘 #DA7756
+                primary_hover: Color::from_rgb(0.898, 0.533, 0.412),
+                primary_press: Color::from_rgb(0.769, 0.392, 0.271),
                 primary_text: Color::WHITE,
-                border: Color::from_rgb(0.886, 0.867, 0.835), // 柔暖邊線 #E2DDD5
-                btn_sec: Color::from_rgb(0.961, 0.949, 0.922), // 米白按鈕 #F5F2EC
-                btn_sec_hover: Color::from_rgb(0.910, 0.890, 0.855), // #E8E3DA
-                success: Color::from_rgb(0.310, 0.522, 0.349), // 暖綠色 #4F8559
-                danger: Color::from_rgb(0.788, 0.290, 0.161), // 紅橘色 #C94A29
-                danger_hover: Color::from_rgb(0.839, 0.369, 0.243), // #D65E3E
-                warning: Color::from_rgb(0.710, 0.494, 0.141), // 焦糖黃 #B57E24
-                menu_selected_bg: Color::from_rgb(0.988, 0.922, 0.902), // 淺暖珊瑚底 #FCEBE6
+                border: Color::from_rgb(0.898, 0.898, 0.898), // 柔和淺分界線 #E5E5E5
+                btn_sec: Color::from_rgb(0.960, 0.960, 0.960), // 淺灰按鈕 #F5F5F5
+                btn_sec_hover: Color::from_rgb(0.910, 0.910, 0.910),
+                success: Color::from_rgb(0.310, 0.522, 0.349), 
+                danger: Color::from_rgb(0.788, 0.290, 0.161), 
+                danger_hover: Color::from_rgb(0.839, 0.369, 0.243),
+                warning: Color::from_rgb(0.710, 0.494, 0.141), 
+                menu_selected_bg: Color::from_rgb(0.988, 0.922, 0.902), 
                 input_bg: Color::WHITE,
-                segmented_bg: Color::from_rgb(0.980, 0.969, 0.949), // Claude 溫暖米白底 #FAF7F2
-                segmented_active_bg: Color::from_rgb(0.855, 0.467, 0.337), // Claude 標誌赤陶柿橘 #DA7756
+                segmented_bg: Color::from_rgb(0.949, 0.949, 0.949), 
+                segmented_active_bg: Color::from_rgb(0.855, 0.467, 0.337), 
             },
             ThemeMode::Dark => Self {
-                bg: Color::from_rgb(0.106, 0.098, 0.090), // 暖炭灰石墨底 #1B1917
-                card: Color::from_rgb(0.149, 0.141, 0.130), // 暖灰卡片面板 #262421
-                sidebar: Color::from_rgb(0.078, 0.075, 0.071), // 沉穩暖黑側邊欄 #141312
-                text: Color::from_rgb(0.925, 0.902, 0.875), // 暖柔灰白字 #ECE6DF
-                text_dim: Color::from_rgb(0.631, 0.604, 0.561), // 暖中灰 #A19A8F
-                primary: Color::from_rgb(0.855, 0.467, 0.337), // Claude 標誌赤陶柿橘 #DA7756
-                primary_hover: Color::from_rgb(0.898, 0.533, 0.412), // #E58869
-                primary_press: Color::from_rgb(0.769, 0.392, 0.271), // #C46445
+                bg: Color::from_rgb(0.102, 0.102, 0.102),     // 官方深炭灰底 #1A1A1A
+                card: Color::from_rgb(0.157, 0.157, 0.157),    // 官方狀態卡片底 #282828
+                sidebar: Color::from_rgb(0.118, 0.118, 0.118), // 官方極深側欄 #1E1E1E
+                text: Color::from_rgb(0.949, 0.949, 0.949),   // 官方暖白字 #F2F2F2
+                text_dim: Color::from_rgb(0.647, 0.647, 0.647), // 官方次要灰字 #A5A5A5
+                primary: Color::from_rgb(0.855, 0.467, 0.337), // Claude 品牌柿橘 #DA7756
+                primary_hover: Color::from_rgb(0.898, 0.533, 0.412),
+                primary_press: Color::from_rgb(0.769, 0.392, 0.271),
                 primary_text: Color::WHITE,
-                border: Color::from_rgb(0.239, 0.220, 0.200), // 暖暗灰邊線 #3D3833
-                btn_sec: Color::from_rgb(0.169, 0.157, 0.141), // 深暖灰按鈕 #2B2824
-                btn_sec_hover: Color::from_rgb(0.212, 0.196, 0.176), // #36322D
-                success: Color::from_rgb(0.353, 0.659, 0.424), // 柔暖綠 #5AA86C
-                danger: Color::from_rgb(0.878, 0.388, 0.322), // 暖柿紅 #E06352
-                danger_hover: Color::from_rgb(0.922, 0.459, 0.396), // #EB7565
-                warning: Color::from_rgb(0.898, 0.663, 0.235), // 焦糖暖黃 #E5A93C
-                menu_selected_bg: Color::from_rgb(0.239, 0.153, 0.114), // 深赤陶暗底 #3D271D
-                input_bg: Color::from_rgb(0.122, 0.114, 0.102), // #1F1D1A
-                segmented_bg: Color::from_rgb(0.122, 0.114, 0.102), // 深暖灰膠囊底 #1F1D1A
-                segmented_active_bg: Color::from_rgb(0.855, 0.467, 0.337), // Claude 標誌赤陶柿橘 #DA7756
+                border: Color::from_rgb(0.200, 0.200, 0.200), // 官方深分界線 #333333
+                btn_sec: Color::from_rgb(0.149, 0.141, 0.130), // 官方深灰按鈕 #262421
+                btn_sec_hover: Color::from_rgb(0.212, 0.196, 0.176),
+                success: Color::from_rgb(0.353, 0.659, 0.424), 
+                danger: Color::from_rgb(0.878, 0.388, 0.322), 
+                danger_hover: Color::from_rgb(0.922, 0.459, 0.396),
+                warning: Color::from_rgb(0.898, 0.663, 0.235), 
+                menu_selected_bg: Color::from_rgb(0.239, 0.153, 0.114), 
+                input_bg: Color::from_rgb(0.137, 0.137, 0.137), // 官方輸入框底 #222222
+                segmented_bg: Color::from_rgb(0.137, 0.137, 0.137), 
+                segmented_active_bg: Color::from_rgb(0.855, 0.467, 0.337), 
             },
         }
     }
@@ -154,17 +154,58 @@ pub fn generic_button_style(
 }
 
 pub fn primary_btn_style(palette: ColorPalette, status: button::Status) -> button::Style {
-    generic_button_style(
-        Background::Color(palette.primary),
-        Background::Color(palette.primary_hover),
-        Background::Color(palette.primary_press),
-        palette.primary_text,
-        Border {
-            radius: 8.0.into(),
-            ..Default::default()
+    let border = Border {
+        radius: 8.0.into(),
+        ..Default::default()
+    };
+    match status {
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(palette.primary)),
+            text_color: palette.primary_text,
+            border,
+            shadow: Shadow {
+                color: Color::from_rgba(
+                    palette.primary.r,
+                    palette.primary.g,
+                    palette.primary.b,
+                    0.15,
+                ),
+                offset: iced::Vector::new(0.0, 2.0),
+                blur_radius: 8.0,
+            },
+            snap: false,
         },
-        status,
-    )
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(palette.primary_hover)),
+            text_color: palette.primary_text,
+            border,
+            shadow: Shadow {
+                color: Color::from_rgba(
+                    palette.primary.r,
+                    palette.primary.g,
+                    palette.primary.b,
+                    0.22,
+                ),
+                offset: iced::Vector::new(0.0, 3.0),
+                blur_radius: 10.0,
+            },
+            snap: false,
+        },
+        button::Status::Pressed => button::Style {
+            background: Some(Background::Color(palette.primary_press)),
+            text_color: palette.primary_text,
+            border,
+            shadow: Shadow::default(),
+            snap: false,
+        },
+        button::Status::Disabled => button::Style {
+            background: Some(Background::Color(palette.primary)),
+            text_color: Color::from_rgb(0.6, 0.6, 0.6),
+            border,
+            shadow: Shadow::default(),
+            snap: false,
+        },
+    }
 }
 
 pub fn secondary_btn_style(palette: ColorPalette, status: button::Status) -> button::Style {
@@ -183,28 +224,111 @@ pub fn secondary_btn_style(palette: ColorPalette, status: button::Status) -> but
 }
 
 pub fn outline_btn_style(palette: ColorPalette, status: button::Status) -> button::Style {
-    generic_button_style(
-        Background::Color(Color::TRANSPARENT),
-        Background::Color(Color::from_rgba(
-            palette.danger.r,
-            palette.danger.g,
-            palette.danger.b,
-            0.1,
-        )),
-        Background::Color(Color::from_rgba(
-            palette.danger.r,
-            palette.danger.g,
-            palette.danger.b,
-            0.2,
-        )),
-        palette.danger,
-        Border {
-            radius: 8.0.into(),
-            width: 1.0,
-            color: palette.border,
+    let border_active = Border {
+        radius: 8.0.into(),
+        width: 1.0,
+        color: palette.border,
+    };
+    let border_hover = Border {
+        radius: 8.0.into(),
+        width: 1.0,
+        color: palette.danger,
+    };
+    
+    // 平常低調（中性灰），滑鼠 hover 時顯示警告紅
+    match status {
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            text_color: palette.text_dim,
+            border: border_active,
+            shadow: Shadow::default(),
+            snap: false,
         },
-        status,
-    )
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgba(
+                palette.danger.r,
+                palette.danger.g,
+                palette.danger.b,
+                0.05,
+            ))),
+            text_color: palette.danger,
+            border: border_hover,
+            shadow: Shadow::default(),
+            snap: false,
+        },
+        button::Status::Pressed => button::Style {
+            background: Some(Background::Color(Color::from_rgba(
+                palette.danger.r,
+                palette.danger.g,
+                palette.danger.b,
+                0.1,
+              ))),
+            text_color: palette.danger,
+            border: border_hover,
+            shadow: Shadow::default(),
+            snap: false,
+        },
+        button::Status::Disabled => button::Style {
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            text_color: Color::from_rgb(0.4, 0.4, 0.4),
+            border: border_active,
+            shadow: Shadow::default(),
+            snap: false,
+        },
+    }
+}
+
+/// 側邊選單專用樣式
+pub fn custom_sidebar_btn_style(
+    palette: ColorPalette,
+    is_active: bool,
+    status: button::Status,
+) -> button::Style {
+    let border = Border {
+        radius: 6.0.into(),
+        ..Default::default()
+    };
+    
+    if is_active {
+        button::Style {
+            background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.05))),
+            text_color: palette.primary,
+            border,
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    } else {
+        match status {
+            button::Status::Active => button::Style {
+                background: Some(Background::Color(Color::TRANSPARENT)),
+                text_color: palette.text_dim,
+                border,
+                shadow: Shadow::default(),
+                snap: false,
+            },
+            button::Status::Hovered => button::Style {
+                background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.02))),
+                text_color: palette.text,
+                border,
+                shadow: Shadow::default(),
+                snap: false,
+            },
+            button::Status::Pressed => button::Style {
+                background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.03))),
+                text_color: palette.text,
+                border,
+                shadow: Shadow::default(),
+                snap: false,
+            },
+            button::Status::Disabled => button::Style {
+                background: Some(Background::Color(Color::TRANSPARENT)),
+                text_color: Color::from_rgb(0.4, 0.4, 0.4),
+                border,
+                shadow: Shadow::default(),
+                snap: false,
+            },
+        }
+    }
 }
 
 pub fn danger_btn_style(palette: ColorPalette, status: button::Status) -> button::Style {

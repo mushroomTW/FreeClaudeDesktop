@@ -141,7 +141,7 @@ fn main() -> iced::Result {
     .title("FreeClaudeLauncher")
     .theme(LauncherApp::theme)
     .window(window::Settings {
-        size: iced::Size::new(700.0, 620.0),
+        size: iced::Size::new(820.0, 700.0),
         resizable: false,
         icon: load_icon(),
         exit_on_close_request: false,

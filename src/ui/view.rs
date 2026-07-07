@@ -40,13 +40,13 @@ pub fn form_row<'a>(
 ) -> Element<'a, Message> {
     row![
         text(label.to_string())
-            .size(14)
+            .size(15)
             .color(text_color)
             .font(Font {
                 weight: Weight::Semibold,
                 ..Default::default()
             })
-            .width(110),
+            .width(140),
         widget,
     ]
     .spacing(12)
@@ -138,14 +138,14 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     let header = row![
         column![
             text("Free Claude Launcher")
-                .size(28)
+                .size(32)
                 .color(palette.text)
                 .font(Font {
                     weight: Weight::Bold,
                     ..Default::default()
                 }),
             text(format!("本機 Proxy：127.0.0.1:{}", app.current_port))
-                .size(13)
+                .size(14)
                 .color(palette.text_dim),
         ]
         .spacing(4)
@@ -162,19 +162,31 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     };
     let status_lines: Vec<&str> = app.status_text.lines().collect();
 
-    let mut status_col = column![
+    let dot = text("●")
+        .size(14)
+        .color(status_color);
+
+    let status_title = row![
+        dot,
         text(status_lines.first().copied().unwrap_or("").to_string())
             .size(14)
-            .color(status_color)
+            .color(palette.text)
             .font(Font {
                 weight: Weight::Semibold,
                 ..Default::default()
             })
     ]
-    .spacing(3);
+    .spacing(8)
+    .align_y(Alignment::Center);
+
+    let mut status_col = column![status_title].spacing(4);
 
     if let Some(path_line) = status_lines.get(1) {
-        status_col = status_col.push(text(path_line.to_string()).size(12).color(palette.text_dim));
+        status_col = status_col.push(
+            text(path_line.to_string())
+                .size(13)
+                .color(palette.text_dim)
+        );
     }
 
     let status_card = container(status_col)
@@ -182,18 +194,18 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             text_color: None,
             background: Some(Background::Color(palette.card)),
             border: Border {
-                radius: 10.0.into(),
+                radius: 8.0.into(),
                 width: 1.0,
                 color: palette.border,
             },
             shadow: Shadow::default(),
             snap: false,
         })
-        .padding([10, 16])
+        .padding([12, 16])
         .width(Length::Fill);
 
     // ── 區段標題 ──
-    let section_title = text("連線設定").size(18).color(palette.text).font(Font {
+    let section_title = text("連線設定").size(21).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
@@ -272,7 +284,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     .spacing(8);
 
     // ── 分頁 1: 模型與思考 (Models) ──
-    let models_title = text("模型與思考").size(18).color(palette.text).font(Font {
+    let models_title = text("模型與思考").size(21).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
@@ -471,7 +483,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     .spacing(14);
 
     // ── 分頁 2: 擴充與技能 (Extensions) ──
-    let extensions_title = text("擴充與技能").size(18).color(palette.text).font(Font {
+    let extensions_title = text("擴充與技能").size(21).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
@@ -526,7 +538,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     );
 
     // ── 分頁 3: 效能優化 (Optimizations) ──
-    let optimizations_title = text("效能優化").size(18).color(palette.text).font(Font {
+    let optimizations_title = text("效能優化").size(21).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
@@ -567,23 +579,23 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
 
     // ── 組裝主要內容（依目前分頁切換） ──
     let tab_content: Element<'_, Message> = match app.current_tab {
-        Tab::General => column![section_title, rule::horizontal(1), form, custom_section,]
-            .spacing(14)
+        Tab::General => column![section_title, status_card, form, custom_section,]
+            .spacing(18)
             .into(),
-        Tab::Models => column![models_title, rule::horizontal(1), models_form,]
-            .spacing(14)
+        Tab::Models => column![models_title, models_form,]
+            .spacing(18)
             .into(),
-        Tab::Extensions => column![extensions_title, rule::horizontal(1), extensions_form,]
-            .spacing(14)
+        Tab::Extensions => column![extensions_title, extensions_form,]
+            .spacing(18)
             .into(),
-        Tab::Optimizations => column![optimizations_title, rule::horizontal(1), optimizations_form,]
-            .spacing(14)
+        Tab::Optimizations => column![optimizations_title, optimizations_form,]
+            .spacing(18)
             .into(),
     };
 
-    let mut content = column![header, status_card, tab_content,]
-        .spacing(14)
-        .max_width(540);
+    let mut content = column![header, tab_content,]
+        .spacing(20)
+        .max_width(580);
 
     // ── Toast 通知 ──
     if let Some(ref toast) = app.toast {
@@ -629,6 +641,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     }
 
     // ── 重置鏡像確認列 ──
+    let mut confirm_bar_widget: Option<Element<'_, Message>> = None;
     if app.confirming_restore {
         let confirm_bar = container(
             row![
@@ -667,34 +680,32 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         .padding([10, 14])
         .width(Length::Fill);
 
-        content = content.push(confirm_bar);
+        confirm_bar_widget = Some(confirm_bar.into());
     }
 
     // ── 底部按鈕列（現代極簡微符號風格） ──
     let buttons = row![
-        button(text("儲存並啟動 ↵").size(14).font(Font {
+        button(text("儲存並啟動 ↵").size(15).font(Font {
             weight: Weight::Semibold,
             ..Default::default()
         }))
         .on_press(Message::SaveAndLaunch)
         .style(move |_theme, status| primary_btn_style(palette, status))
-        .padding([10, 20]),
-        button(text("僅儲存").size(14))
+        .padding([12, 24]),
+        button(text("僅儲存").size(15))
             .on_press(Message::SaveOnly)
             .style(move |_theme, status| secondary_btn_style(palette, status))
-            .padding([10, 16]),
-        button(text("從原版同步").size(14))
+            .padding([12, 20]),
+        button(text("從原版同步").size(15))
             .on_press(Message::ResyncFromOfficial)
             .style(move |_theme, status| secondary_btn_style(palette, status))
-            .padding([10, 16]),
-        button(text("重置鏡像 Profile").size(14).color(palette.text_dim))
+            .padding([12, 20]),
+        button(text("重置鏡像 Profile").size(15).color(palette.text_dim))
             .on_press(Message::RestoreRequested)
             .style(move |_theme, status| outline_btn_style(palette, status))
-            .padding([10, 16]),
+            .padding([12, 20]),
     ]
     .spacing(10);
-
-    content = content.push(buttons);
 
     // ── 側邊欄選單 (4 個主分頁) ──
     let menu_items = vec![
@@ -708,14 +719,26 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         .into_iter()
         .map(|(label, tab)| {
             let is_active = app.current_tab == tab;
+            
+            let indicator = container("")
+                .width(Length::Fixed(3.0))
+                .height(Length::Fixed(18.0))
+                .style(move |_theme| container::Style {
+                    background: Some(Background::Color(if is_active {
+                        palette.primary
+                    } else {
+                        Color::TRANSPARENT
+                    })),
+                    border: Border {
+                        radius: 1.5.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            
             let btn = button(
                 text(label)
-                    .size(14)
-                    .color(if is_active {
-                        palette.primary_text
-                    } else {
-                        palette.text_dim
-                    })
+                    .size(15)
                     .font(Font {
                         weight: if is_active {
                             Weight::Semibold
@@ -726,16 +749,17 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                     }),
             )
             .on_press(Message::TabSelected(tab))
-            .style(move |_theme, status: button::Status| -> button::Style {
-                if is_active {
-                    primary_btn_style(palette, status)
-                } else {
-                    ghost_btn_style(palette, status)
-                }
+            .style(move |_theme, status| {
+                crate::ui::styles::custom_sidebar_btn_style(palette, is_active, status)
             })
-            .padding([8, 12])
+            .padding([10, 14])
             .width(Length::Fill);
-            btn.into()
+
+            let item = row![indicator, btn]
+                .spacing(6)
+                .align_y(Alignment::Center);
+
+            item.into()
         })
         .collect();
 
@@ -748,11 +772,11 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             row![
                 icon_widget,
                 column![
-                    text("Free Claude").size(14).color(palette.text).font(Font {
+                    text("Free Claude").size(15).color(palette.text).font(Font {
                         weight: Weight::Bold,
                         ..Default::default()
                     }),
-                    text("設定選單").size(11).color(palette.text_dim),
+                    text("設定選單").size(12).color(palette.text_dim),
                 ]
                 .spacing(2),
             ]
@@ -763,7 +787,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         .spacing(20),
     )
     .padding([20, 12])
-    .width(Length::Fixed(160.0))
+    .width(Length::Fixed(190.0))
     .height(Length::Fill)
     .style(move |_theme| container::Style {
         text_color: None,
@@ -777,29 +801,70 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         snap: false,
     });
 
+    // 滾動內容區（包含 header 與主要分頁內容）
+    let scrollable_content = scrollable(
+        container(content)
+            .padding(Padding {
+                top: 24.0,
+                right: 30.0,
+                bottom: 24.0,
+                left: 30.0,
+            })
+            .center_x(Length::Fill)
+            .style(move |_theme| container::Style {
+                text_color: None,
+                background: Some(Background::Color(palette.bg)),
+                border: Border::default(),
+                shadow: Shadow::default(),
+                snap: false,
+            })
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(move |_theme, status| custom_scrollable_style(palette, status));
+
+    // ── 底部固定按鈕欄 ──
+    let mut bottom_col = column![].spacing(10);
+    if let Some(confirm_bar) = confirm_bar_widget {
+        bottom_col = bottom_col.push(confirm_bar);
+    }
+    bottom_col = bottom_col.push(buttons);
+
+    // 1px 的頂部分隔線
+    let divider = container("")
+        .width(Length::Fill)
+        .height(Length::Fixed(1.0))
+        .style(move |_theme| container::Style {
+            background: Some(Background::Color(palette.border)),
+            ..Default::default()
+        });
+
+    let bottom_bar = container(
+        column![
+            divider,
+            container(bottom_col).padding(Padding {
+                top: 16.0,
+                right: 30.0,
+                bottom: 16.0,
+                left: 30.0,
+            })
+        ]
+    )
+    .width(Length::Fill);
+
+    // 右側大面板（滾動內容 + 固定底欄）
+    let right_panel = column![
+        scrollable_content,
+        bottom_bar,
+    ]
+    .height(Length::Fill)
+    .width(Length::Fill);
+
     // ── 外層容器 ──
     let main_content = container(
         row![
             sidebar,
-            scrollable(
-                container(content)
-                    .padding(Padding {
-                        top: 24.0,
-                        right: 30.0,
-                        bottom: 90.0,
-                        left: 30.0,
-                    })
-                    .center_x(Length::Fill)
-                    .style(move |_theme| container::Style {
-                        text_color: None,
-                        background: Some(Background::Color(palette.bg)),
-                        border: Border::default(),
-                        shadow: Shadow::default(),
-                        snap: false,
-                    })
-            )
-            .width(Length::Fill)
-            .style(move |_theme, status| custom_scrollable_style(palette, status)),
+            right_panel,
         ]
         .spacing(0)
         .height(Length::Fill),

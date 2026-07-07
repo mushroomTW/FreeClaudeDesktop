@@ -428,17 +428,11 @@ impl LauncherApp {
                             None
                         };
                         match crate::launch_claude(custom) {
-                            Ok(path) => {
+                            Ok(_path) => {
                                 self.api_key.clear();
                                 self.api_key_placeholder = "已儲存 API Key，留空沿用".into();
                                 self.refresh_status();
-                                self.toast = Some(Toast {
-                                    message: format!(
-                                        "✅ Claude Desktop 已啟動\n{}",
-                                        path.display()
-                                    ),
-                                    is_success: true,
-                                });
+                                self.toast = None;
                                 if let Some(id) = self.window_id {
                                     self.is_hidden = true;
                                     return window::set_mode(id, Mode::Hidden);
