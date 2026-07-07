@@ -1,0 +1,38 @@
+[
+  {
+    "file": "src/platform/launcher.rs",
+    "line": 127,
+    "summary": "Removed MSIX package configLibrary path discovery and write path in config_library_dirs()",
+    "failure_scenario": "MSIX-packaged Claude Desktop (Microsoft Store) installs config to its package-specific LocalCache/Local/Claude-3p/configLibrary. Old code scanned AppData/Local/Packages for 'claude' packages and wrote _meta.json and {CONFIG_ID}.json there. New code only writes to main configLibrary. MSIX users lose proxy config; Claude Desktop reads default config and bypasses proxy."
+  },
+  {
+    "file": "src/platform/launcher.rs",
+    "line": 134,
+    "summary": "Changed user_data_dir() fallback from 'Claude-3p' to 'FreeClaudeLauncher/claude_profile' (mirror profile)",
+    "failure_scenario": "Existing users who ran the launcher before have their profile (settings, MCP servers, auth tokens) in %LOCALAPPDATA%\\Claude-3p. New code points --user-data-dir to a new empty mirror profile. Users lose all settings, MCP configs, and authentication on upgrade unless resync_from_official() runs first."
+  },
+  {
+    "file": "src/platform/launcher.rs",
+    "line": 568,
+    "summary": "Removed MSIX and standard Claude-3p paths from mcp_config_paths() - now only returns mirror_profile_dir()",
+    "failure_scenario": "Old mcp_config_paths() returned: (1) local_app_data/Claude-3p/claude_desktop_config.json, (2) MSIX package LocalCache/Local/Claude-3p/claude_desktop_config.json. New code only writes MCP server config to mirror_profile_dir/claude_desktop_config.json. MCP servers configured via launcher won't appear in MSIX or standard Claude-3p profiles; collect_all_mcp_servers() still reads from official dir but writes only to mirror."
+  },
+  {
+    "file": "src/conversion/response_converter.rs",
+    "line": 110,
+    "summary": "Removed explicit fallback chain in prepare_proxy_body: routes.get(model) -> real_model (with WARNING log) -> pass-through",
+    "failure_scenario": "Old behavior: if model not in real_model_routes but real_model is set, log WARNING and use real_model. New behavior: resolve_model_route() uses different priority (discovered_models, family-specific models, fuzzy route matching) and logs only INFO for success, DEBUG for failure. Silent behavior change: model resolution may pick different upstream model; operators lose visibility into fallback events (WARNING log removed)."
+  },
+  {
+    "file": "src/conversion/response_converter.rs",
+    "line": 119,
+    "summary": "Removed direct real_model assignment when request has no model field",
+    "failure_scenario": "Old: if request body lacks 'model' field, unconditionally set data['model'] = real_model. New: resolve_model_route(\"\", settings) which returns real_model ONLY if non-empty and not already in routes/discovered_models. If resolve_model_route returns None, 'model' field stays absent -> upstream may reject request or pick arbitrary default."
+  },
+  {
+    "file": "src/conversion/response_converter.rs",
+    "line": 286,
+    "summary": "Changed model alias for non-reasoning models from 'claude-3-5-haiku[{index}]' to 'claude-haiku-4-5[{index}]'",
+    "failure_scenario": "Claude Desktop's model discovery expects specific alias patterns. Old alias 'claude-3-5-haiku[N]' mapped to non-reasoning-effort routes. New 'claude-haiku-4-5[N]' may not match internal model routing in Claude Desktop, causing model selection failures or wrong model being used for non-reasoning requests."
+  }
+]

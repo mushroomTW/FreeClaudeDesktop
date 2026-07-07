@@ -15,7 +15,10 @@ fn load_icon() -> Option<window::Icon> {
 }
 
 fn main() -> iced::Result {
-    if std::env::args().any(|arg| arg == "--mcp-computer-server") {
+    if std::env::args().any(|arg| {
+        let trimmed = arg.trim_start_matches('-');
+        trimmed == "mcp" || trimmed == "mcp-computer-server"
+    }) {
         if let Err(error) = free_claude_launcher::mcp::run_computer_server() {
             eprintln!("Computer MCP server failed: {error}");
         }

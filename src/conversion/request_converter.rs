@@ -41,6 +41,113 @@ fn clamp_reasoning_effort<'a>(requested: &str, supported: &'a [String]) -> Optio
         .map(|(_, effort)| effort)
 }
 
+/// 解析請求的 model 名稱，將其映射到適當的真實模型 ID。
+pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option<String> {
+    if requested_model.is_empty() {
+        return settings.real_model.clone().filter(|m| !m.trim().is_empty());
+    }
+
+    // 1. 精確匹配 routes (例如 "claude-sonnet-4-6[0]" 或 "claude-sonnet-4-6[0][1m]")
+    if let Some(mapped) = settings.real_model_routes.get(requested_model) {
+        return Some(mapped.clone());
+    }
+
+    let clean_model = requested_model.replace("[1m]", "").replace("[1M]", "");
+    if let Some(mapped) = settings.real_model_routes.get(&clean_model) {
+        return Some(mapped.clone());
+    }
+
+    // 2. 若 requested_model 本身（或去除 [1m] 後）在 discovered_models 中，代表直接使用了上游模型名稱
+    if settings
+        .discovered_models
+        .iter()
+        .any(|m| m == requested_model || m == &clean_model)
+    {
+        return Some(clean_model);
+    }
+
+    if let Some(start) = clean_model.find('[') {
+        let mut depth = 0;
+        let mut end_opt = None;
+        for (i, c) in clean_model.char_indices().skip(start) {
+            if c == '[' {
+                depth += 1;
+            } else if c == ']' {
+                depth -= 1;
+                if depth == 0 {
+                    end_opt = Some(i);
+                    break;
+                }
+            }
+        }
+        if let Some(end) = end_opt {
+            let inner = &clean_model[start + 1..end];
+            if settings.discovered_models.iter().any(|m| m == inner) {
+                return Some(inner.to_string());
+            }
+            if let Some(mapped) = settings.real_model_routes.get(inner) {
+                return Some(mapped.clone());
+            }
+        }
+    }
+
+    // 3. 按模型家族（sonnet / opus / haiku）匹配：優先使用使用者為該家族指定的真實模型，否則模糊匹配 routes
+    let req_lower = requested_model.to_ascii_lowercase();
+    if req_lower.contains("sonnet") {
+        if let Some(m) = &settings.real_model_sonnet {
+            if !m.trim().is_empty() {
+                return Some(m.clone());
+            }
+        }
+    } else if req_lower.contains("opus") {
+        if let Some(m) = &settings.real_model_opus {
+            if !m.trim().is_empty() {
+                return Some(m.clone());
+            }
+        }
+    } else if req_lower.contains("haiku") {
+        if let Some(m) = &settings.real_model_haiku {
+            if !m.trim().is_empty() {
+                return Some(m.clone());
+            }
+        }
+    }
+
+    let family = if req_lower.contains("sonnet") {
+        Some("sonnet")
+    } else if req_lower.contains("opus") {
+        Some("opus")
+    } else if req_lower.contains("haiku") {
+        Some("haiku")
+    } else {
+        None
+    };
+
+    if let Some(fam) = family {
+        let mut best_key: Option<&String> = None;
+        let mut best_val: Option<&String> = None;
+        for (k, v) in &settings.real_model_routes {
+            if k.to_ascii_lowercase().contains(fam) {
+                if let Some(bk) = best_key {
+                    if k < bk {
+                        best_key = Some(k);
+                        best_val = Some(v);
+                    }
+                } else {
+                    best_key = Some(k);
+                    best_val = Some(v);
+                }
+            }
+        }
+        if let Some(val) = best_val {
+            return Some(val.clone());
+        }
+    }
+
+    // 4. Fallback: 使用使用者設定的全域真實模型名稱
+    settings.real_model.clone().filter(|m| !m.trim().is_empty())
+}
+
 pub fn anthropic_to_openai_request(
     body: &str,
     settings: &Settings,
@@ -55,16 +162,9 @@ pub fn anthropic_to_openai_request(
     });
 
     // 處理 model 映射
-    if let Some(mapped) = settings.real_model_routes.get(&req.model) {
+    if let Some(mapped) = resolve_model_route(&req.model, settings) {
         tracing::info!("[model 映射] {} → {}", req.model, mapped);
-        data["model"] = Value::String(mapped.clone());
-    } else if let Some(model) = &settings.real_model {
-        tracing::warn!(
-            "[model 映射] {} 不在 routes 中，使用預設 model: {}",
-            req.model,
-            model
-        );
-        data["model"] = Value::String(model.clone());
+        data["model"] = Value::String(mapped);
     } else {
         tracing::debug!(
             "[model 映射] {} 不在 routes 中，也沒有預設 model，原樣轉發",
@@ -344,7 +444,7 @@ pub fn anthropic_to_openai_request(
 
     // 轉換 stop_sequences
     if let Some(ref stop_seqs) = req.stop_sequences {
-        data["stop"] = serde_json::to_value(stop_seqs).unwrap();
+        data["stop"] = serde_json::to_value(stop_seqs).map_err(|e| e.to_string())?;
     }
 
     // 轉換 tools
@@ -416,7 +516,8 @@ pub fn anthropic_to_openai_request(
         data["top_p"] = json!(top_p);
     }
 
-    Ok((serde_json::to_string(&data).unwrap(), is_stream))
+    let body_str = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+    Ok((body_str, is_stream))
 }
 
 #[cfg(test)]
@@ -527,4 +628,62 @@ mod tests {
         assert!(converted.get("thinking").is_none());
     }
 
+    #[test]
+    fn resolve_model_route_handles_1m_suffix_and_fallbacks() {
+        let mut routes = std::collections::HashMap::new();
+        routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
+        routes.insert("claude-opus-4-8[0]".to_string(), "gpt-4o".to_string());
+
+        let settings = Settings {
+            real_model_routes: routes,
+            discovered_models: vec!["nim-medium".to_string(), "gpt-4o".to_string()],
+            real_model: Some("default-model".to_string()),
+            ..Settings::default()
+        };
+
+        assert_eq!(
+            resolve_model_route("claude-sonnet-4-6[0]", &settings),
+            Some("nim-medium".to_string())
+        );
+        assert_eq!(
+            resolve_model_route("claude-sonnet-4-6[0][1m]", &settings),
+            Some("nim-medium".to_string())
+        );
+        assert_eq!(
+            resolve_model_route("gpt-4o[1m]", &settings),
+            Some("gpt-4o".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_model_route_robust_bracket_and_fuzzy_matching() {
+        let mut routes = std::collections::HashMap::new();
+        routes.insert("1".to_string(), "nim-one".to_string());
+        routes.insert("1[2]".to_string(), "nim-nested".to_string());
+        
+        routes.insert("gpt-4o-sonnet".to_string(), "target-gpt-sonnet".to_string());
+        routes.insert("claude-3-5-sonnet-real".to_string(), "target-claude-sonnet".to_string());
+        routes.insert("z-sonnet".to_string(), "target-z-sonnet".to_string());
+
+        let settings = Settings {
+            real_model_routes: routes,
+            discovered_models: vec![],
+            ..Settings::default()
+        };
+
+        assert_eq!(
+            resolve_model_route("model[1[2]]", &settings),
+            Some("nim-nested".to_string())
+        );
+
+        assert_eq!(
+            resolve_model_route("model[1][2]", &settings),
+            Some("nim-one".to_string())
+        );
+
+        assert_eq!(
+            resolve_model_route("some-random-sonnet-request", &settings),
+            Some("target-claude-sonnet".to_string())
+        );
+    }
 }

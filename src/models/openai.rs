@@ -31,6 +31,7 @@ pub struct NormalizedModel {
     #[serde(rename = "type")]
     pub kind: String, // "model"
     pub id: String,
+    pub name: String,
     pub display_name: String,
     pub created_at: String,
     pub provider_model_id: String,
@@ -44,6 +45,8 @@ pub struct NormalizedModel {
     pub max_tokens: Option<u64>,
     #[serde(default = "default_capabilities")]
     pub capabilities: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports1m: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -58,6 +61,8 @@ pub struct InferenceModel {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u64>,
     pub capabilities: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports1m: Option<bool>,
     /// 傳輸類型: "openai_chat_completions" 或 "anthropic_messages"
     #[serde(
         default = "default_transport_type",

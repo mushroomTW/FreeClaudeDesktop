@@ -39,9 +39,16 @@ fn streaming_client() -> &'static Client {
     })
 }
 
-fn is_model_gone_error(text: &str) -> bool {
+fn is_model_gone_or_invalid_error(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
-    lower.contains("has reached its end of life") || lower.contains("no longer available")
+    lower.contains("has reached its end of life")
+        || lower.contains("no longer available")
+        || lower.contains("invalid model name")
+        || lower.contains("invalid_model")
+        || lower.contains("model_not_found")
+        || lower.contains("call /v1/models")
+        || lower.contains("model not found")
+        || lower.contains("degraded function cannot be invoked")
 }
 
 pub async fn handle_root() -> impl IntoResponse {
@@ -467,82 +474,123 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                 } else if is_openai_format {
                     let text = response.text().await.unwrap_or_default();
                     tracing::error!("<- 上游錯誤 Body: {}", text);
+                    if is_model_gone_or_invalid_error(&text) {
+                        if let Some(rewrite) =
+                            rewrite_stale_model_request(&proxy_body, &settings, &req_model)
+                        {
+                            tracing::warn!(
+                                "[model fallback] model error ({}), retrying {} with {}",
+                                status_u16,
+                                req_model,
+                                rewrite.fallback_model
+                            );
+                            settings
+                                .real_model_routes
+                                .insert(req_model.clone(), rewrite.fallback_model.clone());
+                            let _ = save_launcher_settings(&settings);
+
+                            let retry_body = rewrite.updated_body.to_string();
+                            let mut retry_req =
+                                async_client().post(&target_url).body(retry_body);
+                            for (name, value) in &headers {
+                                let lower = name.as_str().to_ascii_lowercase();
+                                if matches!(
+                                    lower.as_str(),
+                                    "content-type"
+                                        | "accept"
+                                        | "user-agent"
+                                        | "accept-encoding"
+                                        | "connection"
+                                ) || lower.starts_with("anthropic-")
+                                {
+                                    retry_req = retry_req.header(name.clone(), value.clone());
+                                }
+                            }
+                            if !api_key.is_empty() {
+                                retry_req = if settings.real_auth_scheme == "x-api-key" {
+                                    retry_req.header("x-api-key", &api_key)
+                                } else {
+                                    retry_req.bearer_auth(&api_key)
+                                };
+                            }
+
+                            if let Ok(retry_response) = retry_req.send().await {
+                                if retry_response.status().is_success() {
+                                    let retry_text = retry_response.text().await.unwrap_or_default();
+                                    if let Ok(anthropic_res) = openai_to_anthropic_response(&retry_text, &req_model) {
+                                        return (StatusCode::OK, Json(anthropic_res)).into_response();
+                                    }
+                                }
+                            }
+                        }
+                    }
                     let err_json: Value =
                         serde_json::from_str(&text).unwrap_or(json!({ "error": text }));
                     (status, Json(err_json)).into_response()
                 } else {
                     // Passthrough raw Anthropic response headers and body
-                    if status == StatusCode::GONE {
-                        let headers_to_forward = response.headers().clone();
-                        let text = response.text().await.unwrap_or_default();
-                        if is_model_gone_error(&text) {
-                            if let Some(rewrite) =
-                                rewrite_stale_model_request(&proxy_body, &settings, &req_model)
-                            {
-                                tracing::warn!(
-                                    "[model fallback] {} retired, retrying {} with {}",
-                                    req_model,
-                                    req_model,
-                                    rewrite.fallback_model
-                                );
-                                settings
-                                    .real_model_routes
-                                    .insert(req_model.clone(), rewrite.fallback_model.clone());
-                                let _ = save_launcher_settings(&settings);
+                    let headers_to_forward = response.headers().clone();
+                    let text = response.text().await.unwrap_or_default();
+                    if is_model_gone_or_invalid_error(&text) {
+                        if let Some(rewrite) =
+                            rewrite_stale_model_request(&proxy_body, &settings, &req_model)
+                        {
+                            tracing::warn!(
+                                "[model fallback] model error ({}), retrying {} with {}",
+                                status_u16,
+                                req_model,
+                                rewrite.fallback_model
+                            );
+                            settings
+                                .real_model_routes
+                                .insert(req_model.clone(), rewrite.fallback_model.clone());
+                            let _ = save_launcher_settings(&settings);
 
-                                let retry_body = rewrite.updated_body.to_string();
-                                let mut retry_req =
-                                    async_client().post(&target_url).body(retry_body);
-                                for (name, value) in &headers {
-                                    let lower = name.as_str().to_ascii_lowercase();
-                                    if matches!(
-                                        lower.as_str(),
-                                        "content-type"
-                                            | "accept"
-                                            | "user-agent"
-                                            | "accept-encoding"
-                                            | "connection"
-                                    ) || lower.starts_with("anthropic-")
-                                    {
-                                        retry_req = retry_req.header(name.clone(), value.clone());
-                                    }
-                                }
-                                if !api_key.is_empty() {
-                                    retry_req = if settings.real_auth_scheme == "x-api-key" {
-                                        retry_req.header("x-api-key", &api_key)
-                                    } else {
-                                        retry_req.bearer_auth(&api_key)
-                                    };
-                                }
-
-                                if let Ok(retry_response) = retry_req.send().await {
-                                    let mut res_builder = axum::response::Response::builder()
-                                        .status(retry_response.status());
-                                    for (name, value) in retry_response.headers() {
-                                        res_builder =
-                                            res_builder.header(name.clone(), value.clone());
-                                    }
-                                    let body = axum::body::Body::from_stream(
-                                        retry_response.bytes_stream(),
-                                    );
-                                    return res_builder.body(body).unwrap();
+                            let retry_body = rewrite.updated_body.to_string();
+                            let mut retry_req =
+                                async_client().post(&target_url).body(retry_body);
+                            for (name, value) in &headers {
+                                let lower = name.as_str().to_ascii_lowercase();
+                                if matches!(
+                                    lower.as_str(),
+                                    "content-type"
+                                        | "accept"
+                                        | "user-agent"
+                                        | "accept-encoding"
+                                        | "connection"
+                                ) || lower.starts_with("anthropic-")
+                                {
+                                    retry_req = retry_req.header(name.clone(), value.clone());
                                 }
                             }
-                        }
+                            if !api_key.is_empty() {
+                                retry_req = if settings.real_auth_scheme == "x-api-key" {
+                                    retry_req.header("x-api-key", &api_key)
+                                } else {
+                                    retry_req.bearer_auth(&api_key)
+                                };
+                            }
 
-                        let mut res_builder = axum::response::Response::builder().status(status);
-                        for (name, value) in &headers_to_forward {
-                            res_builder = res_builder.header(name.clone(), value.clone());
+                            if let Ok(retry_response) = retry_req.send().await {
+                                let mut res_builder = axum::response::Response::builder()
+                                    .status(retry_response.status());
+                                for (name, value) in retry_response.headers() {
+                                    res_builder =
+                                        res_builder.header(name.clone(), value.clone());
+                                }
+                                let body = axum::body::Body::from_stream(
+                                    retry_response.bytes_stream(),
+                                );
+                                return res_builder.body(body).unwrap();
+                            }
                         }
-                        return res_builder.body(axum::body::Body::from(text)).unwrap();
                     }
 
                     let mut res_builder = axum::response::Response::builder().status(status);
-                    for (name, value) in response.headers() {
+                    for (name, value) in &headers_to_forward {
                         res_builder = res_builder.header(name.clone(), value.clone());
                     }
-                    let body = axum::body::Body::from_stream(response.bytes_stream());
-                    res_builder.body(body).unwrap()
+                    res_builder.body(axum::body::Body::from(text)).unwrap()
                 }
             }
         }
@@ -554,5 +602,18 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
             )
                 .into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_model_gone_or_invalid_error() {
+        assert!(is_model_gone_or_invalid_error("model not found"));
+        assert!(is_model_gone_or_invalid_error("invalid model name"));
+        assert!(is_model_gone_or_invalid_error("DEGRADED function cannot be invoked"));
+        assert!(!is_model_gone_or_invalid_error("some normal error"));
     }
 }

@@ -86,7 +86,13 @@ pub enum Message {
     ReasoningReplayModeSelected(String),
     TransportTypeSelected(String),
     ModelReasoningLevelSelected(String, String),
+    Model1mToggled(String, bool),
+    RealModelSelected(Option<String>),
+    RealModelSonnetSelected(Option<String>),
+    RealModelOpusSelected(Option<String>),
+    RealModelHaikuSelected(Option<String>),
     RefreshModels,
+    ResyncFromOfficial,
 }
 
 pub struct LauncherApp {
@@ -120,7 +126,13 @@ pub struct LauncherApp {
     pub transport_type: String,
     pub theme_mode: ThemeMode,
     pub discovered_models: Vec<String>,
+    pub model_options: Vec<String>,
     pub model_reasoning_overrides: HashMap<String, String>,
+    pub model_1m_overrides: HashMap<String, bool>,
+    pub real_model: Option<String>,
+    pub real_model_sonnet: Option<String>,
+    pub real_model_opus: Option<String>,
+    pub real_model_haiku: Option<String>,
 }
 
 impl LauncherApp {
@@ -158,7 +170,13 @@ impl LauncherApp {
             transport_type: "openai_chat".to_string(),
             theme_mode: ThemeMode::Light,
             discovered_models: Vec::new(),
+            model_options: vec!["(自動/動態別名)".to_string()],
             model_reasoning_overrides: HashMap::new(),
+            model_1m_overrides: HashMap::new(),
+            real_model: None,
+            real_model_sonnet: None,
+            real_model_opus: None,
+            real_model_haiku: None,
             current_tab: Tab::General,
         };
 
@@ -199,7 +217,13 @@ impl LauncherApp {
             app.transport_type = settings.transport_type;
             app.theme_mode = ThemeMode::from_str(&settings.theme_mode);
             app.discovered_models = settings.discovered_models;
+            app.update_model_options();
             app.model_reasoning_overrides = settings.model_reasoning_overrides;
+            app.model_1m_overrides = settings.model_1m_overrides;
+            app.real_model = settings.real_model;
+            app.real_model_sonnet = settings.real_model_sonnet;
+            app.real_model_opus = settings.real_model_opus;
+            app.real_model_haiku = settings.real_model_haiku;
 
             // 自訂路徑檢查
             if let Some(target) = crate::detect_claude_path() {
@@ -301,6 +325,11 @@ impl LauncherApp {
             &self.web_fetch_allowed_schemes,
             self.theme_mode.as_str(),
             &self.model_reasoning_overrides,
+            &self.model_1m_overrides,
+            self.real_model.clone(),
+            self.real_model_sonnet.clone(),
+            self.real_model_opus.clone(),
+            self.real_model_haiku.clone(),
         )
         .map_err(|e| e.to_string())
     }
@@ -308,8 +337,20 @@ impl LauncherApp {
     fn reload_model_settings(&mut self) {
         if let Some(settings) = crate::get_launcher_settings() {
             self.discovered_models = settings.discovered_models;
+            self.update_model_options();
             self.model_reasoning_overrides = settings.model_reasoning_overrides;
+            self.model_1m_overrides = settings.model_1m_overrides;
+            self.real_model = settings.real_model;
+            self.real_model_sonnet = settings.real_model_sonnet;
+            self.real_model_opus = settings.real_model_opus;
+            self.real_model_haiku = settings.real_model_haiku;
         }
+    }
+
+    pub fn update_model_options(&mut self) {
+        let mut opts = vec!["(自動/動態別名)".to_string()];
+        opts.extend(self.discovered_models.clone());
+        self.model_options = opts;
     }
 
     fn save_theme_mode(&self) {
@@ -439,24 +480,40 @@ impl LauncherApp {
                     }
                 }
             }
+            Message::ResyncFromOfficial => {
+                match crate::launcher::resync_from_official() {
+                    Ok(()) => {
+                        self.toast = Some(Toast {
+                            message: "✅ 已從原版 Claude 重新同步設定至鏡像目錄。".into(),
+                            is_success: true,
+                        });
+                    }
+                    Err(e) => {
+                        self.toast = Some(Toast {
+                            message: format!("❌ 同步失敗：{e}"),
+                            is_success: false,
+                        });
+                    }
+                }
+            }
             Message::RestoreRequested => {
                 self.confirming_restore = true;
                 self.toast = None;
             }
             Message::ConfirmRestore => {
                 self.confirming_restore = false;
-                match crate::restore_official_config() {
+                match crate::launcher::reset_mirror_profile() {
                     Ok(()) => {
                         self.api_key.clear();
                         self.api_key_placeholder = "輸入 API Key".into();
                         self.toast = Some(Toast {
-                            message: "✅ Claude 設定已回到官方預設。".into(),
+                            message: "✅ 鏡像 Profile 目錄已重置。原版目錄完全不受影響。".into(),
                             is_success: true,
                         });
                     }
                     Err(e) => {
                         self.toast = Some(Toast {
-                            message: format!("❌ 還原失敗：{e}"),
+                            message: format!("❌ 重置失敗：{e}"),
                             is_success: false,
                         });
                     }
@@ -534,6 +591,30 @@ impl LauncherApp {
                 } else {
                     self.model_reasoning_overrides.insert(model, level);
                 }
+                self.toast = None;
+            }
+            Message::Model1mToggled(model, enabled) => {
+                if enabled {
+                    self.model_1m_overrides.insert(model, true);
+                } else {
+                    self.model_1m_overrides.remove(&model);
+                }
+                self.toast = None;
+            }
+            Message::RealModelSelected(opt) => {
+                self.real_model = opt;
+                self.toast = None;
+            }
+            Message::RealModelSonnetSelected(opt) => {
+                self.real_model_sonnet = opt;
+                self.toast = None;
+            }
+            Message::RealModelOpusSelected(opt) => {
+                self.real_model_opus = opt;
+                self.toast = None;
+            }
+            Message::RealModelHaikuSelected(opt) => {
+                self.real_model_haiku = opt;
                 self.toast = None;
             }
         }

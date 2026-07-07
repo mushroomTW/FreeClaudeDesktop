@@ -107,24 +107,17 @@ pub fn prepare_proxy_body(body: &str, settings: &Settings) -> String {
     };
 
     if let Some(model) = data.get("model").and_then(Value::as_str) {
-        if let Some(mapped) = settings.real_model_routes.get(model) {
+        if let Some(mapped) = crate::conversion::request_converter::resolve_model_route(model, settings) {
             tracing::info!("[model 映射] {} → {}", model, mapped);
-            data["model"] = Value::String(mapped.clone());
-        } else if let Some(fallback) = &settings.real_model {
-            tracing::warn!(
-                "[model 映射] {} 不在 routes 中，使用預設 model: {}",
-                model,
-                fallback
-            );
-            data["model"] = Value::String(fallback.clone());
+            data["model"] = Value::String(mapped);
         } else {
             tracing::debug!(
                 "[model 映射] {} 不在 routes 中，也沒有預設 model，原樣轉發",
                 model
             );
         }
-    } else if let Some(model) = &settings.real_model {
-        data["model"] = Value::String(model.clone());
+    } else if let Some(mapped) = crate::conversion::request_converter::resolve_model_route("", settings) {
+        data["model"] = Value::String(mapped);
     }
 
     serde_json::to_string(&data).unwrap_or_else(|_| body.to_string())
@@ -143,13 +136,25 @@ pub fn rewrite_stale_model_request(
     let mut data: Value = serde_json::from_str(proxy_body).ok()?;
     let stale_model = data.get("model").and_then(Value::as_str)?.to_string();
 
-    let mut fallback = settings
-        .real_model_routes
-        .iter()
-        .filter(|(alias, model)| alias.as_str() != requested_model && model.as_str() != stale_model)
-        .map(|(_, model)| model.clone())
-        .collect::<Vec<_>>();
+    let mut fallback = Vec::new();
+    for (alias, model) in &settings.real_model_routes {
+        if alias != requested_model && model != &stale_model {
+            fallback.push(model.clone());
+        }
+    }
+    if let Some(real_m) = &settings.real_model {
+        if !real_m.trim().is_empty() && real_m != &stale_model {
+            fallback.push(real_m.clone());
+        }
+    }
+    for disc in &settings.discovered_models {
+        if disc != &stale_model && !disc.trim().is_empty() {
+            fallback.push(disc.clone());
+        }
+    }
     fallback.sort();
+    fallback.dedup();
+
     let fallback_model = fallback.into_iter().next()?;
 
     data["model"] = Value::String(fallback_model.clone());
@@ -277,7 +282,12 @@ fn supports_reasoning_effort(model: &ProviderModel, overrides: &HashMap<String, 
             .any(|level| level != "none")
 }
 
-fn model_alias(model: &ProviderModel, index: usize, overrides: &HashMap<String, String>) -> String {
+fn model_alias(
+    model: &ProviderModel,
+    index: usize,
+    overrides: &HashMap<String, String>,
+    _m1_overrides: &HashMap<String, bool>,
+) -> String {
     if supports_reasoning_effort(model, overrides) {
         let levels = effective_reasoning_effort_levels(model, overrides);
         if levels.iter().any(|level| level == "max") {
@@ -286,17 +296,18 @@ fn model_alias(model: &ProviderModel, index: usize, overrides: &HashMap<String, 
             format!("claude-sonnet-4-6[{index}]")
         }
     } else {
-        format!("claude-3-5-haiku[{index}]")
+        format!("claude-haiku-4-5[{index}]")
     }
 }
 
 pub fn normalize_models_response(provider_response: Value) -> Result<NormalizedModels, String> {
-    normalize_models_response_with_overrides(provider_response, &HashMap::new())
+    normalize_models_response_with_overrides(provider_response, &HashMap::new(), &HashMap::new())
 }
 
 pub fn normalize_models_response_with_overrides(
     provider_response: Value,
     reasoning_overrides: &HashMap<String, String>,
+    m1_overrides: &HashMap<String, bool>,
 ) -> Result<NormalizedModels, String> {
     let parsed: ProviderModelsResponse =
         serde_json::from_value(provider_response).map_err(|e| e.to_string())?;
@@ -317,13 +328,52 @@ pub fn normalize_models_response_with_overrides(
     });
     models.dedup_by(|a, b| provider_model_id(a) == provider_model_id(b));
 
-    let mut reasoning_effort_routes = std::collections::HashMap::new();
+fn model_base_name(name: &str) -> &str {
+    for suffix in ["-1m", "-1M", " 1m", " 1M"] {
+        if let Some(base) = name.strip_suffix(suffix) {
+            return base;
+        }
+    }
+    name
+}
+
+let base_1m_set: std::collections::HashSet<String> = models
+    .iter()
+    .filter_map(|m| {
+        let pid = provider_model_id(m);
+        if m1_overrides.get(&pid).copied().unwrap_or(false) {
+            Some(model_base_name(&pid).to_string())
+        } else {
+            None
+        }
+    })
+    .collect();
+let ids_1m: std::collections::HashSet<String> = models
+    .iter()
+    .map(provider_model_id)
+    .filter(|pid| m1_overrides.get(pid.as_str()).copied().unwrap_or(false))
+    .collect();
+if !base_1m_set.is_empty() {
+    eprintln!(
+        "[1m-debug] base_1m_set={:?} ids_1m={:?} upstream_ids={:?}",
+        base_1m_set,
+        ids_1m,
+        models.iter().map(provider_model_id).collect::<Vec<_>>()
+    );
+    models.retain(|m| {
+        let pid = provider_model_id(m);
+        let base = model_base_name(&pid);
+        !base_1m_set.contains(base) || ids_1m.contains(&pid)
+    });
+}
+
+let mut reasoning_effort_routes = std::collections::HashMap::new();
     let data: Vec<_> = models
         .into_iter()
         .enumerate()
         .map(|(index, model)| {
             let provider_model_id = provider_model_id(&model);
-            let alias = model_alias(&model, index, reasoning_overrides);
+            let alias = model_alias(&model, index, reasoning_overrides, m1_overrides);
             let effort_levels = effective_reasoning_effort_levels(&model, reasoning_overrides);
             if supports_reasoning_effort(&model, reasoning_overrides) {
                 reasoning_effort_routes.insert(alias.clone(), effort_levels);
@@ -335,25 +385,38 @@ pub fn normalize_models_response_with_overrides(
                 .and_then(unix_secs_to_rfc3339)
                 .unwrap_or_else(|| "1970-01-01T00:00:00.000Z".to_string());
 
+            let is_1m = m1_overrides.get(&provider_model_id).copied().unwrap_or(false);
+
             // `max_input_tokens` 是 NVIDIA/OpenAI 直接給的視窗大小；若只給
             // `context_length`（總容量），我們暫且當作輸入視窗，輸出另讀
             // `max_completion_tokens`。兩個都沒有時保持 `None`，讓 Claude Desktop
-            // 走預設（200k）做為最低限度的視覺提示。
-            let max_input = model.max_input_tokens.or(model.context_length);
+            // 走預設（200k）做為最低限度的視覺提示。若開啟 1M，至少提升為 1,000,000。
+            let raw_max_input = model.max_input_tokens.or(model.context_length);
+            let max_input = if is_1m {
+                Some(raw_max_input.unwrap_or(200_000).max(1_000_000))
+            } else {
+                raw_max_input
+            };
             let max_output = model.max_output_tokens.or(model.max_completion_tokens);
+
+            let display_name = model
+                .name
+                .clone()
+                .unwrap_or_else(|| provider_model_id.clone());
+
+            let name = display_name.clone();
 
             NormalizedModel {
                 kind: "model".to_string(),
                 id: alias,
-                display_name: model
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| provider_model_id.clone()),
+                name,
+                display_name,
                 created_at,
                 provider_model_id,
                 max_input_tokens: max_input,
                 max_tokens: max_output,
                 capabilities: model_capabilities(&model, reasoning_overrides),
+                supports1m: if is_1m { Some(true) } else { None },
             }
         })
         .collect();
@@ -434,12 +497,13 @@ pub fn build_inference_models(models: &[NormalizedModel]) -> Vec<InferenceModel>
         .iter()
         .map(|model| InferenceModel {
             name: model.id.clone(),
-            label_override: model.display_name.clone(),
+            label_override: model.name.clone(),
             provider_model_id: model.provider_model_id.clone(),
             display_name: model.display_name.clone(),
             max_input_tokens: model.max_input_tokens,
             max_tokens: model.max_tokens,
             capabilities: model.capabilities.clone(),
+            supports1m: model.supports1m,
             transport_type: crate::models::openai::default_transport_type(),
         })
         .collect()
@@ -681,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    fn models_with_max_reasoning_use_opus_alias() {
+    fn models_with_max_reasoning_stores_reasoning_effort_levels() {
         let normalized = normalize_models_response(json!({
             "data": [{
                 "model_name": "deepseek-v4-pro",
@@ -716,6 +780,7 @@ mod tests {
                 }]
             }),
             &overrides,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -727,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn models_without_reasoning_use_anthropic_shaped_alias() {
+    fn models_without_reasoning_use_provider_model_id() {
         let normalized = normalize_models_response(json!({
             "data": [{
                 "model_name": "glm-5.2",
@@ -739,8 +804,8 @@ mod tests {
         }))
         .unwrap();
 
-        assert_eq!(normalized.data[0].id, "claude-3-5-haiku[0]");
-        assert_eq!(normalized.routes["claude-3-5-haiku[0]"], "glm-5.2");
+        assert_eq!(normalized.data[0].id, "claude-haiku-4-5[0]");
+        assert_eq!(normalized.routes["claude-haiku-4-5[0]"], "glm-5.2");
     }
 
     #[test]
@@ -766,7 +831,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(normalized.data.len(), 1);
-        assert_eq!(normalized.data[0].id, "claude-3-5-haiku[0]");
+        assert_eq!(normalized.data[0].id, "claude-haiku-4-5[0]");
     }
 
     #[test]
@@ -791,5 +856,150 @@ mod tests {
 
         assert_eq!(rewritten.fallback_model, "deepseek-v4-flash");
         assert_eq!(rewritten.updated_body["model"], "deepseek-v4-flash");
+    }
+
+    #[test]
+    fn models_response_applies_1m_suffix_when_override_is_enabled() {
+        let mut m1_overrides = std::collections::HashMap::new();
+        m1_overrides.insert("deepseek-v4-flash".to_string(), true);
+
+        let normalized = normalize_models_response_with_overrides(
+            json!({
+                "data": [{
+                    "id": "deepseek-v4-flash",
+                    "model_info": {
+                        "supports_reasoning_effort": false,
+                        "reasoning_effort_levels": ["none"]
+                    }
+                }]
+            }),
+            &std::collections::HashMap::new(),
+            &m1_overrides,
+        )
+        .unwrap();
+
+        assert_eq!(normalized.data[0].id, "claude-haiku-4-5[0]");
+        assert_eq!(normalized.data[0].name, "deepseek-v4-flash");
+        assert_eq!(normalized.data[0].max_input_tokens, Some(1_000_000));
+        assert_eq!(normalized.data[0].supports1m, Some(true));
+        assert_eq!(normalized.routes["claude-haiku-4-5[0]"], "deepseek-v4-flash");
+    }
+
+    #[test]
+    fn models_response_hides_same_name_200k_variant_when_1m_enabled() {
+        // 上游同時回傳兩筆 id 不同但 name 相同的條目（200k 與 1m 變體）
+        let mut m1_overrides = std::collections::HashMap::new();
+        m1_overrides.insert("claude-sonnet-4-5-1m".to_string(), true);
+
+        let normalized = normalize_models_response_with_overrides(
+            json!({
+                "data": [
+                    {
+                        "id": "claude-sonnet-4-5",
+                        "name": "Claude Sonnet 4.5",
+                        "model_info": {
+                            "supports_reasoning_effort": false,
+                            "reasoning_effort_levels": ["none"]
+                        }
+                    },
+                    {
+                        "id": "claude-sonnet-4-5-1m",
+                        "name": "Claude Sonnet 4.5",
+                        "model_info": {
+                            "supports_reasoning_effort": false,
+                            "reasoning_effort_levels": ["none"]
+                        }
+                    }
+                ]
+            }),
+            &std::collections::HashMap::new(),
+            &m1_overrides,
+        )
+        .unwrap();
+
+        // 只剩被勾選 1M 的那一筆
+        assert_eq!(normalized.data.len(), 1);
+        assert_eq!(
+            normalized.data[0].provider_model_id,
+            "claude-sonnet-4-5-1m"
+        );
+        assert_eq!(normalized.data[0].supports1m, Some(true));
+    }
+
+    #[test]
+    fn models_response_keeps_all_when_no_1m_override() {
+        // 沒有任何 1M 勾選 → 不過濾，兩筆同名變體都保留
+        let normalized = normalize_models_response_with_overrides(
+            json!({
+                "data": [
+                    {
+                        "id": "claude-sonnet-4-5",
+                        "name": "Claude Sonnet 4.5",
+                        "model_info": {
+                            "supports_reasoning_effort": false,
+                            "reasoning_effort_levels": ["none"]
+                        }
+                    },
+                    {
+                        "id": "claude-sonnet-4-5-1m",
+                        "name": "Claude Sonnet 4.5",
+                        "model_info": {
+                            "supports_reasoning_effort": false,
+                            "reasoning_effort_levels": ["none"]
+                        }
+                    }
+                ]
+            }),
+            &std::collections::HashMap::new(),
+            &std::collections::HashMap::new(),
+        )
+        .unwrap();
+
+        assert_eq!(normalized.data.len(), 2);
+    }
+
+    #[test]
+    fn models_response_keeps_same_name_variants_when_neither_1m_enabled() {
+        // 同名族群中無任何 1M 勾選 → 不誤殺，兩筆都保留
+        let mut m1_overrides = std::collections::HashMap::new();
+        // 只勾選「另一個」不同名稱的模型為 1M
+        m1_overrides.insert("glm-5.2".to_string(), true);
+
+        let normalized = normalize_models_response_with_overrides(
+            json!({
+                "data": [
+                    {
+                        "id": "claude-sonnet-4-5",
+                        "name": "Claude Sonnet 4.5",
+                        "model_info": {
+                            "supports_reasoning_effort": false,
+                            "reasoning_effort_levels": ["none"]
+                        }
+                    },
+                    {
+                        "id": "claude-sonnet-4-5-1m",
+                        "name": "Claude Sonnet 4.5",
+                        "model_info": {
+                            "supports_reasoning_effort": false,
+                            "reasoning_effort_levels": ["none"]
+                        }
+                    },
+                    {
+                        "id": "glm-5.2",
+                        "name": "GLM 5.2",
+                        "model_info": {
+                            "supports_reasoning_effort": false,
+                            "reasoning_effort_levels": ["none"]
+                        }
+                    }
+                ]
+            }),
+            &std::collections::HashMap::new(),
+            &m1_overrides,
+        )
+        .unwrap();
+
+        // Claude Sonnet 4.5 同名兩筆皆保留（族群里沒有 1M 勾選），glm-5.2 也保留
+        assert_eq!(normalized.data.len(), 3);
     }
 }

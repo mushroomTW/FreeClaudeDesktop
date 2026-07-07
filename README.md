@@ -180,6 +180,25 @@ sequenceDiagram
 * API Keys 使用系統原生憑證庫 (`keyring` / DPAPI) 加密保存。
 * 可隨時寫入與還原 Claude Desktop `configLibrary` 設定。
 
+### 5. 🛡️ 鏡像數據隔離與 Profile 隔離 (Mirror Profile)
+
+* **官方原版數據 100% 唯讀保護**：絕不修改或破壞官方原版 `%APPDATA%\Claude` 的任何數據與登入狀態。
+* **獨立隔離 Profile 運行**：藉由 Electron 原生 `--user-data-dir` 參數，將所有 3P 代理配置、自訂 MCP、`configLibrary` 與日誌完全隔離至 `%LOCALAPPDATA%\FreeClaudeLauncher\claude_profile`。
+* **無縫無痕還原**：不經啟動器直接開啟官方原版 Claude Desktop 隨時均為 100% 純淨無修改的原生狀態。
+
+---
+
+## 🔄 數據隔離與同步機制 (Mirror Profile & Sync)
+
+本程式採用獨立 Profile 數據隔離機制，以確保官方原始資料的純淨性：
+
+1. **首次啟動同步 (First-time Sync)**：
+   * 當首次執行 FreeClaudeLauncher 時，程式會自動將當前平台官方原版目錄（如 `%APPDATA%\Claude`）中的登入 Session（Local Storage / IndexedDB）與自訂 MCP 伺服器配置複製至鏡像目錄中，免去重新登入帳號的麻煩。
+2. **從原版同步 (Re-sync from Official)**：
+   * 當您在官方原版 Claude 登入新帳號或新增了其他自訂 MCP 伺服器後，可一鍵點擊介面上的 **「從原版同步」**，程式會立即拉取原版最新狀態並重新套用代理代理與本機 MCP 設定。
+3. **重置鏡像 Profile (Reset Mirror Profile)**：
+   * 點擊 **「重置鏡像 Profile」** 僅會清空鏡像 Profile 並重新初始化，官方原版資料完全不受任何影響。
+
 ---
 
 ## 📂 專案結構
@@ -210,7 +229,7 @@ src/
 
 ### 1. 執行單元測試
 
-專案包含 57+ 個嚴謹的單元與整合測試：
+專案包含 68+ 個嚴謹的單元與整合測試：
 
 ```bash
 cargo test

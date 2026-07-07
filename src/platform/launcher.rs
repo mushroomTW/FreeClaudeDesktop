@@ -9,13 +9,88 @@ use std::process::Command;
 use crate::common::local_app_data;
 use crate::error::{AppError, AppResult};
 
+pub fn mirror_profile_dir() -> PathBuf {
+    local_app_data().join("FreeClaudeLauncher").join("claude_profile")
+}
+
+pub fn official_app_data_dir() -> PathBuf {
+    app_data_roaming_dir().join("Claude")
+}
+
+pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+    let src = src.as_ref();
+    let dst = dst.as_ref();
+
+    if !src.exists() {
+        return Ok(());
+    }
+
+    fs::create_dir_all(dst)?;
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if ty.is_dir() {
+            copy_dir_all(&src_path, &dst_path)?;
+        } else if ty.is_file() {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn ensure_mirror_profile_initialized() -> AppResult<()> {
+    let mirror = mirror_profile_dir();
+    if !mirror.exists() {
+        let old_3p = local_app_data().join("Claude-3p");
+        if old_3p.exists() {
+            copy_dir_all(&old_3p, &mirror)?;
+        } else {
+            let official = official_app_data_dir();
+            if official.exists() {
+                copy_dir_all(&official, &mirror)?;
+            } else {
+                fs::create_dir_all(&mirror)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn resync_from_official() -> AppResult<()> {
+    let official = official_app_data_dir();
+    let mirror = mirror_profile_dir();
+    if official.exists() {
+        let _ = copy_dir_all(&official, &mirror);
+    }
+    let settings = crate::config::get_launcher_settings();
+    let port = settings.as_ref().and_then(|s| s.active_port).unwrap_or(crate::constants::DEFAULT_PORT);
+    let enable_computer_mcp = settings.as_ref().map(|s| s.enable_computer_mcp_server).unwrap_or(false);
+
+    apply_3p_deployment_mode()?;
+    apply_computer_mcp_server_config(enable_computer_mcp)?;
+    let _ = update_config_port(port);
+    Ok(())
+}
+
+pub fn reset_mirror_profile() -> AppResult<()> {
+    let mirror = mirror_profile_dir();
+    if mirror.exists() {
+        let _ = fs::remove_dir_all(&mirror);
+    }
+    ensure_mirror_profile_initialized()
+}
+
 pub fn user_data_dir() -> PathBuf {
     if let Ok(dir) = env::var("CLAUDE_USER_DATA_DIR") {
         if !dir.trim().is_empty() {
             return PathBuf::from(dir);
         }
     }
-    local_app_data().join("Claude-3p")
+    mirror_profile_dir()
 }
 
 pub fn config_lib_dir() -> PathBuf {
@@ -139,16 +214,16 @@ fn config_library_dirs() -> Vec<PathBuf> {
         if let Ok(entries) = fs::read_dir(packages_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_lowercase();
-                if !name.contains("claude") {
-                    continue;
+                if name.contains("claude") {
+                    dirs.push(
+                        entry
+                            .path()
+                            .join("LocalCache")
+                            .join("Local")
+                            .join("Claude-3p")
+                            .join("configLibrary"),
+                    );
                 }
-                let dir = entry
-                    .path()
-                    .join("LocalCache")
-                    .join("Local")
-                    .join("Claude-3p")
-                    .join("configLibrary");
-                dirs.push(dir);
             }
         }
     }
@@ -322,6 +397,7 @@ pub fn kill_claude_processes() {
 #[cfg(target_os = "windows")]
 pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
     kill_claude_processes();
+    ensure_mirror_profile_initialized()?;
     let target = match custom_path {
         Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
         _ => detect_claude_path()
@@ -333,6 +409,8 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
         return Err(AppError::Launcher("找不到 Claude.exe".to_string()));
     }
 
+    let user_data_arg = format!("--user-data-dir={}", mirror_profile_dir().display());
+
     let launched = if let Some(family) = get_claude_appx_package_family_name() {
         let target_str = target.to_string_lossy();
         if target_str.contains("WindowsApps") || target_str.contains(&family) {
@@ -343,10 +421,10 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
             );
             Command::new("explorer.exe").arg(aumid).spawn()
         } else {
-            Command::new(&target).spawn()
+            Command::new(&target).arg(&user_data_arg).spawn()
         }
     } else {
-        Command::new(&target).spawn()
+        Command::new(&target).arg(&user_data_arg).spawn()
     };
 
     launched
@@ -357,6 +435,7 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
 #[cfg(not(target_os = "windows"))]
 pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
     kill_claude_processes();
+    ensure_mirror_profile_initialized()?;
     let target = match custom_path {
         Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
         _ => detect_claude_path()
@@ -368,7 +447,10 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
         return Err(AppError::Launcher("找不到 Claude 執行檔".to_string()));
     }
 
+    let user_data_arg = format!("--user-data-dir={}", mirror_profile_dir().display());
+
     Command::new(&target)
+        .arg(&user_data_arg)
         .spawn()
         .map(|_| target)
         .map_err(|error| AppError::Launcher(error.to_string()))
@@ -408,17 +490,23 @@ pub fn claude_config(
         "inferenceGatewayBaseUrl": format!("http://127.0.0.1:{}", port),
         "inferenceGatewayApiKey": proxy_auth_token,
         "inferenceGatewayAuthScheme": auth_scheme,
-        "modelDiscoveryEnabled": true
+        "modelDiscoveryEnabled": true,
+        "autoModeEnabled": true
     });
 
     if !inference_models.is_empty() {
         let models_val: Vec<Value> = inference_models
             .iter()
             .map(|m| {
-                json!({
+                let mut item = json!({
                     "name": m.name,
+                    "labelOverride": if m.label_override.is_empty() { &m.display_name } else { &m.label_override },
                     "displayName": if m.display_name.is_empty() { &m.name } else { &m.display_name }
-                })
+                });
+                if m.supports1m == Some(true) {
+                    item["supports1m"] = json!(true);
+                }
+                item
             })
             .collect();
         config["inferenceModels"] = Value::Array(models_val);
@@ -499,6 +587,12 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
         json!({})
     };
 
+    if data.get("autoModeEnabled").is_none() {
+        if let Some(obj) = data.as_object_mut() {
+            obj.insert("autoModeEnabled".to_string(), Value::Bool(true));
+        }
+    }
+
     if data.get("env").is_none() {
         if let Some(obj) = data.as_object_mut() {
             obj.insert("env".to_string(), json!({}));
@@ -513,6 +607,10 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
         env_obj.insert(
             "ENABLE_TOOL_SEARCH".to_string(),
             Value::String("true".to_string()),
+        );
+        env_obj.insert(
+            "CLAUDE_CODE_ENABLE_AUTO_MODE".to_string(),
+            Value::String("1".to_string()),
         );
     }
 
@@ -566,44 +664,184 @@ pub fn app_data_roaming_dir() -> PathBuf {
 }
 
 pub fn mcp_config_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
+    vec![mirror_profile_dir().join("claude_desktop_config.json")]
+}
 
-    // 1. 標準 Local AppData 路徑下的 Claude-3p
-    let std_dir = local_app_data().join("Claude-3p");
-    paths.push(std_dir.join("claude_desktop_config.json"));
+pub fn clean_json_text(input: &str) -> String {
+    let text = input.strip_prefix("\u{feff}").unwrap_or(input);
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let mut in_string = false;
+    let mut is_escaped = false;
 
-    // 2. MSIX 封裝的 LocalCache 路徑下
-    #[cfg(target_os = "windows")]
-    {
-        let packages_dir = env::var_os("USERPROFILE")
-            .map(PathBuf::from)
-            .unwrap_or_default()
-            .join("AppData")
-            .join("Local")
-            .join("Packages");
-        if let Ok(entries) = fs::read_dir(packages_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_lowercase();
-                if name.contains("claude") {
-                    let dir = entry
-                        .path()
-                        .join("LocalCache")
-                        .join("Local")
-                        .join("Claude-3p");
-                    paths.push(dir.join("claude_desktop_config.json"));
+    while let Some(ch) = chars.next() {
+        if in_string {
+            out.push(ch);
+            if is_escaped {
+                is_escaped = false;
+            } else if ch == '\\' {
+                is_escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if ch == '"' {
+            in_string = true;
+            out.push(ch);
+            continue;
+        }
+
+        if ch == '/' {
+            if let Some(&'/') = chars.peek() {
+                chars.next();
+                while let Some(&next_ch) = chars.peek() {
+                    if next_ch == '\n' || next_ch == '\r' {
+                        break;
+                    }
+                    chars.next();
+                }
+                continue;
+            } else if let Some(&'*') = chars.peek() {
+                chars.next();
+                while let Some(c) = chars.next() {
+                    if c == '*' {
+                        if let Some(&'/') = chars.peek() {
+                            chars.next();
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+
+        out.push(ch);
+    }
+
+    let mut cleaned = String::with_capacity(out.len());
+    let mut out_chars = out.chars().peekable();
+    in_string = false;
+    is_escaped = false;
+
+    while let Some(ch) = out_chars.next() {
+        if in_string {
+            cleaned.push(ch);
+            if is_escaped {
+                is_escaped = false;
+            } else if ch == '\\' {
+                is_escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if ch == '"' {
+            in_string = true;
+            cleaned.push(ch);
+            continue;
+        }
+
+        if ch == ',' {
+            let mut temp_chars = out_chars.clone();
+            let mut trailing = false;
+            while let Some(next_c) = temp_chars.next() {
+                if next_c.is_whitespace() {
+                    continue;
+                }
+                if next_c == '}' || next_c == ']' {
+                    trailing = true;
+                }
+                break;
+            }
+            if trailing {
+                continue;
+            }
+        }
+
+        cleaned.push(ch);
+    }
+
+    cleaned
+}
+
+pub fn read_json_config(path: &Path) -> Option<Value> {
+    if !path.exists() {
+        return None;
+    }
+    let text = fs::read_to_string(path).ok()?;
+    let cleaned = clean_json_text(&text);
+    serde_json::from_str(&cleaned).ok()
+}
+
+pub fn is_managed_computer_mcp_server(name: &str, val: &Value) -> bool {
+    if name == COMPUTER_MCP_SERVER_NAME || name == "launcher-computer" {
+        return true;
+    }
+    if let Some(cmd) = val.get("command").and_then(Value::as_str) {
+        let lower = cmd.to_lowercase();
+        if lower.contains("freeclaude") || lower.contains("launcher") {
+            return true;
+        }
+    }
+    if let Some(args) = val.get("args").and_then(Value::as_array) {
+        for arg in args {
+            if let Some(s) = arg.as_str() {
+                let trimmed = s.trim_start_matches('-');
+                if trimmed == "mcp" || trimmed == "mcp-computer-server" {
+                    return true;
                 }
             }
         }
     }
+    false
+}
 
-    // 3. 標準 Roaming 路徑下的 Claude (作為 fallback/相容)
-    paths.push(
-        app_data_roaming_dir()
-            .join("Claude")
-            .join("claude_desktop_config.json"),
-    );
+pub fn collect_all_mcp_servers() -> serde_json::Map<String, Value> {
+    let mut merged = serde_json::Map::new();
+    let mut search_paths = mcp_config_paths();
+    search_paths.push(official_app_data_dir().join("claude_desktop_config.json"));
 
-    paths
+    for path in search_paths {
+        if path.exists() {
+            if let Some(data) = read_json_config(&path) {
+                if let Some(servers) = data.get("mcpServers").and_then(Value::as_object) {
+                    for (k, v) in servers {
+                        if !is_managed_computer_mcp_server(k, v) && !merged.contains_key(k) {
+                            merged.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    merged
+}
+
+pub fn merge_mcp_servers(mut data: Value, all_servers: &serde_json::Map<String, Value>) -> Value {
+    if !data.is_object() {
+        data = json!({});
+    }
+    if !all_servers.is_empty() {
+        if let Some(obj) = data.as_object_mut() {
+            let servers = obj
+                .entry("mcpServers")
+                .or_insert_with(|| json!({}));
+            if !servers.is_object() {
+                *servers = json!({});
+            }
+            if let Some(servers_obj) = servers.as_object_mut() {
+                for (k, v) in all_servers {
+                    if !servers_obj.contains_key(k) {
+                        servers_obj.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+        }
+    }
+    data
 }
 
 const COMPUTER_MCP_SERVER_NAME: &str = "free-claude-computer";
@@ -614,6 +852,17 @@ pub fn with_computer_mcp_server(mut data: Value, enabled: bool, command: &Path) 
     }
 
     let obj = data.as_object_mut().unwrap();
+    if let Some(servers) = obj.get_mut("mcpServers").and_then(Value::as_object_mut) {
+        let legacy_keys: Vec<String> = servers
+            .iter()
+            .filter(|(k, v)| is_managed_computer_mcp_server(k, v))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in legacy_keys {
+            servers.remove(&key);
+        }
+    }
+
     if enabled {
         let servers = obj.entry("mcpServers").or_insert_with(|| json!({}));
         if !servers.is_object() {
@@ -627,7 +876,6 @@ pub fn with_computer_mcp_server(mut data: Value, enabled: bool, command: &Path) 
             }),
         );
     } else if let Some(servers) = obj.get_mut("mcpServers").and_then(Value::as_object_mut) {
-        servers.remove(COMPUTER_MCP_SERVER_NAME);
         if servers.is_empty() {
             obj.remove("mcpServers");
         }
@@ -643,22 +891,31 @@ pub fn apply_computer_mcp_server_config(enabled: bool) -> AppResult<()> {
         PathBuf::new()
     };
 
+    let all_mcp_servers = collect_all_mcp_servers();
+
     for path in mcp_config_paths() {
-        let data: Value = if path.exists() {
-            let text = fs::read_to_string(&path)?;
-            serde_json::from_str(&text).unwrap_or(json!({}))
+        let (data_opt, file_existed) = if path.exists() {
+            (read_json_config(&path), true)
         } else {
-            if !enabled {
+            if !enabled && all_mcp_servers.is_empty() {
                 continue;
             }
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            json!({})
+            (Some(json!({})), false)
         };
 
-        let content =
-            serde_json::to_string_pretty(&with_computer_mcp_server(data, enabled, &command))?;
+        if file_existed && data_opt.is_none() {
+            tracing::warn!("Skipping writing MCP config to {:?} because JSON parsing failed", path);
+            continue;
+        }
+
+        let data = data_opt.unwrap_or_else(|| json!({}));
+        let data = merge_mcp_servers(data, &all_mcp_servers);
+        let data = with_computer_mcp_server(data, enabled, &command);
+
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let content = serde_json::to_string_pretty(&data)?;
         fs::write(&path, content)?;
     }
 
@@ -703,20 +960,31 @@ pub fn restore_managed_deployment_mode(mut data: Value) -> Value {
 }
 
 pub fn apply_3p_deployment_mode() -> AppResult<()> {
+    let all_mcp_servers = collect_all_mcp_servers();
+
     for path in mcp_config_paths() {
-        let data: Value = if path.exists() {
-            let text = fs::read_to_string(&path)?;
-            serde_json::from_str(&text).unwrap_or(json!({}))
+        let (data_opt, file_existed) = if path.exists() {
+            (read_json_config(&path), true)
         } else {
-            if let Some(parent) = path.parent() {
-                if !parent.exists() {
-                    continue;
-                }
+            let parent_exists = path.parent().map(|p| p.exists()).unwrap_or(false);
+            if !parent_exists && all_mcp_servers.is_empty() {
+                continue;
             }
-            json!({})
+            (Some(json!({})), false)
         };
 
+        if file_existed && data_opt.is_none() {
+            tracing::warn!("Skipping writing config to {:?} because JSON parsing failed", path);
+            continue;
+        }
+
+        let data = data_opt.unwrap_or_else(|| json!({}));
+        let data = merge_mcp_servers(data, &all_mcp_servers);
         let data = apply_managed_deployment_mode(data);
+
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
         let content = serde_json::to_string_pretty(&data)?;
         let _ = fs::write(&path, content);
     }
@@ -724,10 +992,12 @@ pub fn apply_3p_deployment_mode() -> AppResult<()> {
 }
 
 pub fn restore_1p_deployment_mode() -> AppResult<()> {
+    let all_mcp_servers = collect_all_mcp_servers();
+
     for path in mcp_config_paths() {
         if path.exists() {
-            let text = fs::read_to_string(&path)?;
-            if let Ok(data) = serde_json::from_str::<Value>(&text) {
+            if let Some(data) = read_json_config(&path) {
+                let data = merge_mcp_servers(data, &all_mcp_servers);
                 let content = serde_json::to_string_pretty(&restore_managed_deployment_mode(data))?;
                 let _ = fs::write(&path, content);
             }
@@ -830,5 +1100,130 @@ mod tests {
         let disabled = with_computer_mcp_server(enabled, false, command);
         assert_eq!(disabled["mcpServers"]["other"]["command"], "node");
         assert!(disabled["mcpServers"].get("free-claude-computer").is_none());
+    }
+
+    #[test]
+    fn claude_config_includes_supports1m_field() {
+        let model = crate::models::openai::InferenceModel {
+            name: "claude-sonnet-4-6[0]".to_string(),
+            label_override: "deepseek-v4-flash".to_string(),
+            provider_model_id: "deepseek-v4-flash".to_string(),
+            display_name: "deepseek-v4-flash".to_string(),
+            max_input_tokens: Some(1_000_000),
+            max_tokens: Some(8192),
+            capabilities: serde_json::json!({}),
+            supports1m: Some(true),
+            transport_type: None,
+        };
+
+        let config = claude_config(12345, &[model], "proxy-token");
+        let models = config["inferenceModels"].as_array().unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0]["name"], "claude-sonnet-4-6[0]");
+        assert_eq!(models[0]["supports1m"], true);
+    }
+
+    #[test]
+    fn clean_json_text_strips_comments_bom_and_trailing_commas() {
+        let raw = "\u{feff}{\n  // line comment\n  \"mcpServers\": {\n    /* block comment */\n    \"custom\": { \"command\": \"node\", },\n  },\n}";
+        let cleaned = clean_json_text(raw);
+        let parsed: Value = serde_json::from_str(&cleaned).expect("Failed to parse cleaned json");
+        assert_eq!(parsed["mcpServers"]["custom"]["command"], "node");
+    }
+
+    #[test]
+    fn clean_json_text_robust_boundary_scenarios() {
+        let raw = "\u{feff}{
+            // line comment
+            \"url\": \"http://example.com/api\",
+            \"comment_block_in_str\": \"/* this is not a comment */\",
+            \"escaped_quote_in_str\": \"hello \\\"world\\\"\",
+            \"escaped_slash_in_str\": \"hello \\/ world\",
+            \"unicode_escapes\": \"\\u0022hello\\u0022\",
+            \"unicode_backslash\": \"\\u005c\",
+            \"array_with_trailing\": [
+                1,
+                2,
+                3,
+            ],
+            \"object_with_trailing\": {
+                \"a\": 1,
+                \"b\": 2,
+            },
+        }";
+        let cleaned = clean_json_text(raw);
+        let parsed: Value = serde_json::from_str(&cleaned).expect(&format!("Failed to parse: {}", cleaned));
+        assert_eq!(parsed["url"], "http://example.com/api");
+        assert_eq!(parsed["comment_block_in_str"], "/* this is not a comment */");
+        assert_eq!(parsed["escaped_quote_in_str"], "hello \"world\"");
+        assert_eq!(parsed["escaped_slash_in_str"], "hello / world");
+        assert_eq!(parsed["unicode_escapes"], "\"hello\"");
+        assert_eq!(parsed["unicode_backslash"], "\\");
+        assert_eq!(parsed["array_with_trailing"].as_array().unwrap().len(), 3);
+        assert_eq!(parsed["object_with_trailing"]["b"], 2);
+    }
+
+    #[test]
+    fn merge_mcp_servers_preserves_and_merges_custom_servers() {
+        let mut servers = serde_json::Map::new();
+        servers.insert("user_mcp".to_string(), json!({ "command": "python" }));
+
+        let data = json!({
+            "deploymentMode": "3p",
+            "mcpServers": {
+                "existing_mcp": { "command": "node" }
+            }
+        });
+
+        let merged = merge_mcp_servers(data, &servers);
+        assert_eq!(merged["mcpServers"]["existing_mcp"]["command"], "node");
+        assert_eq!(merged["mcpServers"]["user_mcp"]["command"], "python");
+    }
+
+    #[test]
+    fn removes_legacy_launcher_computer_mcp_entry() {
+        let command = Path::new("C:\\FreeClaudeLauncher.exe");
+        let data = json!({
+            "mcpServers": {
+                "launcher-computer": { "command": "C:\\FreeClaudeLauncher.exe", "args": ["mcp"] },
+                "custom": { "command": "node" }
+            }
+        });
+
+        let updated = with_computer_mcp_server(data, true, command);
+        assert!(updated["mcpServers"].get("launcher-computer").is_none());
+        assert_eq!(updated["mcpServers"]["free-claude-computer"]["args"][0], "--mcp-computer-server");
+        assert_eq!(updated["mcpServers"]["custom"]["command"], "node");
+    }
+
+    #[test]
+    fn mirror_profile_dir_returns_valid_path() {
+        let mirror = mirror_profile_dir();
+        assert!(mirror.to_string_lossy().contains("FreeClaudeLauncher"));
+        assert!(mirror.to_string_lossy().contains("claude_profile"));
+    }
+
+    #[test]
+    fn official_app_data_dir_returns_valid_path() {
+        let official = official_app_data_dir();
+        assert!(official.to_string_lossy().contains("Claude"));
+    }
+
+    #[test]
+    fn copy_dir_all_recursively_copies_files() {
+        let temp_src = std::env::temp_dir().join(format!("fcl_test_src_{}", std::process::id()));
+        let temp_dst = std::env::temp_dir().join(format!("fcl_test_dst_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_src);
+        let _ = fs::remove_dir_all(&temp_dst);
+
+        let sub_dir = temp_src.join("subdir");
+        fs::create_dir_all(&sub_dir).unwrap();
+        fs::write(sub_dir.join("test.txt"), "hello").unwrap();
+
+        copy_dir_all(&temp_src, &temp_dst).unwrap();
+        assert_eq!(fs::read_to_string(temp_dst.join("subdir").join("test.txt")).unwrap(), "hello");
+
+        let _ = fs::remove_dir_all(&temp_src);
+        let _ = fs::remove_dir_all(&temp_dst);
     }
 }

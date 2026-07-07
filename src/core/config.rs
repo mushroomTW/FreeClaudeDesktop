@@ -14,6 +14,12 @@ pub struct Settings {
     pub real_api_key: String,
     pub real_auth_scheme: String,
     pub real_model: Option<String>,
+    #[serde(default)]
+    pub real_model_sonnet: Option<String>,
+    #[serde(default)]
+    pub real_model_opus: Option<String>,
+    #[serde(default)]
+    pub real_model_haiku: Option<String>,
     pub real_model_routes: HashMap<String, String>,
     #[serde(default)]
     pub real_model_reasoning_efforts: HashMap<String, Vec<String>>,
@@ -21,6 +27,8 @@ pub struct Settings {
     pub discovered_models: Vec<String>,
     #[serde(default)]
     pub model_reasoning_overrides: HashMap<String, String>,
+    #[serde(default)]
+    pub model_1m_overrides: HashMap<String, bool>,
     /// 寫入 Claude Desktop gateway config 的本機 proxy token
     #[serde(default = "default_proxy_auth_token")]
     pub proxy_auth_token: String,
@@ -110,10 +118,14 @@ impl Default for Settings {
             real_api_key: String::new(),
             real_auth_scheme: String::new(),
             real_model: None,
+            real_model_sonnet: None,
+            real_model_opus: None,
+            real_model_haiku: None,
             real_model_routes: HashMap::new(),
             real_model_reasoning_efforts: HashMap::new(),
             discovered_models: Vec::new(),
             model_reasoning_overrides: HashMap::new(),
+            model_1m_overrides: HashMap::new(),
             proxy_auth_token: default_proxy_auth_token(),
             active_port: None,
             transport_type: String::new(),

@@ -56,6 +56,11 @@ pub fn save_config(
     web_fetch_allowed_schemes: &str,
     theme_mode: &str,
     model_reasoning_overrides: &HashMap<String, String>,
+    model_1m_overrides: &HashMap<String, bool>,
+    real_model: Option<String>,
+    real_model_sonnet: Option<String>,
+    real_model_opus: Option<String>,
+    real_model_haiku: Option<String>,
 ) -> AppResult<()> {
     let existing = get_launcher_settings();
     let real_api_key = if api_key.trim().is_empty() {
@@ -80,7 +85,7 @@ pub fn save_config(
     let mut discovered_models = Vec::new();
     if let Ok(raw_models) = server::fetch_models_list(base_url, &real_api_key, auth_scheme) {
         if let Ok(normalized) =
-            normalize_models_response_with_overrides(raw_models, model_reasoning_overrides)
+            normalize_models_response_with_overrides(raw_models, model_reasoning_overrides, model_1m_overrides)
         {
             routes = normalized.routes.clone();
             reasoning_efforts = normalized.reasoning_effort_routes.clone();
@@ -90,7 +95,13 @@ pub fn save_config(
                 .map(|model| model.provider_model_id.clone())
                 .collect();
             inference_models = build_inference_models(&normalized.data);
-            server::models_endpoint::store_models_cache(base_url, auth_scheme, &normalized);
+            server::models_endpoint::store_models_cache(
+                base_url,
+                auth_scheme,
+                model_reasoning_overrides,
+                model_1m_overrides,
+                &normalized,
+            );
         }
     }
     let stored_api_key = protect_secret(&real_api_key)?;
@@ -105,7 +116,10 @@ pub fn save_config(
         real_base_url: base_url.trim().to_string(),
         real_api_key: stored_api_key,
         real_auth_scheme: auth_scheme.to_string(),
-        real_model: existing.as_ref().and_then(|s| s.real_model.clone()),
+        real_model: real_model.or_else(|| existing.as_ref().and_then(|s| s.real_model.clone())),
+        real_model_sonnet: real_model_sonnet.or_else(|| existing.as_ref().and_then(|s| s.real_model_sonnet.clone())),
+        real_model_opus: real_model_opus.or_else(|| existing.as_ref().and_then(|s| s.real_model_opus.clone())),
+        real_model_haiku: real_model_haiku.or_else(|| existing.as_ref().and_then(|s| s.real_model_haiku.clone())),
         real_model_routes: if routes.is_empty() {
             existing
                 .as_ref()
@@ -131,6 +145,7 @@ pub fn save_config(
             discovered_models
         },
         model_reasoning_overrides: model_reasoning_overrides.clone(),
+        model_1m_overrides: model_1m_overrides.clone(),
         proxy_auth_token: proxy_auth_token.clone(),
         active_port: Some(port),
         transport_type: transport_type.to_string(),
@@ -146,6 +161,7 @@ pub fn save_config(
         web_fetch_allow_private_networks,
         theme_mode: theme_mode.to_string(),
     };
+    crate::server::models_endpoint::clear_models_cache();
     save_launcher_settings(&settings)?;
 
     let content = serde_json::to_string_pretty(&launcher::claude_config(

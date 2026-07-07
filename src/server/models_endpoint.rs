@@ -12,6 +12,8 @@ use std::sync::{Mutex, OnceLock};
 struct ModelsCache {
     base_url: String,
     auth_scheme: String,
+    reasoning_overrides: std::collections::HashMap<String, String>,
+    m1_overrides: std::collections::HashMap<String, bool>,
     models: NormalizedModels,
 }
 
@@ -21,28 +23,48 @@ fn models_cache() -> &'static Mutex<Option<ModelsCache>> {
     MODELS_CACHE.get_or_init(|| Mutex::new(None))
 }
 
-pub fn store_models_cache(base_url: &str, auth_scheme: &str, models: &NormalizedModels) {
+pub fn store_models_cache(
+    base_url: &str,
+    auth_scheme: &str,
+    reasoning_overrides: &std::collections::HashMap<String, String>,
+    m1_overrides: &std::collections::HashMap<String, bool>,
+    models: &NormalizedModels,
+) {
     if let Ok(mut cache) = models_cache().lock() {
         *cache = Some(ModelsCache {
             base_url: base_url.trim().to_string(),
             auth_scheme: auth_scheme.to_string(),
+            reasoning_overrides: reasoning_overrides.clone(),
+            m1_overrides: m1_overrides.clone(),
             models: models.clone(),
         });
     }
 }
 
-fn cached_models(base_url: &str, auth_scheme: &str) -> Option<NormalizedModels> {
+fn cached_models(
+    base_url: &str,
+    auth_scheme: &str,
+    reasoning_overrides: &std::collections::HashMap<String, String>,
+    m1_overrides: &std::collections::HashMap<String, bool>,
+) -> Option<NormalizedModels> {
     let cache = models_cache().lock().ok()?;
     let cache = cache.as_ref()?;
-    (cache.base_url == base_url.trim() && cache.auth_scheme == auth_scheme)
+    (cache.base_url == base_url.trim()
+        && cache.auth_scheme == auth_scheme
+        && &cache.reasoning_overrides == reasoning_overrides
+        && &cache.m1_overrides == m1_overrides)
         .then(|| cache.models.clone())
+}
+
+pub fn clear_models_cache() {
+    if let Ok(mut cache) = models_cache().lock() {
+        *cache = None;
+    }
 }
 
 #[cfg(test)]
 fn clear_models_cache_for_tests() {
-    if let Ok(mut cache) = models_cache().lock() {
-        *cache = None;
-    }
+    clear_models_cache();
 }
 
 pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
@@ -72,7 +94,12 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
             .into_response();
     }
 
-    if let Some(models) = cached_models(&settings.real_base_url, &settings.real_auth_scheme) {
+    if let Some(models) = cached_models(
+        &settings.real_base_url,
+        &settings.real_auth_scheme,
+        &settings.model_reasoning_overrides,
+        &settings.model_1m_overrides,
+    ) {
         return (axum::http::StatusCode::OK, Json(models)).into_response();
     }
 
@@ -102,12 +129,15 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
         Ok(raw_models) => match normalize_models_response_with_overrides(
             raw_models,
             &settings.model_reasoning_overrides,
+            &settings.model_1m_overrides,
         ) {
             Ok(normalized) => {
                 tracing::info!("<- 獲取模型列表成功，模型數量: {}", normalized.data.len());
                 store_models_cache(
                     &settings.real_base_url,
                     &settings.real_auth_scheme,
+                    &settings.model_reasoning_overrides,
+                    &settings.model_1m_overrides,
                     &normalized,
                 );
                 settings.real_model_routes = normalized.routes.clone();
@@ -211,12 +241,14 @@ mod tests {
             data: vec![NormalizedModel {
                 kind: "model".to_string(),
                 id: "claude-3-5-haiku[0]".to_string(),
+                name: "glm-5.2".to_string(),
                 display_name: "glm-5.2".to_string(),
                 created_at: "1970-01-01T00:00:00.000Z".to_string(),
                 provider_model_id: "glm-5.2".to_string(),
                 max_input_tokens: None,
                 max_tokens: None,
                 capabilities: json!({ "thinking": { "supported": false } }),
+                supports1m: None,
             }],
             has_more: false,
             first_id: Some("claude-3-5-haiku[0]".to_string()),
@@ -229,10 +261,18 @@ mod tests {
     #[test]
     fn cached_models_are_reused_only_for_matching_gateway_settings() {
         clear_models_cache_for_tests();
-        store_models_cache("http://localhost:4000", "bearer", &normalized_models());
+        let empty_reasoning = HashMap::new();
+        let empty_m1: HashMap<String, bool> = HashMap::new();
+        store_models_cache(
+            "http://localhost:4000",
+            "bearer",
+            &empty_reasoning,
+            &empty_m1,
+            &normalized_models(),
+        );
 
-        assert!(cached_models("http://localhost:4000", "bearer").is_some());
-        assert!(cached_models("http://localhost:4001", "bearer").is_none());
-        assert!(cached_models("http://localhost:4000", "x-api-key").is_none());
+        assert!(cached_models("http://localhost:4000", "bearer", &empty_reasoning, &empty_m1).is_some());
+        assert!(cached_models("http://localhost:4001", "bearer", &empty_reasoning, &empty_m1).is_none());
+        assert!(cached_models("http://localhost:4000", "x-api-key", &empty_reasoning, &empty_m1).is_none());
     }
 }

@@ -477,3 +477,43 @@ pub fn custom_text_input_style(
         },
     }
 }
+
+/// 自訂 Scrollable 樣式（移除預設亮紫色捲軸，改為極簡優雅微透捲軸）
+pub fn custom_scrollable_style(
+    palette: ColorPalette,
+    status: iced::widget::scrollable::Status,
+) -> iced::widget::scrollable::Style {
+    let scroller_color = match status {
+        iced::widget::scrollable::Status::Hovered { .. }
+        | iced::widget::scrollable::Status::Dragged { .. } => {
+            Color::from_rgba(palette.text_dim.r, palette.text_dim.g, palette.text_dim.b, 0.4)
+        }
+        _ => Color::from_rgba(palette.text_dim.r, palette.text_dim.g, palette.text_dim.b, 0.2),
+    };
+
+    let rail = iced::widget::scrollable::Rail {
+        background: None,
+        border: Border::default(),
+        scroller: iced::widget::scrollable::Scroller {
+            background: Background::Color(scroller_color),
+            border: Border {
+                radius: 4.0.into(),
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+        },
+    };
+
+    iced::widget::scrollable::Style {
+        container: iced::widget::container::Style::default(),
+        vertical_rail: rail,
+        horizontal_rail: rail,
+        gap: None,
+        auto_scroll: iced::widget::scrollable::AutoScroll {
+            background: Background::Color(Color::TRANSPARENT),
+            border: Border::default(),
+            icon: Color::TRANSPARENT,
+            shadow: Shadow::default(),
+        },
+    }
+}

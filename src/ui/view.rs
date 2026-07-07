@@ -1,9 +1,9 @@
 use crate::app::{LauncherApp, Message, Tab, ThemeMode};
 use crate::constants::{AUTH_SCHEMES, PROVIDERS};
 use crate::ui::styles::{
-    custom_checkbox_style, custom_menu_style, custom_pick_list_style, custom_text_input_style,
-    danger_btn_style, ghost_btn_style, outline_btn_style, primary_btn_style, secondary_btn_style,
-    segmented_button_style, ColorPalette,
+    custom_checkbox_style, custom_menu_style, custom_pick_list_style, custom_scrollable_style,
+    custom_text_input_style, danger_btn_style, ghost_btn_style, outline_btn_style,
+    primary_btn_style, secondary_btn_style, segmented_button_style, ColorPalette,
 };
 use iced::font::Weight;
 use iced::widget::{
@@ -199,16 +199,13 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     });
 
     // ── 表單 ──
-    let provider_options: Vec<String> = PROVIDERS.iter().map(|s| s.to_string()).collect();
-    let auth_options: Vec<String> = AUTH_SCHEMES.iter().map(|s| s.to_string()).collect();
-
     let form = column![
         form_row(
             "API 供應商",
             pick_list(
-                provider_options,
-                app.provider.clone(),
-                Message::ProviderSelected,
+                PROVIDERS,
+                app.provider.as_deref(),
+                |s| Message::ProviderSelected(s.to_string()),
             )
             .placeholder("選擇供應商...")
             .width(Length::Fill)
@@ -241,9 +238,9 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         form_row(
             "驗證方式",
             pick_list(
-                auth_options,
-                app.auth_scheme.clone(),
-                Message::AuthSchemeSelected,
+                AUTH_SCHEMES,
+                app.auth_scheme.as_deref(),
+                |s| Message::AuthSchemeSelected(s.to_string()),
             )
             .width(Length::Fill)
             .style(move |_theme, status| custom_pick_list_style(palette, status))
@@ -280,14 +277,8 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         ..Default::default()
     });
 
-    let transport_options = vec!["openai_chat".to_string(), "anthropic_messages".to_string()];
-    let model_reasoning_options = vec![
-        "none".to_string(),
-        "low".to_string(),
-        "medium".to_string(),
-        "high".to_string(),
-        "max".to_string(),
-    ];
+    const TRANSPORT_OPTIONS: &[&str] = &["openai_chat", "anthropic_messages"];
+    const MODEL_REASONING_OPTIONS: &[&str] = &["none", "low", "medium", "high", "max"];
     let model_reasoning_rows: Vec<Element<'_, Message>> = if app.discovered_models.is_empty() {
         vec![text("尚未抓到模型；儲存設定後會列出可設定的模型。")
             .size(13)
@@ -300,18 +291,30 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                 let selected = app
                     .model_reasoning_overrides
                     .get(model)
-                    .cloned()
-                    .unwrap_or_else(|| "none".to_string());
+                    .map(|s| s.as_str())
+                    .unwrap_or("none");
+                let is_1m_enabled = app
+                    .model_1m_overrides
+                    .get(model)
+                    .copied()
+                    .unwrap_or(false);
                 let model_id = model.clone();
+                let model_id_1m = model.clone();
                 row![
                     text(model.clone())
                         .size(13)
                         .color(palette.text)
                         .width(Length::Fill),
+                    checkbox(is_1m_enabled)
+                        .label("1M 上下文")
+                        .text_size(13)
+                        .spacing(6)
+                        .on_toggle(move |enabled| Message::Model1mToggled(model_id_1m.clone(), enabled))
+                        .style(move |_theme, status| custom_checkbox_style(palette, status)),
                     pick_list(
-                        model_reasoning_options.clone(),
+                        MODEL_REASONING_OPTIONS,
                         Some(selected),
-                        move |level| Message::ModelReasoningLevelSelected(model_id.clone(), level),
+                        move |level| Message::ModelReasoningLevelSelected(model_id.clone(), level.to_string()),
                     )
                     .width(Length::Fixed(130.0))
                     .style(move |_theme, status| custom_pick_list_style(palette, status))
@@ -342,14 +345,106 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     ]
     .spacing(6);
 
-    let reasoning_options = vec!["separate".to_string(), "inline".to_string()];
+    const REASONING_OPTIONS: &[&str] = &["separate", "inline"];
     let models_form = column![
+        form_row(
+            "Opus 模型",
+            pick_list(
+                app.model_options.as_slice(),
+                Some(
+                    app.real_model_opus
+                        .clone()
+                        .unwrap_or_else(|| "(自動/動態別名)".to_string()),
+                ),
+                |selected| {
+                    if selected == "(自動/動態別名)" {
+                        Message::RealModelOpusSelected(None)
+                    } else {
+                        Message::RealModelOpusSelected(Some(selected))
+                    }
+                },
+            )
+            .width(Length::Fill)
+            .style(move |_theme, status| custom_pick_list_style(palette, status))
+            .menu_style(move |_theme| custom_menu_style(palette))
+            .into(),
+            palette.text,
+        ),
+        form_row(
+            "Sonnet 模型",
+            pick_list(
+                app.model_options.as_slice(),
+                Some(
+                    app.real_model_sonnet
+                        .clone()
+                        .unwrap_or_else(|| "(自動/動態別名)".to_string()),
+                ),
+                |selected| {
+                    if selected == "(自動/動態別名)" {
+                        Message::RealModelSonnetSelected(None)
+                    } else {
+                        Message::RealModelSonnetSelected(Some(selected))
+                    }
+                },
+            )
+            .width(Length::Fill)
+            .style(move |_theme, status| custom_pick_list_style(palette, status))
+            .menu_style(move |_theme| custom_menu_style(palette))
+            .into(),
+            palette.text,
+        ),
+        form_row(
+            "Haiku 模型",
+            pick_list(
+                app.model_options.as_slice(),
+                Some(
+                    app.real_model_haiku
+                        .clone()
+                        .unwrap_or_else(|| "(自動/動態別名)".to_string()),
+                ),
+                |selected| {
+                    if selected == "(自動/動態別名)" {
+                        Message::RealModelHaikuSelected(None)
+                    } else {
+                        Message::RealModelHaikuSelected(Some(selected))
+                    }
+                },
+            )
+            .width(Length::Fill)
+            .style(move |_theme, status| custom_pick_list_style(palette, status))
+            .menu_style(move |_theme| custom_menu_style(palette))
+            .into(),
+            palette.text,
+        ),
+        form_row(
+            "預設保底模型",
+            pick_list(
+                app.model_options.as_slice(),
+                Some(
+                    app.real_model
+                        .clone()
+                        .unwrap_or_else(|| "(自動/動態別名)".to_string()),
+                ),
+                |selected| {
+                    if selected == "(自動/動態別名)" {
+                        Message::RealModelSelected(None)
+                    } else {
+                        Message::RealModelSelected(Some(selected))
+                    }
+                },
+            )
+            .width(Length::Fill)
+            .style(move |_theme, status| custom_pick_list_style(palette, status))
+            .menu_style(move |_theme| custom_menu_style(palette))
+            .into(),
+            palette.text,
+        ),
         form_row(
             "傳輸協定",
             pick_list(
-                transport_options,
-                Some(app.transport_type.clone()),
-                Message::TransportTypeSelected,
+                TRANSPORT_OPTIONS,
+                Some(app.transport_type.as_str()),
+                |s| Message::TransportTypeSelected(s.to_string()),
             )
             .width(Length::Fill)
             .style(move |_theme, status| custom_pick_list_style(palette, status))
@@ -360,9 +455,9 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         form_row(
             "Thinking 模式",
             pick_list(
-                reasoning_options,
-                Some(app.reasoning_replay_mode.clone()),
-                Message::ReasoningReplayModeSelected,
+                REASONING_OPTIONS,
+                Some(app.reasoning_replay_mode.as_str()),
+                |s| Message::ReasoningReplayModeSelected(s.to_string()),
             )
             .width(Length::Fill)
             .style(move |_theme, status| custom_pick_list_style(palette, status))
@@ -533,15 +628,15 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         content = content.push(toast_widget);
     }
 
-    // ── 還原確認列 ──
+    // ── 重置鏡像確認列 ──
     if app.confirming_restore {
         let confirm_bar = container(
             row![
-                text("⚠ 確定要還原為官方設定？將移除 Gateway 設定。")
+                text("⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。")
                     .size(13)
                     .color(palette.warning)
                     .width(Length::Fill),
-                button(text("確定").size(13).color(iced::Color::WHITE))
+                button(text("確定重置").size(13).color(iced::Color::WHITE))
                     .on_press(Message::ConfirmRestore)
                     .style(move |_theme, status| danger_btn_style(palette, status))
                     .padding([6, 16]),
@@ -575,20 +670,24 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         content = content.push(confirm_bar);
     }
 
-    // ── 底部按鈕列 ──
+    // ── 底部按鈕列（現代極簡微符號風格） ──
     let buttons = row![
-        button(text("🚀 儲存並啟動 Claude").size(14).font(Font {
+        button(text("儲存並啟動 ↵").size(14).font(Font {
             weight: Weight::Semibold,
             ..Default::default()
         }))
         .on_press(Message::SaveAndLaunch)
         .style(move |_theme, status| primary_btn_style(palette, status))
         .padding([10, 20]),
-        button(text("💾 僅儲存").size(14))
+        button(text("僅儲存").size(14))
             .on_press(Message::SaveOnly)
             .style(move |_theme, status| secondary_btn_style(palette, status))
             .padding([10, 16]),
-        button(text("↩ 還原官方").size(14).color(palette.text_dim))
+        button(text("從原版同步").size(14))
+            .on_press(Message::ResyncFromOfficial)
+            .style(move |_theme, status| secondary_btn_style(palette, status))
+            .padding([10, 16]),
+        button(text("重置鏡像 Profile").size(14).color(palette.text_dim))
             .on_press(Message::RestoreRequested)
             .style(move |_theme, status| outline_btn_style(palette, status))
             .padding([10, 16]),
@@ -699,7 +798,8 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                         snap: false,
                     })
             )
-            .width(Length::Fill),
+            .width(Length::Fill)
+            .style(move |_theme, status| custom_scrollable_style(palette, status)),
         ]
         .spacing(0)
         .height(Length::Fill),
