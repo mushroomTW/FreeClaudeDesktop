@@ -190,7 +190,7 @@ impl LauncherApp {
                 app.provider = Some("NVIDIA".into());
                 app.auth_scheme = Some("bearer".into());
             } else if settings.real_base_url.contains("api.anthropic.com") {
-                app.provider = Some("Anthropic".into());
+                app.provider = Some("自訂".into());
                 app.auth_scheme = Some("x-api-key".into());
             } else {
                 app.provider = Some("自訂".into());
@@ -388,11 +388,6 @@ impl LauncherApp {
                         self.base_url = "https://integrate.api.nvidia.com/v1".into();
                         self.auth_scheme = Some("bearer".into());
                         self.transport_type = "openai_chat".to_string();
-                    }
-                    "Anthropic" => {
-                        self.base_url = "https://api.anthropic.com".into();
-                        self.auth_scheme = Some("x-api-key".into());
-                        self.transport_type = "anthropic_messages".to_string();
                     }
                     _ => {}
                 }

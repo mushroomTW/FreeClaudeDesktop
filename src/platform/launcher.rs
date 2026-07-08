@@ -205,6 +205,10 @@ fn config_library_dirs() -> Vec<PathBuf> {
     let mut dirs = vec![config_lib_dir()];
     #[cfg(target_os = "windows")]
     {
+        // Windows Store 版 Claude 無法吃 --user-data-dir，ClaudeSource 會固定讀這裡的 3P profile。
+        dirs.push(local_app_data().join("Claude-3p").join("configLibrary"));
+        dirs.push(app_data_roaming_dir().join("Claude-3p").join("configLibrary"));
+
         let packages_dir = env::var_os("USERPROFILE")
             .map(PathBuf::from)
             .unwrap_or_default()
@@ -491,7 +495,13 @@ pub fn claude_config(
         "inferenceGatewayApiKey": proxy_auth_token,
         "inferenceGatewayAuthScheme": auth_scheme,
         "modelDiscoveryEnabled": true,
-        "autoModeEnabled": true
+        "autoModeEnabled": true,
+        "coworkTabEnabled": true,
+        "isClaudeCodeForDesktopEnabled": true,
+        "chatTabEnabled": true,
+        "extensions": {
+            "enabled": true
+        }
     });
 
     if !inference_models.is_empty() {
@@ -1121,6 +1131,15 @@ mod tests {
         assert_eq!(models.len(), 1);
         assert_eq!(models[0]["name"], "claude-sonnet-4-6[0]");
         assert_eq!(models[0]["supports1m"], true);
+    }
+
+    #[test]
+    fn claude_config_enables_chat_and_extensions_by_default() {
+        let config = claude_config(12345, &[], "proxy-token");
+        assert_eq!(config["coworkTabEnabled"], true);
+        assert_eq!(config["isClaudeCodeForDesktopEnabled"], true);
+        assert_eq!(config["chatTabEnabled"], true);
+        assert_eq!(config["extensions"]["enabled"], true);
     }
 
     #[test]

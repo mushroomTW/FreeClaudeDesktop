@@ -191,6 +191,14 @@ fn provider_model_id(model: &ProviderModel) -> String {
     }
 }
 
+fn model_info_u64(model: &ProviderModel, key: &str) -> Option<u64> {
+    model
+        .model_info
+        .as_ref()
+        .and_then(|info| info.get(key))
+        .and_then(Value::as_u64)
+}
+
 fn override_reasoning_levels(level: &str) -> Vec<String> {
     match level {
         "low" => vec!["none".to_string(), "low".to_string()],
@@ -385,19 +393,25 @@ let mut reasoning_effort_routes = std::collections::HashMap::new();
                 .and_then(unix_secs_to_rfc3339)
                 .unwrap_or_else(|| "1970-01-01T00:00:00.000Z".to_string());
 
-            let is_1m = m1_overrides.get(&provider_model_id).copied().unwrap_or(false);
-
             // `max_input_tokens` 是 NVIDIA/OpenAI 直接給的視窗大小；若只給
             // `context_length`（總容量），我們暫且當作輸入視窗，輸出另讀
             // `max_completion_tokens`。兩個都沒有時保持 `None`，讓 Claude Desktop
             // 走預設（200k）做為最低限度的視覺提示。若開啟 1M，至少提升為 1,000,000。
-            let raw_max_input = model.max_input_tokens.or(model.context_length);
+            let raw_max_input = model
+                .max_input_tokens
+                .or_else(|| model_info_u64(&model, "max_input_tokens"))
+                .or(model.context_length);
+            let is_1m = m1_overrides.get(&provider_model_id).copied().unwrap_or(false)
+                || raw_max_input.map(|tokens| tokens >= 1_000_000).unwrap_or(false);
             let max_input = if is_1m {
                 Some(raw_max_input.unwrap_or(200_000).max(1_000_000))
             } else {
                 raw_max_input
             };
-            let max_output = model.max_output_tokens.or(model.max_completion_tokens);
+            let max_output = model
+                .max_output_tokens
+                .or_else(|| model_info_u64(&model, "max_output_tokens"))
+                .or(model.max_completion_tokens);
 
             let display_name = model
                 .name
@@ -883,6 +897,25 @@ mod tests {
         assert_eq!(normalized.data[0].max_input_tokens, Some(1_000_000));
         assert_eq!(normalized.data[0].supports1m, Some(true));
         assert_eq!(normalized.routes["claude-haiku-4-5[0]"], "deepseek-v4-flash");
+    }
+
+    #[test]
+    fn model_info_max_input_tokens_enables_1m_support() {
+        let normalized = normalize_models_response(json!({
+            "data": [{
+                "model_name": "nemotron-3-super-120b",
+                "model_info": {
+                    "max_input_tokens": 1_000_000,
+                    "max_output_tokens": 65_536
+                }
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(normalized.data[0].provider_model_id, "nemotron-3-super-120b");
+        assert_eq!(normalized.data[0].max_input_tokens, Some(1_000_000));
+        assert_eq!(normalized.data[0].max_tokens, Some(65_536));
+        assert_eq!(normalized.data[0].supports1m, Some(true));
     }
 
     #[test]

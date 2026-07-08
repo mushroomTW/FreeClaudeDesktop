@@ -250,6 +250,21 @@ mod tests {
     }
 
     #[test]
+    fn prepare_proxy_body_falls_back_for_unmapped_local_alias() {
+        let settings = Settings {
+            real_model_haiku: Some("nemotron-3-super-120b".to_string()),
+            ..Settings::default()
+        };
+
+        let body = prepare_proxy_body(r#"{"model":"claude-haiku-4-5[2]","messages":[]}"#, &settings);
+
+        assert_eq!(
+            serde_json::from_str::<Value>(&body).unwrap()["model"],
+            "nemotron-3-super-120b"
+        );
+    }
+
+    #[test]
     fn public_config_hides_api_key() {
         let settings = Settings {
             real_base_url: "https://openrouter.ai/api".to_string(),

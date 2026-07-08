@@ -10,7 +10,7 @@ pub const HTTP_TIMEOUT_SECS: u64 = 60;
 pub const CONFIG_ID: &str = "ec29f0cd-700e-4d28-beb3-f4b1b3831fb6";
 
 /// 可選的 API 供應商清單
-pub const PROVIDERS: &[&str] = &["OpenRouter", "NVIDIA", "Anthropic", "自訂"];
+pub const PROVIDERS: &[&str] = &["OpenRouter", "NVIDIA", "自訂"];
 /// 可選的驗證方案標頭清單
 pub const AUTH_SCHEMES: &[&str] = &["bearer", "x-api-key"];
 /// Windows API 建立處理序時不顯示視窗的旗標值
