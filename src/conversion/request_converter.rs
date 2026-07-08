@@ -47,6 +47,33 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
         return settings.real_model.clone().filter(|m| !m.trim().is_empty());
     }
 
+    let req_lower = requested_model.to_ascii_lowercase();
+    // 算一次 family 供後續兩處使用：家族 override 與模糊匹配 routes。
+    let family = if req_lower.contains("sonnet") {
+        Some("sonnet")
+    } else if req_lower.contains("opus") {
+        Some("opus")
+    } else if req_lower.contains("haiku") {
+        Some("haiku")
+    } else {
+        None
+    };
+
+    // 0. 家族 override：若有為此家族指定的真實模型則直接採用。
+    if let Some(fam) = family {
+        let family_model = match fam {
+            "sonnet" => &settings.real_model_sonnet,
+            "opus" => &settings.real_model_opus,
+            "haiku" => &settings.real_model_haiku,
+            _ => &None,
+        };
+        if let Some(m) = family_model {
+            if !m.trim().is_empty() {
+                return Some(m.clone());
+            }
+        }
+    }
+
     // 1. 精確匹配 routes (例如 "claude-sonnet-4-6[0]" 或 "claude-sonnet-4-6[0][1m]")
     if let Some(mapped) = settings.real_model_routes.get(requested_model) {
         return Some(mapped.clone());
@@ -91,38 +118,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
         }
     }
 
-    // 3. 按模型家族（sonnet / opus / haiku）匹配：優先使用使用者為該家族指定的真實模型，否則模糊匹配 routes
-    let req_lower = requested_model.to_ascii_lowercase();
-    if req_lower.contains("sonnet") {
-        if let Some(m) = &settings.real_model_sonnet {
-            if !m.trim().is_empty() {
-                return Some(m.clone());
-            }
-        }
-    } else if req_lower.contains("opus") {
-        if let Some(m) = &settings.real_model_opus {
-            if !m.trim().is_empty() {
-                return Some(m.clone());
-            }
-        }
-    } else if req_lower.contains("haiku") {
-        if let Some(m) = &settings.real_model_haiku {
-            if !m.trim().is_empty() {
-                return Some(m.clone());
-            }
-        }
-    }
-
-    let family = if req_lower.contains("sonnet") {
-        Some("sonnet")
-    } else if req_lower.contains("opus") {
-        Some("opus")
-    } else if req_lower.contains("haiku") {
-        Some("haiku")
-    } else {
-        None
-    };
-
+    // 3. 按模型家族（sonnet / opus / haiku）模糊匹配 routes
     if let Some(fam) = family {
         let mut best_key: Option<&String> = None;
         let mut best_val: Option<&String> = None;
@@ -145,7 +141,37 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     }
 
     // 4. Fallback: 使用使用者設定的全域真實模型名稱
-    settings.real_model.clone().filter(|m| !m.trim().is_empty())
+    if let Some(m) = settings.real_model.clone().filter(|m| !m.trim().is_empty()) {
+        return Some(m);
+    }
+
+    // 5. 安全兜底：如果請求的模型名稱看起來像是一個本地的 alias (含有中括號)，
+    //    但我們竟然無法將其映射到任何真實模型，則絕對不能原樣發送（因為上游必定報 400）。
+    //    此時我們強制將其映射為我們所知道的任何一個可用上游模型。
+    if requested_model.contains('[') && requested_model.contains(']') {
+        // (1) 優先使用 routes 裡的任意一個真實模型
+        if let Some(m) = settings.real_model_routes.values().next() {
+            tracing::warn!(
+                "[model 映射安全兜底] 無法解析 alias {}，強制映射為 routes 內的第一個模型 {}",
+                requested_model,
+                m
+            );
+            return Some(m.clone());
+        }
+        // (2) 其次使用 discovered_models 裡的第一個模型
+        if let Some(m) = settings.discovered_models.first() {
+            tracing::warn!(
+                "[model 映射安全兜底] 無法解析 alias {}，強制映射為已偵測的第一個模型 {}",
+                requested_model,
+                m
+            );
+            return Some(m.clone());
+        }
+        // ponytail: 家族模型（sonnet/opus/haiku）在 L50-69 已檢查並 early-return，
+        // 此處不可能命中，故不再重複檢查。
+    }
+
+    None
 }
 
 pub fn anthropic_to_openai_request(
@@ -684,6 +710,54 @@ mod tests {
         assert_eq!(
             resolve_model_route("some-random-sonnet-request", &settings),
             Some("target-claude-sonnet".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_model_route_applies_fallback_safety_net_for_local_aliases() {
+        let mut routes = std::collections::HashMap::new();
+        routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
+
+        let settings = Settings {
+            real_model_routes: routes,
+            discovered_models: vec!["gpt-4o".to_string()],
+            real_model: None,
+            ..Settings::default()
+        };
+
+        assert_eq!(
+            resolve_model_route("claude-haiku-4-5[2]", &settings),
+            Some("nim-medium".to_string())
+        );
+
+        let settings_empty_routes = Settings {
+            real_model_routes: std::collections::HashMap::new(),
+            discovered_models: vec!["gpt-4o".to_string()],
+            real_model: None,
+            ..Settings::default()
+        };
+        assert_eq!(
+            resolve_model_route("claude-haiku-4-5[2]", &settings_empty_routes),
+            Some("gpt-4o".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_model_route_prefers_family_override_over_dynamic_route() {
+        let mut routes = std::collections::HashMap::new();
+        routes.insert(
+            "claude-haiku-4-5[2]".to_string(),
+            "diffusiongemma-26b".to_string(),
+        );
+        let settings = Settings {
+            real_model_routes: routes,
+            real_model_haiku: Some("nemotron-3-super-120b".to_string()),
+            ..Settings::default()
+        };
+
+        assert_eq!(
+            resolve_model_route("claude-haiku-4-5[2]", &settings),
+            Some("nemotron-3-super-120b".to_string())
         );
     }
 }

@@ -54,6 +54,58 @@ pub fn form_row<'a>(
     .into()
 }
 
+fn shorten_path(path: &str, max_len: usize) -> String {
+    if path.len() <= max_len {
+        return path.to_string();
+    }
+    // ponytail: 純 head/tail 截斷，用 char_indices 找 UTF-8 安全邊界。
+    let half = max_len.saturating_sub(3) / 2;
+    if half == 0 {
+        return path.to_string();
+    }
+    let head_end = path
+        .char_indices()
+        .take_while(|(i, _)| *i < half)
+        .last()
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(0);
+    let tail_start = path.len().saturating_sub(half);
+    let tail_start = path
+        .char_indices()
+        .skip_while(|(i, _)| *i < tail_start)
+        .map(|(i, _)| i)
+        .next()
+        .unwrap_or(path.len());
+    format!("{}...{}", &path[..head_end], &path[tail_start..])
+}
+
+#[cfg(test)]
+mod shorten_path_tests {
+    use super::shorten_path;
+
+    #[test]
+    fn short_path_unchanged() {
+        assert_eq!(shorten_path("C:\\Users\\file.txt", 60), "C:\\Users\\file.txt");
+    }
+
+    #[test]
+    fn long_path_truncates_safely() {
+        let long = "C:\\Users\\mushroomMaster\\Documents\\FreeClaudeDesktop\\very\\deeply\\nested\\file.txt";
+        let result = shorten_path(long, 30);
+        assert!(result.len() <= 33); // head + "..." + tail
+        assert!(result.contains("..."));
+    }
+
+    #[test]
+    fn non_ascii_path_does_not_panic() {
+        // 含中文的路徑，截斷點不能落在多位元組字元中間。
+        let long = "C:\\Users\\中文字\\Desktop\\FreeClaudeDesktop\\super\\deeply\\nested\\file.txt";
+        let result = shorten_path(long, 24);
+        assert!(result.starts_with(|c: char| c.is_ascii()));
+        assert!(result.contains("..."));
+    }
+}
+
 pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     let palette = ColorPalette::for_mode(app.theme_mode);
 
@@ -183,7 +235,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
 
     if let Some(path_line) = status_lines.get(1) {
         status_col = status_col.push(
-            text(path_line.to_string())
+            text(shorten_path(path_line, 60))
                 .size(13)
                 .color(palette.text_dim)
         );
@@ -227,7 +279,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             palette.text,
         ),
         form_row(
-            "Gateway URL",
+            "API URL",
             text_input("https://...", &app.base_url)
                 .on_input(Message::BaseUrlChanged)
                 .padding(10)
@@ -579,7 +631,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
 
     // ── 組裝主要內容（依目前分頁切換） ──
     let tab_content: Element<'_, Message> = match app.current_tab {
-        Tab::General => column![section_title, status_card, form, custom_section,]
+        Tab::General => column![section_title, form, custom_section, status_card,]
             .spacing(18)
             .into(),
         Tab::Models => column![models_title, models_form,]
@@ -869,6 +921,8 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         .spacing(0)
         .height(Length::Fill),
     )
+    .width(Length::Fill)
+    .height(Length::Fill)
     .style(move |_theme| container::Style {
         text_color: None,
         background: Some(Background::Color(palette.bg)),
