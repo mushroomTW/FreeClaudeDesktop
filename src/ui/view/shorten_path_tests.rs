@@ -1,4 +1,4 @@
-use super::shorten_path;
+use super::components::shorten_path;
 
 #[test]
 fn short_path_unchanged() {
