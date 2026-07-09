@@ -1,8 +1,28 @@
-use std::time::Duration;
 use serde_json::{json, Value};
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 use super::desktop;
 use super::types::{base64_encode, json_rpc_error, json_rpc_result, tool_error, tool_text};
+
+static GRANTED_APPLICATIONS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+fn granted_applications() -> &'static Mutex<Vec<String>> {
+    GRANTED_APPLICATIONS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn requested_applications(args: &Value) -> Vec<String> {
+    args.get("applications")
+        .or_else(|| args.get("apps"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
 pub fn handle_tools_call(id: Value, params: &Value) -> Option<Value> {
     let Some(name) = params.get("name").and_then(Value::as_str) else {
@@ -69,19 +89,20 @@ pub fn handle_tools_call(id: Value, params: &Value) -> Option<Value> {
 }
 
 fn execute_request_access(args: &Value) -> Result<Value, String> {
-    let apps = args
-        .get("applications")
-        .or_else(|| args.get("apps"))
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .unwrap_or_default();
+    let apps = requested_applications(args);
+    if !apps.is_empty() {
+        let mut granted = granted_applications()
+            .lock()
+            .map_err(|_| "Granted applications state is unavailable".to_string())?;
+        for app in &apps {
+            if !granted.contains(app) {
+                granted.push(app.clone());
+            }
+        }
+    }
 
     let reason = args.get("reason").and_then(Value::as_str).unwrap_or("");
+    let apps = apps.join(", ");
 
     let msg = if apps.is_empty() {
         "Access granted for requested applications.".to_string()
@@ -98,15 +119,14 @@ fn execute_request_teach_access(args: &Value) -> Result<Value, String> {
     if reason.is_empty() {
         Ok(tool_text("Teach mode access granted."))
     } else {
-        Ok(tool_text(format!("Teach mode access granted. Reason: {reason}")))
+        Ok(tool_text(format!(
+            "Teach mode access granted. Reason: {reason}"
+        )))
     }
 }
 
 fn execute_teach_step(args: &Value) -> Result<Value, String> {
-    let step_number = args
-        .get("step_number")
-        .and_then(Value::as_i64)
-        .unwrap_or(1);
+    let step_number = args.get("step_number").and_then(Value::as_i64).unwrap_or(1);
 
     let instruction = args
         .get("instruction")
@@ -117,9 +137,13 @@ fn execute_teach_step(args: &Value) -> Result<Value, String> {
     let target = args.get("target").and_then(Value::as_str).unwrap_or("");
 
     if target.is_empty() {
-        Ok(tool_text(format!("Teach step {step_number} presented: {instruction}")))
+        Ok(tool_text(format!(
+            "Teach step {step_number} presented: {instruction}"
+        )))
     } else {
-        Ok(tool_text(format!("Teach step {step_number} presented: {instruction} (Target: {target})")))
+        Ok(tool_text(format!(
+            "Teach step {step_number} presented: {instruction} (Target: {target})"
+        )))
     }
 }
 
@@ -128,11 +152,18 @@ fn execute_teach_batch(args: &Value) -> Result<Value, String> {
         .get("steps")
         .and_then(Value::as_array)
         .ok_or_else(|| "Missing steps array".to_string())?;
-    Ok(tool_text(format!("Queued and executed {} teach steps successfully.", steps.len())))
+    Ok(tool_text(format!(
+        "Queued and executed {} teach steps successfully.",
+        steps.len()
+    )))
 }
 
 fn execute_screenshot(args: &Value) -> Result<Value, String> {
-    if args.get("active_window_only").and_then(Value::as_bool).unwrap_or(false) {
+    if args
+        .get("active_window_only")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
         return execute_active_window_screenshot(args);
     }
     let screenshot = desktop::screenshot()?;
@@ -169,12 +200,19 @@ fn execute_active_window_screenshot(_args: &Value) -> Result<Value, String> {
 }
 
 fn execute_list_windows(args: &Value) -> Result<Value, String> {
-    let visible_only = args.get("visible_only").and_then(Value::as_bool).unwrap_or(true);
+    let visible_only = args
+        .get("visible_only")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
     let titles = desktop::list_windows(visible_only)?;
     let text = if titles.is_empty() {
         "No open window titles found.".to_string()
     } else {
-        format!("Open window titles ({}):\n- {}", titles.len(), titles.join("\n- "))
+        format!(
+            "Open window titles ({}):\n- {}",
+            titles.len(),
+            titles.join("\n- ")
+        )
     };
     Ok(tool_text(text))
 }
@@ -273,7 +311,11 @@ fn execute_key(args: &Value) -> Result<Value, String> {
         .and_then(Value::as_str)
         .or_else(|| args.get("text").and_then(Value::as_str))
         .ok_or_else(|| "Missing key".to_string())?;
-    let repeat = args.get("repeat").and_then(Value::as_u64).unwrap_or(1).min(100);
+    let repeat = args
+        .get("repeat")
+        .and_then(Value::as_u64)
+        .unwrap_or(1)
+        .min(100);
     for _ in 0..repeat {
         desktop::press_key(key)?;
     }
@@ -289,7 +331,10 @@ fn execute_scroll(args: &Value) -> Result<Value, String> {
     let amount = if let Some(amt) = args.get("scroll_amount").and_then(Value::as_i64) {
         amt
     } else if let Some(dir) = args.get("scroll_direction").and_then(Value::as_str) {
-        let count = args.get("scroll_amount").and_then(Value::as_i64).unwrap_or(3);
+        let count = args
+            .get("scroll_amount")
+            .and_then(Value::as_i64)
+            .unwrap_or(3);
         match dir {
             "up" => count,
             "down" => -count,
@@ -309,10 +354,7 @@ fn execute_hold_key(args: &Value) -> Result<Value, String> {
         .and_then(Value::as_str)
         .or_else(|| args.get("text").and_then(Value::as_str))
         .ok_or_else(|| "Missing key".to_string())?;
-    let duration_sec = args
-        .get("duration")
-        .and_then(Value::as_f64)
-        .unwrap_or(1.0);
+    let duration_sec = args.get("duration").and_then(Value::as_f64).unwrap_or(1.0);
     let ms = (duration_sec * 1000.0).clamp(0.0, 10000.0) as u64;
     desktop::hold_key(key, ms)?;
     Ok(tool_text(format!("Held key {key} for {duration_sec}s.")))
@@ -334,7 +376,10 @@ fn execute_wait(args: &Value) -> Result<Value, String> {
     let ms = if let Some(sec) = args.get("duration").and_then(Value::as_f64) {
         (sec * 1000.0).clamp(0.0, 10000.0) as u64
     } else {
-        args.get("duration_ms").and_then(Value::as_u64).unwrap_or(1000).min(10000)
+        args.get("duration_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or(1000)
+            .min(10000)
     };
     std::thread::sleep(Duration::from_millis(ms));
     Ok(tool_text(format!("Waited {ms}ms.")))
@@ -368,7 +413,19 @@ fn execute_switch_display(args: &Value) -> Result<Value, String> {
 }
 
 fn execute_list_granted_applications(_args: &Value) -> Result<Value, String> {
-    Ok(tool_text("Granted applications: [All]. Active flags: { clipboardRead: true, clipboardWrite: true, systemKeyCombos: true }"))
+    let granted = granted_applications()
+        .lock()
+        .map_err(|_| "Granted applications state is unavailable".to_string())?;
+    if granted.is_empty() {
+        Ok(tool_text(
+            "No explicit applications have been granted in this MCP session.",
+        ))
+    } else {
+        Ok(tool_text(format!(
+            "Granted applications: [{}]. Active flags: {{ clipboardRead: true, clipboardWrite: true, systemKeyCombos: true }}",
+            granted.join(", ")
+        )))
+    }
 }
 
 fn execute_read_clipboard(_args: &Value) -> Result<Value, String> {
@@ -403,7 +460,7 @@ fn execute_computer_batch(args: &Value) -> Result<Value, String> {
             .get("action")
             .and_then(Value::as_str)
             .unwrap_or("unknown");
-        
+
         let res = match action_name {
             "screenshot" => execute_screenshot(action_obj),
             "active_window_screenshot" => execute_active_window_screenshot(action_obj),

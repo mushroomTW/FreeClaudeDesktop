@@ -700,6 +700,9 @@ pub fn remove_anthropic_base_url_env() -> AppResult<()> {
                 if env_obj.remove("ENABLE_TOOL_SEARCH").is_some() {
                     changed = true;
                 }
+                if env_obj.remove("CLAUDE_CODE_ENABLE_AUTO_MODE").is_some() {
+                    changed = true;
+                }
             }
             if changed {
                 let content = serde_json::to_string_pretty(&data)?;
@@ -813,9 +816,9 @@ pub fn clean_json_text(input: &str) -> String {
         }
 
         if ch == ',' {
-            let mut temp_chars = out_chars.clone();
+            let temp_chars = out_chars.clone();
             let mut trailing = false;
-            while let Some(next_c) = temp_chars.next() {
+            for next_c in temp_chars {
                 if next_c.is_whitespace() {
                     continue;
                 }
@@ -1274,8 +1277,8 @@ mod tests {
             },
         }";
         let cleaned = clean_json_text(raw);
-        let parsed: Value =
-            serde_json::from_str(&cleaned).expect(&format!("Failed to parse: {}", cleaned));
+        let parsed: Value = serde_json::from_str(&cleaned)
+            .unwrap_or_else(|_| panic!("Failed to parse: {}", cleaned));
         assert_eq!(parsed["url"], "http://example.com/api");
         assert_eq!(
             parsed["comment_block_in_str"],

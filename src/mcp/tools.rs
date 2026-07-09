@@ -265,8 +265,6 @@ pub fn list_windows_tool() -> Value {
     })
 }
 
-
-
 pub fn zoom_tool() -> Value {
     json!({
         "name": "zoom",

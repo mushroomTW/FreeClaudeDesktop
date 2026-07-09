@@ -686,9 +686,12 @@ mod tests {
         let mut routes = std::collections::HashMap::new();
         routes.insert("1".to_string(), "nim-one".to_string());
         routes.insert("1[2]".to_string(), "nim-nested".to_string());
-        
+
         routes.insert("gpt-4o-sonnet".to_string(), "target-gpt-sonnet".to_string());
-        routes.insert("claude-3-5-sonnet-real".to_string(), "target-claude-sonnet".to_string());
+        routes.insert(
+            "claude-3-5-sonnet-real".to_string(),
+            "target-claude-sonnet".to_string(),
+        );
         routes.insert("z-sonnet".to_string(), "target-z-sonnet".to_string());
 
         let settings = Settings {

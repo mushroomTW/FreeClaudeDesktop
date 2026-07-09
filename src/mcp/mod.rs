@@ -20,7 +20,11 @@ pub fn run_computer_server() -> Result<(), Box<dyn std::error::Error>> {
 
         let response = match serde_json::from_str::<Value>(&line) {
             Ok(request) => handle_message(request),
-            Err(error) => Some(types::json_rpc_error(Value::Null, -32700, error.to_string())),
+            Err(error) => Some(types::json_rpc_error(
+                Value::Null,
+                -32700,
+                error.to_string(),
+            )),
         };
 
         if let Some(response) = response {
@@ -34,13 +38,8 @@ pub fn run_computer_server() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn handle_message(request: Value) -> Option<Value> {
-    let id = request.get("id").cloned();
+    let id = request.get("id").cloned()?;
     let method = request.get("method").and_then(Value::as_str)?;
-
-    if id.is_none() {
-        return None;
-    }
-    let id = id.unwrap();
 
     match method {
         "initialize" => Some(types::json_rpc_result(id, initialize_result(&request))),
@@ -51,7 +50,9 @@ pub fn handle_message(request: Value) -> Option<Value> {
                 "tools": tools::all_tools()
             }),
         )),
-        "tools/call" => handlers::handle_tools_call(id, request.get("params").unwrap_or(&Value::Null)),
+        "tools/call" => {
+            handlers::handle_tools_call(id, request.get("params").unwrap_or(&Value::Null))
+        }
         _ => Some(types::json_rpc_error(
             id,
             -32601,
@@ -93,7 +94,10 @@ mod tests {
         }))
         .unwrap();
 
-        assert_eq!(response["result"]["serverInfo"]["name"], "free-claude-computer");
+        assert_eq!(
+            response["result"]["serverInfo"]["name"],
+            "free-claude-computer"
+        );
     }
 
     #[test]
@@ -137,6 +141,21 @@ mod tests {
         let text = response["result"]["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("Access granted for applications: Chrome, Calculator"));
         assert!(text.contains("Reason: Need to demonstrate calculator walkthrough"));
+
+        let response = handle_message(json!({
+            "jsonrpc": "2.0",
+            "id": 22,
+            "method": "tools/call",
+            "params": {
+                "name": "list_granted_applications",
+                "arguments": {}
+            }
+        }))
+        .unwrap();
+
+        let text = response["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("Chrome"));
+        assert!(!text.contains("[All]"));
     }
 
     #[test]

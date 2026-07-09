@@ -490,8 +490,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                             let _ = save_launcher_settings(&settings);
 
                             let retry_body = rewrite.updated_body.to_string();
-                            let mut retry_req =
-                                async_client().post(&target_url).body(retry_body);
+                            let mut retry_req = async_client().post(&target_url).body(retry_body);
                             for (name, value) in &headers {
                                 let lower = name.as_str().to_ascii_lowercase();
                                 if matches!(
@@ -516,9 +515,13 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
                             if let Ok(retry_response) = retry_req.send().await {
                                 if retry_response.status().is_success() {
-                                    let retry_text = retry_response.text().await.unwrap_or_default();
-                                    if let Ok(anthropic_res) = openai_to_anthropic_response(&retry_text, &req_model) {
-                                        return (StatusCode::OK, Json(anthropic_res)).into_response();
+                                    let retry_text =
+                                        retry_response.text().await.unwrap_or_default();
+                                    if let Ok(anthropic_res) =
+                                        openai_to_anthropic_response(&retry_text, &req_model)
+                                    {
+                                        return (StatusCode::OK, Json(anthropic_res))
+                                            .into_response();
                                     }
                                 }
                             }
@@ -547,8 +550,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                             let _ = save_launcher_settings(&settings);
 
                             let retry_body = rewrite.updated_body.to_string();
-                            let mut retry_req =
-                                async_client().post(&target_url).body(retry_body);
+                            let mut retry_req = async_client().post(&target_url).body(retry_body);
                             for (name, value) in &headers {
                                 let lower = name.as_str().to_ascii_lowercase();
                                 if matches!(
@@ -575,12 +577,10 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 let mut res_builder = axum::response::Response::builder()
                                     .status(retry_response.status());
                                 for (name, value) in retry_response.headers() {
-                                    res_builder =
-                                        res_builder.header(name.clone(), value.clone());
+                                    res_builder = res_builder.header(name.clone(), value.clone());
                                 }
-                                let body = axum::body::Body::from_stream(
-                                    retry_response.bytes_stream(),
-                                );
+                                let body =
+                                    axum::body::Body::from_stream(retry_response.bytes_stream());
                                 return res_builder.body(body).unwrap();
                             }
                         }
@@ -613,7 +613,9 @@ mod tests {
     fn test_is_model_gone_or_invalid_error() {
         assert!(is_model_gone_or_invalid_error("model not found"));
         assert!(is_model_gone_or_invalid_error("invalid model name"));
-        assert!(is_model_gone_or_invalid_error("DEGRADED function cannot be invoked"));
+        assert!(is_model_gone_or_invalid_error(
+            "DEGRADED function cannot be invoked"
+        ));
         assert!(!is_model_gone_or_invalid_error("some normal error"));
     }
 }

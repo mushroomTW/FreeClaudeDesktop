@@ -80,12 +80,16 @@ fn shorten_path(path: &str, max_len: usize) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod shorten_path_tests {
     use super::shorten_path;
 
     #[test]
     fn short_path_unchanged() {
-        assert_eq!(shorten_path("C:\\Users\\file.txt", 60), "C:\\Users\\file.txt");
+        assert_eq!(
+            shorten_path("C:\\Users\\file.txt", 60),
+            "C:\\Users\\file.txt"
+        );
     }
 
     #[test]
@@ -214,9 +218,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     };
     let status_lines: Vec<&str> = app.status_text.lines().collect();
 
-    let dot = text("●")
-        .size(14)
-        .color(status_color);
+    let dot = text("●").size(14).color(status_color);
 
     let status_title = row![
         dot,
@@ -237,7 +239,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         status_col = status_col.push(
             text(shorten_path(path_line, 60))
                 .size(13)
-                .color(palette.text_dim)
+                .color(palette.text_dim),
         );
     }
 
@@ -266,11 +268,9 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
     let form = column![
         form_row(
             "API 供應商",
-            pick_list(
-                PROVIDERS,
-                app.provider.as_deref(),
-                |s| Message::ProviderSelected(s.to_string()),
-            )
+            pick_list(PROVIDERS, app.provider.as_deref(), |s| {
+                Message::ProviderSelected(s.to_string())
+            },)
             .placeholder("選擇供應商...")
             .width(Length::Fill)
             .style(move |_theme, status| custom_pick_list_style(palette, status))
@@ -301,11 +301,9 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         ),
         form_row(
             "驗證方式",
-            pick_list(
-                AUTH_SCHEMES,
-                app.auth_scheme.as_deref(),
-                |s| Message::AuthSchemeSelected(s.to_string()),
-            )
+            pick_list(AUTH_SCHEMES, app.auth_scheme.as_deref(), |s| {
+                Message::AuthSchemeSelected(s.to_string())
+            },)
             .width(Length::Fill)
             .style(move |_theme, status| custom_pick_list_style(palette, status))
             .menu_style(move |_theme| custom_menu_style(palette))
@@ -357,11 +355,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                     .get(model)
                     .map(|s| s.as_str())
                     .unwrap_or("none");
-                let is_1m_enabled = app
-                    .model_1m_overrides
-                    .get(model)
-                    .copied()
-                    .unwrap_or(false);
+                let is_1m_enabled = app.model_1m_overrides.get(model).copied().unwrap_or(false);
                 let model_id = model.clone();
                 let model_id_1m = model.clone();
                 row![
@@ -373,13 +367,14 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                         .label("1M 上下文")
                         .text_size(13)
                         .spacing(6)
-                        .on_toggle(move |enabled| Message::Model1mToggled(model_id_1m.clone(), enabled))
+                        .on_toggle(move |enabled| Message::Model1mToggled(
+                            model_id_1m.clone(),
+                            enabled
+                        ))
                         .style(move |_theme, status| custom_checkbox_style(palette, status)),
-                    pick_list(
-                        MODEL_REASONING_OPTIONS,
-                        Some(selected),
-                        move |level| Message::ModelReasoningLevelSelected(model_id.clone(), level.to_string()),
-                    )
+                    pick_list(MODEL_REASONING_OPTIONS, Some(selected), move |level| {
+                        Message::ModelReasoningLevelSelected(model_id.clone(), level.to_string())
+                    },)
                     .width(Length::Fixed(130.0))
                     .style(move |_theme, status| custom_pick_list_style(palette, status))
                     .menu_style(move |_theme| custom_menu_style(palette))
@@ -505,11 +500,9 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         ),
         form_row(
             "傳輸協定",
-            pick_list(
-                TRANSPORT_OPTIONS,
-                Some(app.transport_type.as_str()),
-                |s| Message::TransportTypeSelected(s.to_string()),
-            )
+            pick_list(TRANSPORT_OPTIONS, Some(app.transport_type.as_str()), |s| {
+                Message::TransportTypeSelected(s.to_string())
+            },)
             .width(Length::Fill)
             .style(move |_theme, status| custom_pick_list_style(palette, status))
             .menu_style(move |_theme| custom_menu_style(palette))
@@ -540,14 +533,12 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         ..Default::default()
     });
 
-    let mut extensions_form = column![
-        checkbox(app.enable_web_server_tools)
-            .label("Web 工具攔截 (本地執行 web_search / web_fetch)")
-            .on_toggle(Message::WebServerToolsToggled)
-            .text_size(14)
-            .spacing(8)
-            .style(move |_theme, status| custom_checkbox_style(palette, status)),
-    ]
+    let mut extensions_form = column![checkbox(app.enable_web_server_tools)
+        .label("Web 工具攔截 (本地執行 web_search / web_fetch)")
+        .on_toggle(Message::WebServerToolsToggled)
+        .text_size(14)
+        .spacing(8)
+        .style(move |_theme, status| custom_checkbox_style(palette, status)),]
     .spacing(10);
 
     if app.enable_web_server_tools {
@@ -634,9 +625,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         Tab::General => column![section_title, form, custom_section, status_card,]
             .spacing(18)
             .into(),
-        Tab::Models => column![models_title, models_form,]
-            .spacing(18)
-            .into(),
+        Tab::Models => column![models_title, models_form,].spacing(18).into(),
         Tab::Extensions => column![extensions_title, extensions_form,]
             .spacing(18)
             .into(),
@@ -645,9 +634,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             .into(),
     };
 
-    let mut content = column![header, tab_content,]
-        .spacing(20)
-        .max_width(580);
+    let mut content = column![header, tab_content,].spacing(20).max_width(580);
 
     // ── Toast 通知 ──
     if let Some(ref toast) = app.toast {
@@ -771,7 +758,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         .into_iter()
         .map(|(label, tab)| {
             let is_active = app.current_tab == tab;
-            
+
             let indicator = container("")
                 .width(Length::Fixed(3.0))
                 .height(Length::Fixed(18.0))
@@ -787,19 +774,15 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                     },
                     ..Default::default()
                 });
-            
-            let btn = button(
-                text(label)
-                    .size(15)
-                    .font(Font {
-                        weight: if is_active {
-                            Weight::Semibold
-                        } else {
-                            Weight::Medium
-                        },
-                        ..Default::default()
-                    }),
-            )
+
+            let btn = button(text(label).size(15).font(Font {
+                weight: if is_active {
+                    Weight::Semibold
+                } else {
+                    Weight::Medium
+                },
+                ..Default::default()
+            }))
             .on_press(Message::TabSelected(tab))
             .style(move |_theme, status| {
                 crate::ui::styles::custom_sidebar_btn_style(palette, is_active, status)
@@ -807,9 +790,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             .padding([10, 14])
             .width(Length::Fill);
 
-            let item = row![indicator, btn]
-                .spacing(6)
-                .align_y(Alignment::Center);
+            let item = row![indicator, btn].spacing(6).align_y(Alignment::Center);
 
             item.into()
         })
@@ -869,7 +850,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
                 border: Border::default(),
                 shadow: Shadow::default(),
                 snap: false,
-            })
+            }),
     )
     .width(Length::Fill)
     .height(Length::Fill)
@@ -891,45 +872,33 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
             ..Default::default()
         });
 
-    let bottom_bar = container(
-        column![
-            divider,
-            container(bottom_col).padding(Padding {
-                top: 16.0,
-                right: 30.0,
-                bottom: 16.0,
-                left: 30.0,
-            })
-        ]
-    )
+    let bottom_bar = container(column![
+        divider,
+        container(bottom_col).padding(Padding {
+            top: 16.0,
+            right: 30.0,
+            bottom: 16.0,
+            left: 30.0,
+        })
+    ])
     .width(Length::Fill);
 
     // 右側大面板（滾動內容 + 固定底欄）
-    let right_panel = column![
-        scrollable_content,
-        bottom_bar,
-    ]
-    .height(Length::Fill)
-    .width(Length::Fill);
+    let right_panel = column![scrollable_content, bottom_bar,]
+        .height(Length::Fill)
+        .width(Length::Fill);
 
     // ── 外層容器 ──
-    let main_content = container(
-        row![
-            sidebar,
-            right_panel,
-        ]
-        .spacing(0)
-        .height(Length::Fill),
-    )
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .style(move |_theme| container::Style {
-        text_color: None,
-        background: Some(Background::Color(palette.bg)),
-        border: Border::default(),
-        shadow: Shadow::default(),
-        snap: false,
-    });
+    let main_content = container(row![sidebar, right_panel,].spacing(0).height(Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(move |_theme| container::Style {
+            text_color: None,
+            background: Some(Background::Color(palette.bg)),
+            border: Border::default(),
+            shadow: Shadow::default(),
+            snap: false,
+        });
 
     main_content.into()
 }

@@ -12,13 +12,13 @@ mod win_desktop {
     };
     use winapi::um::winuser::{
         CloseClipboard, EmptyClipboard, GetClipboardData, GetCursorPos, GetDC, GetSystemMetrics,
-        OpenClipboard, ReleaseDC, SendInput, SetClipboardData, SetCursorPos, CF_UNICODETEXT,
-        INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
-        MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
-        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, SM_CXVIRTUALSCREEN,
-        SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, VK_BACK, VK_CONTROL, VK_DELETE,
-        VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_HOME, VK_INSERT, VK_LEFT, VK_MENU, VK_NEXT, VK_PRIOR,
-        VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
+        OpenClipboard, ReleaseDC, SendInput, SetClipboardData, SetCursorPos, CF_UNICODETEXT, INPUT,
+        INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, MOUSEEVENTF_LEFTDOWN,
+        MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN,
+        MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, VK_BACK, VK_CONTROL, VK_DELETE, VK_DOWN, VK_END,
+        VK_ESCAPE, VK_F1, VK_HOME, VK_INSERT, VK_LEFT, VK_MENU, VK_NEXT, VK_PRIOR, VK_RETURN,
+        VK_RIGHT, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
     };
 
     pub fn screenshot() -> Result<Screenshot, String> {
@@ -462,13 +462,18 @@ mod win_desktop {
     }
 
     pub fn list_windows(_visible_only: bool) -> Result<Vec<String>, String> {
-        unsafe extern "system" fn enum_proc(hwnd: winapi::shared::windef::HWND, lparam: winapi::shared::minwindef::LPARAM) -> winapi::shared::minwindef::BOOL {
+        unsafe extern "system" fn enum_proc(
+            hwnd: winapi::shared::windef::HWND,
+            lparam: winapi::shared::minwindef::LPARAM,
+        ) -> winapi::shared::minwindef::BOOL {
             let titles = &mut *(lparam as *mut Vec<String>);
             if winapi::um::winuser::IsWindowVisible(hwnd) != 0 {
                 let mut buf: [u16; 512] = [0; 512];
                 let len = winapi::um::winuser::GetWindowTextW(hwnd, buf.as_mut_ptr(), 512);
                 if len > 0 {
-                    let text = String::from_utf16_lossy(&buf[..len as usize]).trim().to_string();
+                    let text = String::from_utf16_lossy(&buf[..len as usize])
+                        .trim()
+                        .to_string();
                     if !text.is_empty() && !titles.contains(&text) {
                         titles.push(text);
                     }
@@ -479,7 +484,10 @@ mod win_desktop {
 
         let mut titles: Vec<String> = Vec::new();
         unsafe {
-            winapi::um::winuser::EnumWindows(Some(enum_proc), &mut titles as *mut _ as winapi::shared::minwindef::LPARAM);
+            winapi::um::winuser::EnumWindows(
+                Some(enum_proc),
+                &mut titles as *mut _ as winapi::shared::minwindef::LPARAM,
+            );
         }
         Ok(titles)
     }
@@ -489,11 +497,26 @@ mod win_desktop {
     }
 }
 
-
 #[cfg(target_os = "macos")]
 mod mac_desktop {
     use super::super::types::Screenshot;
     use std::process::Command;
+
+    fn run_command(command: &mut Command, label: &str) -> Result<(), String> {
+        let output = command
+            .output()
+            .map_err(|e| format!("{label} failed: {e}"))?;
+        if output.status.success() {
+            return Ok(());
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            Err(format!("{label} exited with {}", output.status))
+        } else {
+            Err(format!("{label} failed: {stderr}"))
+        }
+    }
 
     pub fn screenshot() -> Result<Screenshot, String> {
         let tmp_file = std::env::temp_dir().join(format!("mcp_shot_{}.png", std::process::id()));
@@ -506,7 +529,8 @@ mod mac_desktop {
             return Err("screencapture failed".to_string());
         }
 
-        let png = std::fs::read(&tmp_file).map_err(|e| format!("Failed to read screenshot: {e}"))?;
+        let png =
+            std::fs::read(&tmp_file).map_err(|e| format!("Failed to read screenshot: {e}"))?;
         let _ = std::fs::remove_file(tmp_file);
 
         let img = image::load_from_memory(&png)
@@ -520,7 +544,8 @@ mod mac_desktop {
     }
 
     pub fn screenshot_active_window() -> Result<Screenshot, String> {
-        let tmp_file = std::env::temp_dir().join(format!("mcp_shot_active_{}.png", std::process::id()));
+        let tmp_file =
+            std::env::temp_dir().join(format!("mcp_shot_active_{}.png", std::process::id()));
         let output = Command::new("/usr/sbin/screencapture")
             .args(["-x", "-t", "png", "-c"])
             .output();
@@ -599,21 +624,29 @@ mod mac_desktop {
     }
 
     pub fn move_mouse(x: i32, y: i32) -> Result<(), String> {
-        let script = format!("tell application \"System Events\" to set position of mouse cursor to {{{x}, {y}}}");
-        let _ = Command::new("/usr/bin/osascript").args(["-e", &script]).output();
-        Ok(())
+        let script = format!(
+            "tell application \"System Events\" to set position of mouse cursor to {{{x}, {y}}}"
+        );
+        run_command(
+            Command::new("/usr/bin/osascript").args(["-e", &script]),
+            "osascript",
+        )
     }
 
     pub fn left_click() -> Result<(), String> {
         let script = "tell application \"System Events\" to click";
-        let _ = Command::new("/usr/bin/osascript").args(["-e", script]).output();
-        Ok(())
+        run_command(
+            Command::new("/usr/bin/osascript").args(["-e", script]),
+            "osascript",
+        )
     }
 
     pub fn right_click() -> Result<(), String> {
         let script = "tell application \"System Events\" to key code 87 using control down";
-        let _ = Command::new("/usr/bin/osascript").args(["-e", script]).output();
-        Ok(())
+        run_command(
+            Command::new("/usr/bin/osascript").args(["-e", script]),
+            "osascript",
+        )
     }
 
     pub fn double_click() -> Result<(), String> {
@@ -629,14 +662,18 @@ mod mac_desktop {
 
     pub fn middle_click() -> Result<(), String> {
         let script = "tell application \"System Events\" to key code 87";
-        let _ = Command::new("/usr/bin/osascript").args(["-e", script]).output();
-        Ok(())
+        run_command(
+            Command::new("/usr/bin/osascript").args(["-e", script]),
+            "osascript",
+        )
     }
 
     pub fn mouse_down() -> Result<(), String> {
         let script = "tell application \"System Events\" to do shell script \"osascript -e 'tell app \\\"System Events\\\" to click'\"";
-        let _ = Command::new("/usr/bin/osascript").args(["-e", script]).output();
-        Ok(())
+        run_command(
+            Command::new("/usr/bin/osascript").args(["-e", script]),
+            "osascript",
+        )
     }
 
     pub fn mouse_up() -> Result<(), String> {
@@ -654,8 +691,10 @@ mod mac_desktop {
     pub fn scroll(amount: i32) -> Result<(), String> {
         let dir = if amount > 0 { "up" } else { "down" };
         let script = format!("tell application \"System Events\" to scroll {dir}");
-        let _ = Command::new("/usr/bin/osascript").args(["-e", &script]).output();
-        Ok(())
+        run_command(
+            Command::new("/usr/bin/osascript").args(["-e", &script]),
+            "osascript",
+        )
     }
 
     pub fn read_clipboard() -> Result<String, String> {
@@ -683,16 +722,19 @@ mod mac_desktop {
         if text.len() > 5 || text.contains('\n') {
             let old_clip = read_clipboard().unwrap_or_default();
             if write_clipboard(text).is_ok() {
-                let _ = press_key("cmd+v");
+                let paste_result = press_key("cmd+v");
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 let _ = write_clipboard(&old_clip);
+                paste_result?;
                 return Ok(());
             }
         }
         let safe_text = text.replace('"', "\\\"");
         let script = format!("tell application \"System Events\" to keystroke \"{safe_text}\"");
-        let _ = Command::new("/usr/bin/osascript").args(["-e", &script]).output();
-        Ok(())
+        run_command(
+            Command::new("/usr/bin/osascript").args(["-e", &script]),
+            "osascript",
+        )
     }
 
     pub fn press_key(key: &str) -> Result<(), String> {
@@ -703,13 +745,24 @@ mod mac_desktop {
             "escape" | "esc" => "tell application \"System Events\" to key code 53".to_string(),
             "space" => "tell application \"System Events\" to key code 49".to_string(),
             "backspace" => "tell application \"System Events\" to key code 51".to_string(),
-            "cmd+v" | "command+v" => "tell application \"System Events\" to keystroke \"v\" using command down".to_string(),
-            "cmd+c" | "command+c" => "tell application \"System Events\" to keystroke \"c\" using command down".to_string(),
-            "cmd+a" | "command+a" => "tell application \"System Events\" to keystroke \"a\" using command down".to_string(),
+            "cmd+v" | "command+v" => {
+                "tell application \"System Events\" to keystroke \"v\" using command down"
+                    .to_string()
+            }
+            "cmd+c" | "command+c" => {
+                "tell application \"System Events\" to keystroke \"c\" using command down"
+                    .to_string()
+            }
+            "cmd+a" | "command+a" => {
+                "tell application \"System Events\" to keystroke \"a\" using command down"
+                    .to_string()
+            }
             other => format!("tell application \"System Events\" to keystroke \"{other}\""),
         };
-        let _ = Command::new("/usr/bin/osascript").args(["-e", &script]).output();
-        Ok(())
+        run_command(
+            Command::new("/usr/bin/osascript").args(["-e", &script]),
+            "osascript",
+        )
     }
 
     pub fn hold_key(key: &str, duration_ms: u64) -> Result<(), String> {
@@ -729,7 +782,8 @@ mod mac_desktop {
             .output()
             .map_err(|e| e.to_string())?;
         let text = String::from_utf8_lossy(&output.stdout);
-        let titles: Vec<String> = text.split(',')
+        let titles: Vec<String> = text
+            .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty() && s != "missing value")
             .collect();
@@ -737,31 +791,56 @@ mod mac_desktop {
     }
 }
 
-
 #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 mod unix_desktop {
     use super::super::types::Screenshot;
     use std::process::Command;
 
+    fn run_command(command: &mut Command, label: &str) -> Result<(), String> {
+        let output = command
+            .output()
+            .map_err(|e| format!("{label} failed: {e}"))?;
+        if output.status.success() {
+            return Ok(());
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            Err(format!("{label} exited with {}", output.status))
+        } else {
+            Err(format!("{label} failed: {stderr}"))
+        }
+    }
+
     pub fn screenshot() -> Result<Screenshot, String> {
-        let tmp_file = std::env::temp_dir().join(format!("mcp_shot_unix_{}.png", std::process::id()));
-        
+        let tmp_file =
+            std::env::temp_dir().join(format!("mcp_shot_unix_{}.png", std::process::id()));
+
         let status = Command::new("gnome-screenshot")
             .args(["-f", tmp_file.to_str().unwrap()])
             .status()
-            .or_else(|_| Command::new("scrot").arg(tmp_file.to_str().unwrap()).status())
-            .or_else(|_| Command::new("grim").arg(tmp_file.to_str().unwrap()).status())
+            .or_else(|_| {
+                Command::new("scrot")
+                    .arg(tmp_file.to_str().unwrap())
+                    .status()
+            })
+            .or_else(|_| {
+                Command::new("grim")
+                    .arg(tmp_file.to_str().unwrap())
+                    .status()
+            })
             .map_err(|e| format!("Failed to capture Linux screenshot: {e}"))?;
 
         if !status.success() {
             return Err("Screenshot tool returned error".to_string());
         }
 
-        let png = std::fs::read(&tmp_file).map_err(|e| format!("Failed to read screenshot file: {e}"))?;
+        let png =
+            std::fs::read(&tmp_file).map_err(|e| format!("Failed to read screenshot file: {e}"))?;
         let _ = std::fs::remove_file(tmp_file);
 
-        let img = image::load_from_memory(&png)
-            .map_err(|e| format!("Failed to decode image: {e}"))?;
+        let img =
+            image::load_from_memory(&png).map_err(|e| format!("Failed to decode image: {e}"))?;
 
         Ok(Screenshot {
             width: img.width(),
@@ -827,55 +906,55 @@ mod unix_desktop {
     }
 
     pub fn move_mouse(x: i32, y: i32) -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["mousemove", &x.to_string(), &y.to_string()]).output();
-        Ok(())
+        run_command(
+            Command::new("xdotool").args(["mousemove", &x.to_string(), &y.to_string()]),
+            "xdotool",
+        )
     }
 
     pub fn left_click() -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["click", "1"]).output();
-        Ok(())
+        run_command(Command::new("xdotool").args(["click", "1"]), "xdotool")
     }
 
     pub fn right_click() -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["click", "3"]).output();
-        Ok(())
+        run_command(Command::new("xdotool").args(["click", "3"]), "xdotool")
     }
 
     pub fn double_click() -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["click", "--repeat", "2", "1"]).output();
-        Ok(())
+        run_command(
+            Command::new("xdotool").args(["click", "--repeat", "2", "1"]),
+            "xdotool",
+        )
     }
 
     pub fn triple_click() -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["click", "--repeat", "3", "1"]).output();
-        Ok(())
+        run_command(
+            Command::new("xdotool").args(["click", "--repeat", "3", "1"]),
+            "xdotool",
+        )
     }
 
     pub fn middle_click() -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["click", "2"]).output();
-        Ok(())
+        run_command(Command::new("xdotool").args(["click", "2"]), "xdotool")
     }
 
     pub fn mouse_down() -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["mousedown", "1"]).output();
-        Ok(())
+        run_command(Command::new("xdotool").args(["mousedown", "1"]), "xdotool")
     }
 
     pub fn mouse_up() -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["mouseup", "1"]).output();
-        Ok(())
+        run_command(Command::new("xdotool").args(["mouseup", "1"]), "xdotool")
     }
 
     pub fn drag_and_drop(end_x: i32, end_y: i32) -> Result<(), String> {
         mouse_down()?;
-        let _ = move_mouse(end_x, end_y);
+        move_mouse(end_x, end_y)?;
         mouse_up()
     }
 
     pub fn scroll(amount: i32) -> Result<(), String> {
         let btn = if amount > 0 { "4" } else { "5" };
-        let _ = Command::new("xdotool").args(["click", btn]).output();
-        Ok(())
+        run_command(Command::new("xdotool").args(["click", btn]), "xdotool")
     }
 
     pub fn read_clipboard() -> Result<String, String> {
@@ -894,8 +973,17 @@ mod unix_desktop {
             .args(["-selection", "clipboard"])
             .stdin(std::process::Stdio::piped())
             .spawn()
-            .or_else(|_| Command::new("xsel").args(["-b", "-i"]).stdin(std::process::Stdio::piped()).spawn())
-            .or_else(|_| Command::new("wl-copy").stdin(std::process::Stdio::piped()).spawn())
+            .or_else(|_| {
+                Command::new("xsel")
+                    .args(["-b", "-i"])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+            })
+            .or_else(|_| {
+                Command::new("wl-copy")
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+            })
             .map_err(|e| format!("Failed to write Linux clipboard: {e}"))?;
 
         if let Some(mut stdin) = child.stdin.take() {
@@ -909,30 +997,30 @@ mod unix_desktop {
         if text.len() > 5 || text.contains('\n') {
             let old_clip = read_clipboard().unwrap_or_default();
             if write_clipboard(text).is_ok() {
-                let _ = press_key("ctrl+v");
+                let paste_result = press_key("ctrl+v");
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 let _ = write_clipboard(&old_clip);
+                paste_result?;
                 return Ok(());
             }
         }
-        let _ = Command::new("xdotool").args(["type", text]).output();
-        Ok(())
+        run_command(Command::new("xdotool").args(["type", text]), "xdotool")
     }
 
     pub fn press_key(key: &str) -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["key", key]).output();
-        Ok(())
+        run_command(Command::new("xdotool").args(["key", key]), "xdotool")
     }
 
     pub fn hold_key(key: &str, duration_ms: u64) -> Result<(), String> {
-        let _ = Command::new("xdotool").args(["keydown", key]).output();
+        run_command(Command::new("xdotool").args(["keydown", key]), "xdotool")?;
         std::thread::sleep(std::time::Duration::from_millis(duration_ms));
-        let _ = Command::new("xdotool").args(["keyup", key]).output();
-        Ok(())
+        run_command(Command::new("xdotool").args(["keyup", key]), "xdotool")
     }
 
     pub fn open_application(app: &str) -> Result<(), String> {
-        let _ = Command::new("xdg-open").arg(app).spawn()
+        let _ = Command::new("xdg-open")
+            .arg(app)
+            .spawn()
             .or_else(|_| Command::new("gtk-launch").arg(app).spawn());
         Ok(())
     }
@@ -945,7 +1033,9 @@ mod unix_desktop {
             let ids = String::from_utf8_lossy(&out.stdout);
             let mut titles = Vec::new();
             for id in ids.lines().take(50) {
-                let name_out = Command::new("xdotool").args(["getwindowname", id.trim()]).output();
+                let name_out = Command::new("xdotool")
+                    .args(["getwindowname", id.trim()])
+                    .output();
                 if let Ok(n_out) = name_out {
                     let name = String::from_utf8_lossy(&n_out.stdout).trim().to_string();
                     if !name.is_empty() && !titles.contains(&name) {
@@ -959,7 +1049,6 @@ mod unix_desktop {
     }
 }
 
-
 #[cfg(target_os = "windows")]
 pub use win_desktop::*;
 
@@ -968,4 +1057,3 @@ pub use mac_desktop::*;
 
 #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 pub use unix_desktop::*;
-

@@ -43,7 +43,36 @@ pub fn is_quota_check_request(body_str: &str) -> bool {
     };
 
     let max_tokens = v.get("max_tokens").and_then(Value::as_u64);
-    max_tokens == Some(1)
+    if max_tokens != Some(1) {
+        return false;
+    }
+
+    let Some(messages) = v.get("messages").and_then(Value::as_array) else {
+        return false;
+    };
+    if messages.len() != 1 {
+        return false;
+    }
+
+    let content = messages
+        .first()
+        .and_then(|message| message.get("content"))
+        .map(|content| match content {
+            Value::String(s) => s.clone(),
+            Value::Array(arr) => arr
+                .iter()
+                .filter_map(|item| item.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => String::new(),
+        })
+        .unwrap_or_default();
+    let trimmed = content.trim();
+    let lower = trimmed.to_lowercase();
+
+    lower.contains("quota")
+        || (v.get("tools").is_some() && trimmed.eq_ignore_ascii_case("count"))
+        || trimmed.starts_with("# Environment")
 }
 
 /// Check if this is a command prefix detection request.
@@ -336,5 +365,12 @@ mod tests {
         })
         .to_string();
         assert!(is_quota_check_request(&env_body));
+
+        let normal_body = json!({
+            "max_tokens": 1,
+            "messages": [{ "role": "user", "content": "Answer yes or no." }]
+        })
+        .to_string();
+        assert!(!is_quota_check_request(&normal_body));
     }
 }

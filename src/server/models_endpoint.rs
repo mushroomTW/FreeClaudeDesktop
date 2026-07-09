@@ -271,8 +271,26 @@ mod tests {
             &normalized_models(),
         );
 
-        assert!(cached_models("http://localhost:4000", "bearer", &empty_reasoning, &empty_m1).is_some());
-        assert!(cached_models("http://localhost:4001", "bearer", &empty_reasoning, &empty_m1).is_none());
-        assert!(cached_models("http://localhost:4000", "x-api-key", &empty_reasoning, &empty_m1).is_none());
+        assert!(cached_models(
+            "http://localhost:4000",
+            "bearer",
+            &empty_reasoning,
+            &empty_m1
+        )
+        .is_some());
+        assert!(cached_models(
+            "http://localhost:4001",
+            "bearer",
+            &empty_reasoning,
+            &empty_m1
+        )
+        .is_none());
+        assert!(cached_models(
+            "http://localhost:4000",
+            "x-api-key",
+            &empty_reasoning,
+            &empty_m1
+        )
+        .is_none());
     }
 }

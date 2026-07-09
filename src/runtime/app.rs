@@ -29,7 +29,7 @@ impl ThemeMode {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "dark" => Self::Dark,
             "system" => Self::System,
@@ -215,7 +215,7 @@ impl LauncherApp {
             app.web_fetch_allowed_schemes = settings.web_fetch_allowed_schemes;
             app.reasoning_replay_mode = settings.reasoning_replay_mode;
             app.transport_type = settings.transport_type;
-            app.theme_mode = ThemeMode::from_str(&settings.theme_mode);
+            app.theme_mode = ThemeMode::parse(&settings.theme_mode);
             app.discovered_models = settings.discovered_models;
             app.update_model_options();
             app.model_reasoning_overrides = settings.model_reasoning_overrides;
@@ -469,22 +469,20 @@ impl LauncherApp {
                     }
                 }
             }
-            Message::ResyncFromOfficial => {
-                match crate::launcher::resync_from_official() {
-                    Ok(()) => {
-                        self.toast = Some(Toast {
-                            message: "✅ 已從原版 Claude 重新同步設定至鏡像目錄。".into(),
-                            is_success: true,
-                        });
-                    }
-                    Err(e) => {
-                        self.toast = Some(Toast {
-                            message: format!("❌ 同步失敗：{e}"),
-                            is_success: false,
-                        });
-                    }
+            Message::ResyncFromOfficial => match crate::launcher::resync_from_official() {
+                Ok(()) => {
+                    self.toast = Some(Toast {
+                        message: "✅ 已從原版 Claude 重新同步設定至鏡像目錄。".into(),
+                        is_success: true,
+                    });
                 }
-            }
+                Err(e) => {
+                    self.toast = Some(Toast {
+                        message: format!("❌ 同步失敗：{e}"),
+                        is_success: false,
+                    });
+                }
+            },
             Message::RestoreRequested => {
                 self.confirming_restore = true;
                 self.toast = None;

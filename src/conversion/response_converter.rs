@@ -941,10 +941,7 @@ mod tests {
             normalized.routes["claude-sonnet-5[0][1m]"],
             "deepseek-v4-flash"
         );
-        assert_eq!(
-            normalized.routes["claude-sonnet-5[0]"],
-            "deepseek-v4-flash"
-        );
+        assert_eq!(normalized.routes["claude-sonnet-5[0]"], "deepseek-v4-flash");
     }
 
     #[test]

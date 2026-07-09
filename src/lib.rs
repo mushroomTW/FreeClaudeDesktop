@@ -84,9 +84,11 @@ pub fn save_config(
     let mut reasoning_efforts = HashMap::new();
     let mut discovered_models = Vec::new();
     if let Ok(raw_models) = server::fetch_models_list(base_url, &real_api_key, auth_scheme) {
-        if let Ok(normalized) =
-            normalize_models_response_with_overrides(raw_models, model_reasoning_overrides, model_1m_overrides)
-        {
+        if let Ok(normalized) = normalize_models_response_with_overrides(
+            raw_models,
+            model_reasoning_overrides,
+            model_1m_overrides,
+        ) {
             routes = normalized.routes.clone();
             reasoning_efforts = normalized.reasoning_effort_routes.clone();
             discovered_models = normalized
@@ -117,9 +119,12 @@ pub fn save_config(
         real_api_key: stored_api_key,
         real_auth_scheme: auth_scheme.to_string(),
         real_model: real_model.or_else(|| existing.as_ref().and_then(|s| s.real_model.clone())),
-        real_model_sonnet: real_model_sonnet.or_else(|| existing.as_ref().and_then(|s| s.real_model_sonnet.clone())),
-        real_model_opus: real_model_opus.or_else(|| existing.as_ref().and_then(|s| s.real_model_opus.clone())),
-        real_model_haiku: real_model_haiku.or_else(|| existing.as_ref().and_then(|s| s.real_model_haiku.clone())),
+        real_model_sonnet: real_model_sonnet
+            .or_else(|| existing.as_ref().and_then(|s| s.real_model_sonnet.clone())),
+        real_model_opus: real_model_opus
+            .or_else(|| existing.as_ref().and_then(|s| s.real_model_opus.clone())),
+        real_model_haiku: real_model_haiku
+            .or_else(|| existing.as_ref().and_then(|s| s.real_model_haiku.clone())),
         real_model_routes: if routes.is_empty() {
             existing
                 .as_ref()
@@ -256,7 +261,10 @@ mod tests {
             ..Settings::default()
         };
 
-        let body = prepare_proxy_body(r#"{"model":"claude-haiku-4-5[2]","messages":[]}"#, &settings);
+        let body = prepare_proxy_body(
+            r#"{"model":"claude-haiku-4-5[2]","messages":[]}"#,
+            &settings,
+        );
 
         assert_eq!(
             serde_json::from_str::<Value>(&body).unwrap()["model"],
