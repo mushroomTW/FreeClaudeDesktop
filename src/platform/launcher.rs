@@ -643,6 +643,35 @@ pub fn claude_settings_json_path() -> PathBuf {
     claude_home_dir().join(".claude").join("settings.json")
 }
 
+const MANAGED_CLAUDE_ENV_KEYS: [&str; 3] = [
+    "ANTHROPIC_BASE_URL",
+    "ENABLE_TOOL_SEARCH",
+    "CLAUDE_CODE_ENABLE_AUTO_MODE",
+];
+const PREVIOUS_CLAUDE_SETTINGS_KEY: &str = "freeClaudeLauncherPreviousSettings";
+
+fn previous_setting_entry(value: Option<&Value>) -> Value {
+    json!({
+        "present": value.is_some(),
+        "value": value.cloned().unwrap_or(Value::Null)
+    })
+}
+
+fn restore_previous_setting(obj: &mut serde_json::Map<String, Value>, key: &str, previous: &Value) {
+    if previous
+        .get("present")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        obj.insert(
+            key.to_string(),
+            previous.get("value").cloned().unwrap_or(Value::Null),
+        );
+    } else {
+        obj.remove(key);
+    }
+}
+
 pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
     let path = claude_settings_json_path();
     let mut data: Value = if path.exists() {
@@ -655,14 +684,37 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
         json!({})
     };
 
-    if data.get("autoModeEnabled").is_none() {
-        if let Some(obj) = data.as_object_mut() {
+    if let Some(obj) = data.as_object_mut() {
+        if !obj.contains_key(PREVIOUS_CLAUDE_SETTINGS_KEY) {
+            let env_previous = obj
+                .get("env")
+                .and_then(Value::as_object)
+                .map(|env| {
+                    MANAGED_CLAUDE_ENV_KEYS
+                        .iter()
+                        .map(|key| (key.to_string(), previous_setting_entry(env.get(*key))))
+                        .collect::<serde_json::Map<_, _>>()
+                })
+                .unwrap_or_else(|| {
+                    MANAGED_CLAUDE_ENV_KEYS
+                        .iter()
+                        .map(|key| (key.to_string(), previous_setting_entry(None)))
+                        .collect()
+                });
+            obj.insert(
+                PREVIOUS_CLAUDE_SETTINGS_KEY.to_string(),
+                json!({
+                    "autoModeEnabled": previous_setting_entry(obj.get("autoModeEnabled")),
+                    "envPresent": obj.get("env").is_some(),
+                    "env": env_previous
+                }),
+            );
+        }
+
+        if obj.get("autoModeEnabled").is_none() {
             obj.insert("autoModeEnabled".to_string(), Value::Bool(true));
         }
-    }
-
-    if data.get("env").is_none() {
-        if let Some(obj) = data.as_object_mut() {
+        if obj.get("env").is_none() {
             obj.insert("env".to_string(), json!({}));
         }
     }
@@ -693,15 +745,40 @@ pub fn remove_anthropic_base_url_env() -> AppResult<()> {
         let text = std::fs::read_to_string(&path)?;
         if let Ok(mut data) = serde_json::from_str::<Value>(&text) {
             let mut changed = false;
-            if let Some(env_obj) = data.get_mut("env").and_then(Value::as_object_mut) {
-                if env_obj.remove("ANTHROPIC_BASE_URL").is_some() {
+            if let Some(obj) = data.as_object_mut() {
+                if let Some(previous) = obj.remove(PREVIOUS_CLAUDE_SETTINGS_KEY) {
                     changed = true;
-                }
-                if env_obj.remove("ENABLE_TOOL_SEARCH").is_some() {
-                    changed = true;
-                }
-                if env_obj.remove("CLAUDE_CODE_ENABLE_AUTO_MODE").is_some() {
-                    changed = true;
+                    if let Some(auto_mode) = previous.get("autoModeEnabled") {
+                        restore_previous_setting(obj, "autoModeEnabled", auto_mode);
+                    }
+
+                    let env_present = previous
+                        .get("envPresent")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true);
+                    if obj.get("env").is_none() {
+                        obj.insert("env".to_string(), json!({}));
+                    }
+                    if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
+                        if let Some(previous_env) = previous.get("env").and_then(Value::as_object) {
+                            for key in MANAGED_CLAUDE_ENV_KEYS {
+                                if let Some(previous_value) = previous_env.get(key) {
+                                    restore_previous_setting(env_obj, key, previous_value);
+                                } else {
+                                    env_obj.remove(key);
+                                }
+                            }
+                        }
+                        if env_obj.is_empty() && !env_present {
+                            obj.remove("env");
+                        }
+                    }
+                } else if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
+                    for key in MANAGED_CLAUDE_ENV_KEYS {
+                        if env_obj.remove(key).is_some() {
+                            changed = true;
+                        }
+                    }
                 }
             }
             if changed {
@@ -1090,7 +1167,13 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn set_test_app_dirs(root: &Path) -> (PathBuf, PathBuf, Vec<(&'static str, Option<OsString>)>) {
-        let keys = ["APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "HOME"];
+        let keys = [
+            "APPDATA",
+            "LOCALAPPDATA",
+            "XDG_CONFIG_HOME",
+            "HOME",
+            "USERPROFILE",
+        ];
         let old = keys
             .into_iter()
             .map(|key| (key, std::env::var_os(key)))
@@ -1100,6 +1183,7 @@ mod tests {
         {
             std::env::set_var("APPDATA", root.join("appdata"));
             std::env::set_var("LOCALAPPDATA", root.join("local"));
+            std::env::set_var("USERPROFILE", root.join("profile"));
         }
         #[cfg(target_os = "macos")]
         {
@@ -1174,6 +1258,53 @@ mod tests {
         assert!(restored
             .get("freeClaudeLauncherPreviousDeploymentMode")
             .is_none());
+    }
+
+    #[test]
+    fn anthropic_base_url_env_restore_keeps_previous_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!("fcl_settings_env_{}", std::process::id()));
+        let (_, _, old_env) = set_test_app_dirs(&root);
+        let path = claude_settings_json_path();
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&json!({
+                "autoModeEnabled": false,
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://old.example",
+                    "ENABLE_TOOL_SEARCH": "false",
+                    "KEEP_ME": "1"
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        apply_anthropic_base_url_env(4321).unwrap();
+        let applied: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(applied["autoModeEnabled"], false);
+        assert_eq!(
+            applied["env"]["ANTHROPIC_BASE_URL"],
+            "http://127.0.0.1:4321"
+        );
+        assert_eq!(applied["env"]["ENABLE_TOOL_SEARCH"], "true");
+        assert_eq!(applied["env"]["CLAUDE_CODE_ENABLE_AUTO_MODE"], "1");
+
+        remove_anthropic_base_url_env().unwrap();
+        let restored: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(restored["autoModeEnabled"], false);
+        assert_eq!(restored["env"]["ANTHROPIC_BASE_URL"], "https://old.example");
+        assert_eq!(restored["env"]["ENABLE_TOOL_SEARCH"], "false");
+        assert_eq!(restored["env"]["KEEP_ME"], "1");
+        assert!(restored["env"]
+            .get("CLAUDE_CODE_ENABLE_AUTO_MODE")
+            .is_none());
+        assert!(restored.get(PREVIOUS_CLAUDE_SETTINGS_KEY).is_none());
+
+        restore_env(old_env);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

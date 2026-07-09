@@ -51,6 +51,35 @@ fn is_model_gone_or_invalid_error(text: &str) -> bool {
         || lower.contains("degraded function cannot be invoked")
 }
 
+fn build_upstream_request(
+    client: &Client,
+    target_url: &str,
+    body: String,
+    headers: &HeaderMap,
+    api_key: &str,
+    auth_scheme: &str,
+) -> reqwest::RequestBuilder {
+    let mut request = client.post(target_url).body(body);
+    for (name, value) in headers {
+        let lower = name.as_str().to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "content-type" | "accept" | "user-agent" | "accept-encoding" | "connection"
+        ) || lower.starts_with("anthropic-")
+        {
+            request = request.header(name.clone(), value.clone());
+        }
+    }
+
+    if api_key.is_empty() {
+        request
+    } else if auth_scheme == "x-api-key" {
+        request.header("x-api-key", api_key)
+    } else {
+        request.bearer_auth(api_key)
+    }
+}
+
 pub async fn handle_root() -> impl IntoResponse {
     "FreeClaudeLauncher API proxy is running"
 }
@@ -400,25 +429,14 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     } else {
         async_client()
     };
-    let mut upstream_req = client.post(&target_url).body(proxy_body.clone());
-    for (name, value) in &headers {
-        let lower = name.as_str().to_ascii_lowercase();
-        if matches!(
-            lower.as_str(),
-            "content-type" | "accept" | "user-agent" | "accept-encoding" | "connection"
-        ) || lower.starts_with("anthropic-")
-        {
-            upstream_req = upstream_req.header(name.clone(), value.clone());
-        }
-    }
-
-    if !api_key.is_empty() {
-        upstream_req = if settings.real_auth_scheme == "x-api-key" {
-            upstream_req.header("x-api-key", &api_key)
-        } else {
-            upstream_req.bearer_auth(&api_key)
-        };
-    }
+    let upstream_req = build_upstream_request(
+        client,
+        &target_url,
+        proxy_body.clone(),
+        &headers,
+        &api_key,
+        &settings.real_auth_scheme,
+    );
 
     // 6. Send request
     match upstream_req.send().await {
@@ -489,29 +507,14 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 .insert(req_model.clone(), rewrite.fallback_model.clone());
                             let _ = save_launcher_settings(&settings);
 
-                            let retry_body = rewrite.updated_body.to_string();
-                            let mut retry_req = async_client().post(&target_url).body(retry_body);
-                            for (name, value) in &headers {
-                                let lower = name.as_str().to_ascii_lowercase();
-                                if matches!(
-                                    lower.as_str(),
-                                    "content-type"
-                                        | "accept"
-                                        | "user-agent"
-                                        | "accept-encoding"
-                                        | "connection"
-                                ) || lower.starts_with("anthropic-")
-                                {
-                                    retry_req = retry_req.header(name.clone(), value.clone());
-                                }
-                            }
-                            if !api_key.is_empty() {
-                                retry_req = if settings.real_auth_scheme == "x-api-key" {
-                                    retry_req.header("x-api-key", &api_key)
-                                } else {
-                                    retry_req.bearer_auth(&api_key)
-                                };
-                            }
+                            let retry_req = build_upstream_request(
+                                async_client(),
+                                &target_url,
+                                rewrite.updated_body.to_string(),
+                                &headers,
+                                &api_key,
+                                &settings.real_auth_scheme,
+                            );
 
                             if let Ok(retry_response) = retry_req.send().await {
                                 if retry_response.status().is_success() {
@@ -549,29 +552,14 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 .insert(req_model.clone(), rewrite.fallback_model.clone());
                             let _ = save_launcher_settings(&settings);
 
-                            let retry_body = rewrite.updated_body.to_string();
-                            let mut retry_req = async_client().post(&target_url).body(retry_body);
-                            for (name, value) in &headers {
-                                let lower = name.as_str().to_ascii_lowercase();
-                                if matches!(
-                                    lower.as_str(),
-                                    "content-type"
-                                        | "accept"
-                                        | "user-agent"
-                                        | "accept-encoding"
-                                        | "connection"
-                                ) || lower.starts_with("anthropic-")
-                                {
-                                    retry_req = retry_req.header(name.clone(), value.clone());
-                                }
-                            }
-                            if !api_key.is_empty() {
-                                retry_req = if settings.real_auth_scheme == "x-api-key" {
-                                    retry_req.header("x-api-key", &api_key)
-                                } else {
-                                    retry_req.bearer_auth(&api_key)
-                                };
-                            }
+                            let retry_req = build_upstream_request(
+                                async_client(),
+                                &target_url,
+                                rewrite.updated_body.to_string(),
+                                &headers,
+                                &api_key,
+                                &settings.real_auth_scheme,
+                            );
 
                             if let Ok(retry_response) = retry_req.send().await {
                                 let mut res_builder = axum::response::Response::builder()
