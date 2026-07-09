@@ -144,6 +144,8 @@ impl Default for Settings {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PublicConfig {
     base_url: String,
     auth_scheme: String,
@@ -173,20 +175,6 @@ pub fn to_public_config(settings: &Settings) -> Value {
         },
         has_api_key: has_key,
     })
-}
-
-impl Serialize for PublicConfig {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("PublicConfig", 3)?;
-        state.serialize_field("baseUrl", &self.base_url)?;
-        state.serialize_field("authScheme", &self.auth_scheme)?;
-        state.serialize_field("hasApiKey", &self.has_api_key)?;
-        state.end()
-    }
 }
 
 pub fn settings_file() -> PathBuf {

@@ -1,7 +1,5 @@
 //! Command parsing utilities for API optimizations.
 
-use regex::Regex;
-
 /// Extract the command prefix for fast prefix detection.
 ///
 /// Parses a shell command safely, handling environment variables and
@@ -41,7 +39,7 @@ pub fn parse_shell_command_prefix(command: &str) -> String {
     first.to_string()
 }
 
-fn strip_env_assignments<'a>(parts: &[&'a str]) -> Vec<&'a str> {
+pub(crate) fn strip_env_assignments<'a>(parts: &[&'a str]) -> Vec<&'a str> {
     let mut start = 0;
     for (i, part) in parts.iter().enumerate() {
         if is_env_assignment(part) {
@@ -53,9 +51,19 @@ fn strip_env_assignments<'a>(parts: &[&'a str]) -> Vec<&'a str> {
     parts[start..].to_vec()
 }
 
-fn is_env_assignment(part: &str) -> bool {
-    let re = Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*=.*$").unwrap();
-    re.is_match(part)
+fn is_env_name_char(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphanumeric()
+}
+
+pub(crate) fn is_env_assignment(part: &str) -> bool {
+    let Some((name, _)) = part.split_once('=') else {
+        return false;
+    };
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+        && chars.all(is_env_name_char)
 }
 
 #[cfg(test)]

@@ -3,8 +3,7 @@
 //! Detects quota checks, prefix commands, title generation, safety classifier,
 //! suggestion mode, and filepath extraction requests.
 
-use crate::optimization::command_utils::parse_shell_command_prefix;
-use regex::Regex;
+use crate::optimization::command_utils::{parse_shell_command_prefix, strip_env_assignments};
 use serde_json::Value;
 
 /// 從 JSON body 的 `system` 欄位提取文字，支援 String 和 Array 格式。
@@ -217,23 +216,6 @@ pub fn extract_filepaths(body_str: &str) -> Option<String> {
 
     let filepaths = extract_filepaths_from_command(command, output);
     Some(filepaths)
-}
-
-fn strip_env_assignments<'a>(parts: &[&'a str]) -> Vec<&'a str> {
-    let mut start = 0;
-    for (i, part) in parts.iter().enumerate() {
-        if is_env_assignment(part) {
-            start = i + 1;
-        } else {
-            break;
-        }
-    }
-    parts[start..].to_vec()
-}
-
-fn is_env_assignment(part: &str) -> bool {
-    let re = Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*=.*$").unwrap();
-    re.is_match(part)
 }
 
 /// Extract filepaths from a command and its output locally.
