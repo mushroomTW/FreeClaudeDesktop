@@ -330,15 +330,15 @@ pub(super) fn sidebar<'a>(app: &LauncherApp, palette: ColorPalette) -> Element<'
         .collect();
 
     let icon_widget = image(get_app_icon().clone())
-        .width(Length::Fixed(32.0))
-        .height(Length::Fixed(32.0));
+        .width(Length::Fixed(44.0))
+        .height(Length::Fixed(44.0));
 
     let sidebar = container(
         column![
             row![
                 icon_widget,
                 column![
-                    text("Free Claude").size(15).color(palette.text).font(Font {
+                    text("Free Claude").size(16).color(palette.text).font(Font {
                         weight: Weight::Bold,
                         ..Default::default()
                     }),
@@ -346,7 +346,7 @@ pub(super) fn sidebar<'a>(app: &LauncherApp, palette: ColorPalette) -> Element<'
                 ]
                 .spacing(2),
             ]
-            .spacing(8)
+            .spacing(10)
             .align_y(Alignment::Center),
             column(sidebar_items).spacing(4),
         ]
