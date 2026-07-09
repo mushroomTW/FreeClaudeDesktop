@@ -10,7 +10,9 @@ use crate::common::local_app_data;
 use crate::error::{AppError, AppResult};
 
 pub fn mirror_profile_dir() -> PathBuf {
-    local_app_data().join("FreeClaudeLauncher").join("claude_profile")
+    local_app_data()
+        .join("FreeClaudeLauncher")
+        .join("claude_profile")
 }
 
 pub fn official_app_data_dir() -> PathBuf {
@@ -64,24 +66,48 @@ pub fn resync_from_official() -> AppResult<()> {
     let official = official_app_data_dir();
     let mirror = mirror_profile_dir();
     if official.exists() {
-        let _ = copy_dir_all(&official, &mirror);
+        copy_dir_all(&official, &mirror)?;
     }
     let settings = crate::config::get_launcher_settings();
-    let port = settings.as_ref().and_then(|s| s.active_port).unwrap_or(crate::constants::DEFAULT_PORT);
-    let enable_computer_mcp = settings.as_ref().map(|s| s.enable_computer_mcp_server).unwrap_or(false);
+    let port = settings
+        .as_ref()
+        .and_then(|s| s.active_port)
+        .unwrap_or(crate::constants::DEFAULT_PORT);
+    let enable_computer_mcp = settings
+        .as_ref()
+        .map(|s| s.enable_computer_mcp_server)
+        .unwrap_or(false);
 
     apply_3p_deployment_mode()?;
     apply_computer_mcp_server_config(enable_computer_mcp)?;
-    let _ = update_config_port(port);
+    update_config_port(port)?;
     Ok(())
 }
 
 pub fn reset_mirror_profile() -> AppResult<()> {
     let mirror = mirror_profile_dir();
+    let backup = mirror.with_file_name(format!(
+        "{}.reset-backup-{}",
+        mirror
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("claude_profile"),
+        std::process::id()
+    ));
     if mirror.exists() {
-        let _ = fs::remove_dir_all(&mirror);
+        if backup.exists() {
+            fs::remove_dir_all(&backup)?;
+        }
+        fs::rename(&mirror, &backup)?;
     }
-    ensure_mirror_profile_initialized()
+    let result = ensure_mirror_profile_initialized();
+    if result.is_err() && backup.exists() {
+        let _ = fs::remove_dir_all(&mirror);
+        let _ = fs::rename(&backup, &mirror);
+    } else if backup.exists() {
+        fs::remove_dir_all(&backup)?;
+    }
+    result
 }
 
 pub fn user_data_dir() -> PathBuf {
@@ -207,7 +233,11 @@ fn config_library_dirs() -> Vec<PathBuf> {
     {
         // Windows Store 版 Claude 無法吃 --user-data-dir，ClaudeSource 會固定讀這裡的 3P profile。
         dirs.push(local_app_data().join("Claude-3p").join("configLibrary"));
-        dirs.push(app_data_roaming_dir().join("Claude-3p").join("configLibrary"));
+        dirs.push(
+            app_data_roaming_dir()
+                .join("Claude-3p")
+                .join("configLibrary"),
+        );
 
         let packages_dir = env::var_os("USERPROFILE")
             .map(PathBuf::from)
@@ -480,6 +510,21 @@ pub fn restore_official_config() -> AppResult<()> {
 
 pub use crate::constants::CONFIG_ID;
 
+fn claude_config_model_name(name: &str) -> (&str, bool) {
+    name.strip_suffix("[1m]")
+        .or_else(|| name.strip_suffix("[1M]"))
+        .map(|base| (base, true))
+        .unwrap_or((name, false))
+}
+
+fn strip_display_1m_suffix(name: &str) -> &str {
+    name.strip_suffix(" 1M")
+        .or_else(|| name.strip_suffix(" 1m"))
+        .or_else(|| name.strip_suffix("-1M"))
+        .or_else(|| name.strip_suffix("-1m"))
+        .unwrap_or(name)
+}
+
 pub fn claude_config(
     port: u16,
     inference_models: &[crate::models::openai::InferenceModel],
@@ -499,6 +544,7 @@ pub fn claude_config(
         "coworkTabEnabled": true,
         "isClaudeCodeForDesktopEnabled": true,
         "chatTabEnabled": true,
+        "isDesktopExtensionEnabled": true,
         "extensions": {
             "enabled": true
         }
@@ -508,12 +554,24 @@ pub fn claude_config(
         let models_val: Vec<Value> = inference_models
             .iter()
             .map(|m| {
+                let (config_name, has_1m_suffix) = claude_config_model_name(&m.name);
+                let supports_1m = has_1m_suffix || m.supports1m == Some(true);
+                let label = if m.label_override.is_empty() {
+                    &m.display_name
+                } else {
+                    &m.label_override
+                };
+                let display = if m.display_name.is_empty() {
+                    &m.name
+                } else {
+                    &m.display_name
+                };
                 let mut item = json!({
-                    "name": m.name,
-                    "labelOverride": if m.label_override.is_empty() { &m.display_name } else { &m.label_override },
-                    "displayName": if m.display_name.is_empty() { &m.name } else { &m.display_name }
+                    "name": config_name,
+                    "labelOverride": if supports_1m { strip_display_1m_suffix(label) } else { label },
+                    "displayName": if supports_1m { strip_display_1m_suffix(display) } else { display }
                 });
-                if m.supports1m == Some(true) {
+                if supports_1m {
                     item["supports1m"] = json!(true);
                 }
                 item
@@ -836,9 +894,7 @@ pub fn merge_mcp_servers(mut data: Value, all_servers: &serde_json::Map<String, 
     }
     if !all_servers.is_empty() {
         if let Some(obj) = data.as_object_mut() {
-            let servers = obj
-                .entry("mcpServers")
-                .or_insert_with(|| json!({}));
+            let servers = obj.entry("mcpServers").or_insert_with(|| json!({}));
             if !servers.is_object() {
                 *servers = json!({});
             }
@@ -914,7 +970,10 @@ pub fn apply_computer_mcp_server_config(enabled: bool) -> AppResult<()> {
         };
 
         if file_existed && data_opt.is_none() {
-            tracing::warn!("Skipping writing MCP config to {:?} because JSON parsing failed", path);
+            tracing::warn!(
+                "Skipping writing MCP config to {:?} because JSON parsing failed",
+                path
+            );
             continue;
         }
 
@@ -984,7 +1043,10 @@ pub fn apply_3p_deployment_mode() -> AppResult<()> {
         };
 
         if file_existed && data_opt.is_none() {
-            tracing::warn!("Skipping writing config to {:?} because JSON parsing failed", path);
+            tracing::warn!(
+                "Skipping writing config to {:?} because JSON parsing failed",
+                path
+            );
             continue;
         }
 
@@ -1019,6 +1081,44 @@ pub fn restore_1p_deployment_mode() -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn set_test_app_dirs(root: &Path) -> (PathBuf, PathBuf, Vec<(&'static str, Option<OsString>)>) {
+        let keys = ["APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "HOME"];
+        let old = keys
+            .into_iter()
+            .map(|key| (key, std::env::var_os(key)))
+            .collect();
+
+        #[cfg(target_os = "windows")]
+        {
+            std::env::set_var("APPDATA", root.join("appdata"));
+            std::env::set_var("LOCALAPPDATA", root.join("local"));
+        }
+        #[cfg(target_os = "macos")]
+        {
+            std::env::set_var("HOME", root.join("home"));
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            std::env::set_var("XDG_CONFIG_HOME", root.join("xdg"));
+            std::env::set_var("HOME", root.join("home"));
+        }
+
+        (official_app_data_dir(), mirror_profile_dir(), old)
+    }
+
+    fn restore_env(old: Vec<(&'static str, Option<OsString>)>) {
+        for (key, value) in old {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
 
     #[test]
     fn meta_upsert_preserves_existing_entries() {
@@ -1113,16 +1213,16 @@ mod tests {
     }
 
     #[test]
-    fn claude_config_includes_supports1m_field() {
+    fn claude_config_uses_supported_1m_variant_without_double_label() {
         let model = crate::models::openai::InferenceModel {
-            name: "claude-sonnet-4-6[0]".to_string(),
-            label_override: "deepseek-v4-flash".to_string(),
+            name: "claude-sonnet-4-6[0][1m]".to_string(),
+            label_override: "deepseek-v4-flash 1M".to_string(),
             provider_model_id: "deepseek-v4-flash".to_string(),
-            display_name: "deepseek-v4-flash".to_string(),
+            display_name: "deepseek-v4-flash 1M".to_string(),
             max_input_tokens: Some(1_000_000),
             max_tokens: Some(8192),
             capabilities: serde_json::json!({}),
-            supports1m: Some(true),
+            supports1m: None,
             transport_type: None,
         };
 
@@ -1130,6 +1230,8 @@ mod tests {
         let models = config["inferenceModels"].as_array().unwrap();
         assert_eq!(models.len(), 1);
         assert_eq!(models[0]["name"], "claude-sonnet-4-6[0]");
+        assert_eq!(models[0]["labelOverride"], "deepseek-v4-flash");
+        assert_eq!(models[0]["displayName"], "deepseek-v4-flash");
         assert_eq!(models[0]["supports1m"], true);
     }
 
@@ -1139,6 +1241,7 @@ mod tests {
         assert_eq!(config["coworkTabEnabled"], true);
         assert_eq!(config["isClaudeCodeForDesktopEnabled"], true);
         assert_eq!(config["chatTabEnabled"], true);
+        assert_eq!(config["isDesktopExtensionEnabled"], true);
         assert_eq!(config["extensions"]["enabled"], true);
     }
 
@@ -1171,9 +1274,13 @@ mod tests {
             },
         }";
         let cleaned = clean_json_text(raw);
-        let parsed: Value = serde_json::from_str(&cleaned).expect(&format!("Failed to parse: {}", cleaned));
+        let parsed: Value =
+            serde_json::from_str(&cleaned).expect(&format!("Failed to parse: {}", cleaned));
         assert_eq!(parsed["url"], "http://example.com/api");
-        assert_eq!(parsed["comment_block_in_str"], "/* this is not a comment */");
+        assert_eq!(
+            parsed["comment_block_in_str"],
+            "/* this is not a comment */"
+        );
         assert_eq!(parsed["escaped_quote_in_str"], "hello \"world\"");
         assert_eq!(parsed["escaped_slash_in_str"], "hello / world");
         assert_eq!(parsed["unicode_escapes"], "\"hello\"");
@@ -1211,7 +1318,10 @@ mod tests {
 
         let updated = with_computer_mcp_server(data, true, command);
         assert!(updated["mcpServers"].get("launcher-computer").is_none());
-        assert_eq!(updated["mcpServers"]["free-claude-computer"]["args"][0], "--mcp-computer-server");
+        assert_eq!(
+            updated["mcpServers"]["free-claude-computer"]["args"][0],
+            "--mcp-computer-server"
+        );
         assert_eq!(updated["mcpServers"]["custom"]["command"], "node");
     }
 
@@ -1240,9 +1350,53 @@ mod tests {
         fs::write(sub_dir.join("test.txt"), "hello").unwrap();
 
         copy_dir_all(&temp_src, &temp_dst).unwrap();
-        assert_eq!(fs::read_to_string(temp_dst.join("subdir").join("test.txt")).unwrap(), "hello");
+        assert_eq!(
+            fs::read_to_string(temp_dst.join("subdir").join("test.txt")).unwrap(),
+            "hello"
+        );
 
         let _ = fs::remove_dir_all(&temp_src);
         let _ = fs::remove_dir_all(&temp_dst);
+    }
+
+    #[test]
+    fn resync_from_official_returns_copy_errors() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!("fcl_resync_error_{}", std::process::id()));
+        let (official, mirror_profile, old_env) = set_test_app_dirs(&root);
+
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&official).unwrap();
+        fs::create_dir_all(mirror_profile.join("conflict")).unwrap();
+        fs::write(official.join("conflict"), "official").unwrap();
+
+        let result = resync_from_official();
+
+        restore_env(old_env);
+        let _ = fs::remove_dir_all(&root);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn reset_mirror_profile_restores_existing_profile_on_init_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!("fcl_reset_error_{}", std::process::id()));
+        let (official, mirror_profile, old_env) = set_test_app_dirs(&root);
+
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&mirror_profile).unwrap();
+        fs::write(mirror_profile.join("keep.txt"), "keep").unwrap();
+        fs::create_dir_all(official.parent().unwrap()).unwrap();
+        fs::write(&official, "not a directory").unwrap();
+
+        let result = reset_mirror_profile();
+
+        restore_env(old_env);
+        let restored = fs::read_to_string(mirror_profile.join("keep.txt"));
+        let _ = fs::remove_dir_all(&root);
+
+        assert!(result.is_err());
+        assert_eq!(restored.unwrap(), "keep");
     }
 }

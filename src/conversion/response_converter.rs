@@ -107,7 +107,9 @@ pub fn prepare_proxy_body(body: &str, settings: &Settings) -> String {
     };
 
     if let Some(model) = data.get("model").and_then(Value::as_str) {
-        if let Some(mapped) = crate::conversion::request_converter::resolve_model_route(model, settings) {
+        if let Some(mapped) =
+            crate::conversion::request_converter::resolve_model_route(model, settings)
+        {
             tracing::info!("[model 映射] {} → {}", model, mapped);
             data["model"] = Value::String(mapped);
         } else {
@@ -116,7 +118,9 @@ pub fn prepare_proxy_body(body: &str, settings: &Settings) -> String {
                 model
             );
         }
-    } else if let Some(mapped) = crate::conversion::request_converter::resolve_model_route("", settings) {
+    } else if let Some(mapped) =
+        crate::conversion::request_converter::resolve_model_route("", settings)
+    {
         data["model"] = Value::String(mapped);
     }
 
@@ -294,17 +298,40 @@ fn model_alias(
     model: &ProviderModel,
     index: usize,
     overrides: &HashMap<String, String>,
-    _m1_overrides: &HashMap<String, bool>,
+    is_1m: bool,
 ) -> String {
     if supports_reasoning_effort(model, overrides) {
         let levels = effective_reasoning_effort_levels(model, overrides);
-        if levels.iter().any(|level| level == "max") {
+        if is_1m || levels.iter().any(|level| level == "max") {
             format!("claude-opus-4-8[{index}]")
         } else {
             format!("claude-sonnet-4-6[{index}]")
         }
+    } else if is_1m {
+        format!("claude-sonnet-5[{index}]")
     } else {
         format!("claude-haiku-4-5[{index}]")
+    }
+}
+
+fn model_id_with_1m_suffix(alias: String, is_1m: bool) -> String {
+    if is_1m {
+        format!("{alias}[1m]")
+    } else {
+        alias
+    }
+}
+
+fn display_name_with_1m_suffix(name: String, is_1m: bool) -> String {
+    if !is_1m {
+        return name;
+    }
+
+    let lower = name.trim_end().to_ascii_lowercase();
+    if lower.ends_with(" 1m") || lower.ends_with("-1m") || lower.ends_with("[1m]") {
+        name
+    } else {
+        format!("{name} 1M")
     }
 }
 
@@ -336,56 +363,47 @@ pub fn normalize_models_response_with_overrides(
     });
     models.dedup_by(|a, b| provider_model_id(a) == provider_model_id(b));
 
-fn model_base_name(name: &str) -> &str {
-    for suffix in ["-1m", "-1M", " 1m", " 1M"] {
-        if let Some(base) = name.strip_suffix(suffix) {
-            return base;
+    fn model_base_name(name: &str) -> &str {
+        for suffix in ["-1m", "-1M", " 1m", " 1M"] {
+            if let Some(base) = name.strip_suffix(suffix) {
+                return base;
+            }
         }
+        name
     }
-    name
-}
 
-let base_1m_set: std::collections::HashSet<String> = models
-    .iter()
-    .filter_map(|m| {
-        let pid = provider_model_id(m);
-        if m1_overrides.get(&pid).copied().unwrap_or(false) {
-            Some(model_base_name(&pid).to_string())
-        } else {
-            None
-        }
-    })
-    .collect();
-let ids_1m: std::collections::HashSet<String> = models
-    .iter()
-    .map(provider_model_id)
-    .filter(|pid| m1_overrides.get(pid.as_str()).copied().unwrap_or(false))
-    .collect();
-if !base_1m_set.is_empty() {
-    eprintln!(
-        "[1m-debug] base_1m_set={:?} ids_1m={:?} upstream_ids={:?}",
-        base_1m_set,
-        ids_1m,
-        models.iter().map(provider_model_id).collect::<Vec<_>>()
-    );
-    models.retain(|m| {
-        let pid = provider_model_id(m);
-        let base = model_base_name(&pid);
-        !base_1m_set.contains(base) || ids_1m.contains(&pid)
-    });
-}
+    let base_1m_set: std::collections::HashSet<String> = models
+        .iter()
+        .filter_map(|m| {
+            let pid = provider_model_id(m);
+            if m1_overrides.get(&pid).copied().unwrap_or(false) {
+                Some(model_base_name(&pid).to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    let ids_1m: std::collections::HashSet<String> = models
+        .iter()
+        .map(provider_model_id)
+        .filter(|pid| m1_overrides.get(pid.as_str()).copied().unwrap_or(false))
+        .collect();
+    if !base_1m_set.is_empty() {
+        models.retain(|m| {
+            let pid = provider_model_id(m);
+            let base = model_base_name(&pid);
+            !base_1m_set.contains(base) || ids_1m.contains(&pid)
+        });
+    }
 
-let mut reasoning_effort_routes = std::collections::HashMap::new();
+    let mut reasoning_effort_routes = std::collections::HashMap::new();
     let data: Vec<_> = models
         .into_iter()
         .enumerate()
         .map(|(index, model)| {
             let provider_model_id = provider_model_id(&model);
-            let alias = model_alias(&model, index, reasoning_overrides, m1_overrides);
+            let supports_reasoning = supports_reasoning_effort(&model, reasoning_overrides);
             let effort_levels = effective_reasoning_effort_levels(&model, reasoning_overrides);
-            if supports_reasoning_effort(&model, reasoning_overrides) {
-                reasoning_effort_routes.insert(alias.clone(), effort_levels);
-            }
             // 將 OpenAI/NVIDIA 格式的 unix timestamp 轉成 Anthropic 規範的 RFC 3339 字串。
             // 沒有時維持 epoch fallback，避免 Claude Desktop 拒絕。
             let created_at = model
@@ -401,8 +419,14 @@ let mut reasoning_effort_routes = std::collections::HashMap::new();
                 .max_input_tokens
                 .or_else(|| model_info_u64(&model, "max_input_tokens"))
                 .or(model.context_length);
-            let is_1m = m1_overrides.get(&provider_model_id).copied().unwrap_or(false)
-                || raw_max_input.map(|tokens| tokens >= 1_000_000).unwrap_or(false);
+            let is_1m = m1_overrides
+                .get(&provider_model_id)
+                .copied()
+                .unwrap_or(false)
+                || raw_max_input
+                    .map(|tokens| tokens >= 1_000_000)
+                    .unwrap_or(false);
+            let alias = model_alias(&model, index, reasoning_overrides, is_1m);
             let max_input = if is_1m {
                 Some(raw_max_input.unwrap_or(200_000).max(1_000_000))
             } else {
@@ -417,12 +441,20 @@ let mut reasoning_effort_routes = std::collections::HashMap::new();
                 .name
                 .clone()
                 .unwrap_or_else(|| provider_model_id.clone());
+            let display_name = display_name_with_1m_suffix(display_name, is_1m);
 
             let name = display_name.clone();
+            let id = model_id_with_1m_suffix(alias, is_1m);
+            if supports_reasoning {
+                if let Some(base_id) = id.strip_suffix("[1m]") {
+                    reasoning_effort_routes.insert(base_id.to_string(), effort_levels.clone());
+                }
+                reasoning_effort_routes.insert(id.clone(), effort_levels);
+            }
 
             NormalizedModel {
                 kind: "model".to_string(),
-                id: alias,
+                id,
                 name,
                 display_name,
                 created_at,
@@ -430,13 +462,22 @@ let mut reasoning_effort_routes = std::collections::HashMap::new();
                 max_input_tokens: max_input,
                 max_tokens: max_output,
                 capabilities: model_capabilities(&model, reasoning_overrides),
-                supports1m: if is_1m { Some(true) } else { None },
+                supports1m: None,
             }
         })
         .collect();
     let routes = data
         .iter()
-        .map(|model| (model.id.clone(), model.provider_model_id.clone()))
+        .flat_map(|model| {
+            let route = (model.id.clone(), model.provider_model_id.clone());
+            match model.id.strip_suffix("[1m]") {
+                Some(base_id) => vec![
+                    route,
+                    (base_id.to_string(), model.provider_model_id.clone()),
+                ],
+                None => vec![route],
+            }
+        })
         .collect();
     Ok(NormalizedModels {
         first_id: data.first().map(|model| model.id.clone()),
@@ -892,11 +933,18 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(normalized.data[0].id, "claude-haiku-4-5[0]");
-        assert_eq!(normalized.data[0].name, "deepseek-v4-flash");
+        assert_eq!(normalized.data[0].id, "claude-sonnet-5[0][1m]");
+        assert_eq!(normalized.data[0].name, "deepseek-v4-flash 1M");
         assert_eq!(normalized.data[0].max_input_tokens, Some(1_000_000));
-        assert_eq!(normalized.data[0].supports1m, Some(true));
-        assert_eq!(normalized.routes["claude-haiku-4-5[0]"], "deepseek-v4-flash");
+        assert_eq!(normalized.data[0].supports1m, None);
+        assert_eq!(
+            normalized.routes["claude-sonnet-5[0][1m]"],
+            "deepseek-v4-flash"
+        );
+        assert_eq!(
+            normalized.routes["claude-sonnet-5[0]"],
+            "deepseek-v4-flash"
+        );
     }
 
     #[test]
@@ -912,10 +960,15 @@ mod tests {
         }))
         .unwrap();
 
-        assert_eq!(normalized.data[0].provider_model_id, "nemotron-3-super-120b");
+        assert_eq!(
+            normalized.data[0].provider_model_id,
+            "nemotron-3-super-120b"
+        );
+        assert_eq!(normalized.data[0].id, "claude-sonnet-5[0][1m]");
+        assert_eq!(normalized.data[0].name, "nemotron-3-super-120b 1M");
         assert_eq!(normalized.data[0].max_input_tokens, Some(1_000_000));
         assert_eq!(normalized.data[0].max_tokens, Some(65_536));
-        assert_eq!(normalized.data[0].supports1m, Some(true));
+        assert_eq!(normalized.data[0].supports1m, None);
     }
 
     #[test]
@@ -952,11 +1005,10 @@ mod tests {
 
         // 只剩被勾選 1M 的那一筆
         assert_eq!(normalized.data.len(), 1);
-        assert_eq!(
-            normalized.data[0].provider_model_id,
-            "claude-sonnet-4-5-1m"
-        );
-        assert_eq!(normalized.data[0].supports1m, Some(true));
+        assert_eq!(normalized.data[0].provider_model_id, "claude-sonnet-4-5-1m");
+        assert_eq!(normalized.data[0].id, "claude-sonnet-5[0][1m]");
+        assert_eq!(normalized.data[0].name, "Claude Sonnet 4.5 1M");
+        assert_eq!(normalized.data[0].supports1m, None);
     }
 
     #[test]
