@@ -240,14 +240,10 @@ fn models_response_applies_1m_suffix_when_override_is_enabled() {
     )
     .unwrap();
 
-    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0][1m]");
+    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0]");
     assert_eq!(normalized.data[0].name, "deepseek-v4-flash 1M");
     assert_eq!(normalized.data[0].max_input_tokens, Some(1_000_000));
-    assert_eq!(normalized.data[0].supports1m, None);
-    assert_eq!(
-        normalized.routes["claude-sonnet-5[0][1m]"],
-        "deepseek-v4-flash"
-    );
+    assert_eq!(normalized.data[0].supports1m, Some(true));
     assert_eq!(normalized.routes["claude-sonnet-5[0]"], "deepseek-v4-flash");
 }
 
@@ -268,11 +264,11 @@ fn model_info_max_input_tokens_enables_1m_support() {
         normalized.data[0].provider_model_id,
         "nemotron-3-super-120b"
     );
-    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0][1m]");
+    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0]");
     assert_eq!(normalized.data[0].name, "nemotron-3-super-120b 1M");
     assert_eq!(normalized.data[0].max_input_tokens, Some(1_000_000));
     assert_eq!(normalized.data[0].max_tokens, Some(65_536));
-    assert_eq!(normalized.data[0].supports1m, None);
+    assert_eq!(normalized.data[0].supports1m, Some(true));
 }
 
 #[test]
@@ -310,9 +306,9 @@ fn models_response_hides_same_name_200k_variant_when_1m_enabled() {
     // 只剩被勾選 1M 的那一筆
     assert_eq!(normalized.data.len(), 1);
     assert_eq!(normalized.data[0].provider_model_id, "claude-sonnet-4-5-1m");
-    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0][1m]");
+    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0]");
     assert_eq!(normalized.data[0].name, "Claude Sonnet 4.5 1M");
-    assert_eq!(normalized.data[0].supports1m, None);
+    assert_eq!(normalized.data[0].supports1m, Some(true));
 }
 
 #[test]
