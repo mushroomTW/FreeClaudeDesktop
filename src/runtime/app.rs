@@ -7,6 +7,88 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::Mutex;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobKind {
+    Saving,
+    Refreshing,
+    Launching,
+    Resyncing,
+    Restoring,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigAction {
+    SaveOnly,
+    SaveAndLaunch,
+    RefreshModels,
+}
+
+#[derive(Clone)]
+pub struct LoadedSettings(pub crate::Settings);
+
+impl std::fmt::Debug for LoadedSettings {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("LoadedSettings(<redacted>)")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum JobState {
+    #[default]
+    Idle,
+    Running(JobKind),
+    Failed(String),
+}
+
+#[derive(Debug, Default)]
+pub struct JobTracker {
+    next_id: u64,
+    state: JobState,
+    abort: Option<futures::future::AbortHandle>,
+}
+
+impl JobTracker {
+    fn begin(&mut self, kind: JobKind) -> (u64, futures::future::AbortRegistration) {
+        if let Some(abort) = self.abort.take() {
+            abort.abort();
+        }
+        self.next_id = self.next_id.wrapping_add(1);
+        let (abort, registration) = futures::future::AbortHandle::new_pair();
+        self.abort = Some(abort);
+        self.state = JobState::Running(kind);
+        (self.next_id, registration)
+    }
+
+    fn accept(&mut self, id: u64) -> bool {
+        if id != self.next_id {
+            return false;
+        }
+        self.abort = None;
+        self.state = JobState::Idle;
+        true
+    }
+
+    fn fail(&mut self, id: u64, error: String) -> bool {
+        if id != self.next_id {
+            return false;
+        }
+        self.abort = None;
+        self.state = JobState::Failed(error);
+        true
+    }
+
+    fn cancel(&mut self) {
+        if let Some(abort) = self.abort.take() {
+            abort.abort();
+        }
+        self.state = JobState::Idle;
+    }
+
+    fn state(&self) -> &JobState {
+        &self.state
+    }
+}
+
 // ════════════════════════════════════════════════════════════════
 //  應用程式狀態
 // ════════════════════════════════════════════════════════════════
@@ -90,6 +172,17 @@ pub enum Message {
     RealModelHaikuSelected(Option<String>),
     RefreshModels,
     ResyncFromOfficial,
+    ConfigFinished(
+        u64,
+        ConfigAction,
+        Result<crate::config_service::SaveConfigOutput, String>,
+    ),
+    LaunchFinished(u64, Result<std::path::PathBuf, String>),
+    ResyncFinished(u64, Result<(), String>),
+    RestoreFinished(u64, Result<(), String>),
+    StatusLoaded(Option<std::path::PathBuf>),
+    SettingsLoaded(Result<Option<Box<LoadedSettings>>, String>),
+    ThemeSaved(Result<(), String>),
 }
 
 pub struct LauncherApp {
@@ -129,6 +222,7 @@ pub struct LauncherApp {
     pub real_model_sonnet: Option<String>,
     pub real_model_opus: Option<String>,
     pub real_model_haiku: Option<String>,
+    pub jobs: JobTracker,
 }
 
 impl LauncherApp {
@@ -136,12 +230,12 @@ impl LauncherApp {
         port: u16,
         tray_rx: Arc<Mutex<UnboundedReceiver<Message>>>,
     ) -> (Self, Task<Message>) {
-        let mut app = Self {
-            provider: None,
-            base_url: String::new(),
+        let app = Self {
+            provider: Some("OpenRouter".into()),
+            base_url: "https://openrouter.ai/api".into(),
             api_key: String::new(),
             api_key_placeholder: "輸入 API Key".into(),
-            auth_scheme: None,
+            auth_scheme: Some("bearer".into()),
             use_custom_path: false,
             custom_path: String::new(),
             status_text: "正在偵測...".into(),
@@ -173,73 +267,30 @@ impl LauncherApp {
             real_model_opus: None,
             real_model_haiku: None,
             current_tab: Tab::General,
+            jobs: JobTracker::default(),
         };
 
-        // 讀取本地配置以還原狀態
-        if let Some(settings) = crate::get_launcher_settings() {
-            // 還原 provider
-            if settings.real_base_url.contains("openrouter.ai") {
-                app.provider = Some("OpenRouter".into());
-                app.auth_scheme = Some("bearer".into());
-            } else if settings.real_base_url.contains("api.nvidia.com") {
-                app.provider = Some("NVIDIA".into());
-                app.auth_scheme = Some("bearer".into());
-            } else if settings.real_base_url.contains("api.anthropic.com") {
-                app.provider = Some("自訂".into());
-                app.auth_scheme = Some("x-api-key".into());
-            } else {
-                app.provider = Some("自訂".into());
-                app.auth_scheme = Some(settings.real_auth_scheme.clone());
-            }
-            app.base_url = settings.real_base_url;
+        let status_task = Task::perform(
+            async {
+                tokio::task::spawn_blocking(crate::detect_claude_path)
+                    .await
+                    .ok()
+                    .flatten()
+            },
+            Message::StatusLoaded,
+        );
+        let settings_task = Task::perform(
+            async {
+                tokio::task::spawn_blocking(crate::config::load_launcher_settings)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .map(|settings| settings.map(|settings| Box::new(LoadedSettings(settings))))
+                    .map_err(|error| error.to_string())
+            },
+            Message::SettingsLoaded,
+        );
 
-            // API key placeholder 提示
-            if !settings.real_api_key.is_empty() {
-                app.api_key_placeholder = "已儲存 API Key，留空沿用".into();
-            }
-
-            // 還原 Per-feature optimization settings
-            app.enable_quota_check_mock = settings.enable_quota_check_mock;
-            app.enable_prefix_detection = settings.enable_prefix_detection;
-            app.enable_title_generation_skip = settings.enable_title_generation_skip;
-            app.enable_suggestion_mode_skip = settings.enable_suggestion_mode_skip;
-            app.enable_filepath_extraction_mock = settings.enable_filepath_extraction_mock;
-            app.enable_web_server_tools = settings.enable_web_server_tools;
-            app.web_fetch_allow_private_networks = settings.web_fetch_allow_private_networks;
-            app.web_fetch_allowed_schemes = settings.web_fetch_allowed_schemes;
-            app.reasoning_replay_mode = settings.reasoning_replay_mode;
-            app.transport_type = settings.transport_type;
-            app.theme_mode = ThemeMode::parse(&settings.theme_mode);
-            app.discovered_models = settings.discovered_models;
-            app.update_model_options();
-            app.model_reasoning_overrides = settings.model_reasoning_overrides;
-            app.model_1m_overrides = settings.model_1m_overrides;
-            app.real_model = settings.real_model;
-            app.real_model_sonnet = settings.real_model_sonnet;
-            app.real_model_opus = settings.real_model_opus;
-            app.real_model_haiku = settings.real_model_haiku;
-
-            // 自訂路徑檢查
-            if let Some(target) = crate::detect_claude_path() {
-                let default_paths = crate::launcher::known_claude_paths();
-                let target_str = target.to_string_lossy().to_lowercase();
-                let is_official =
-                    default_paths.contains(&target) || target_str.contains("windowsapps");
-                if !is_official {
-                    app.use_custom_path = true;
-                    app.custom_path = target.to_string_lossy().to_string();
-                }
-            }
-        } else {
-            // 預設 OpenRouter
-            app.provider = Some("OpenRouter".into());
-            app.base_url = "https://openrouter.ai/api".into();
-            app.auth_scheme = Some("bearer".into());
-        }
-
-        app.refresh_status();
-
-        (app, Task::none())
+        (app, Task::batch([status_task, settings_task]))
     }
 
     pub fn theme(&self) -> Theme {
@@ -300,6 +351,36 @@ impl LauncherApp {
         }
     }
 
+    pub fn is_busy(&self) -> bool {
+        matches!(self.jobs.state(), JobState::Running(_))
+    }
+
+    fn config_input(&self) -> crate::config_service::SaveConfigInput {
+        crate::config_service::SaveConfigInput {
+            port: self.current_port,
+            base_url: self.base_url.clone(),
+            api_key: self.api_key.clone(),
+            auth_scheme: self.auth_value().to_string(),
+            enable_quota_check_mock: self.enable_quota_check_mock,
+            enable_prefix_detection: self.enable_prefix_detection,
+            enable_title_generation_skip: self.enable_title_generation_skip,
+            enable_suggestion_mode_skip: self.enable_suggestion_mode_skip,
+            enable_filepath_extraction_mock: self.enable_filepath_extraction_mock,
+            enable_web_server_tools: self.enable_web_server_tools,
+            web_fetch_allow_private_networks: self.web_fetch_allow_private_networks,
+            reasoning_replay_mode: self.reasoning_replay_mode.clone(),
+            transport_type: self.transport_type.clone(),
+            web_fetch_allowed_schemes: self.web_fetch_allowed_schemes.clone(),
+            theme_mode: self.theme_mode.as_str().to_string(),
+            model_reasoning_overrides: self.model_reasoning_overrides.clone(),
+            model_1m_overrides: self.model_1m_overrides.clone(),
+            real_model: self.real_model.clone(),
+            real_model_sonnet: self.real_model_sonnet.clone(),
+            real_model_opus: self.real_model_opus.clone(),
+            real_model_haiku: self.real_model_haiku.clone(),
+        }
+    }
+
     pub fn save_config(&self) -> Result<(), String> {
         crate::save_config(
             self.current_port,
@@ -328,37 +409,23 @@ impl LauncherApp {
         .map_err(|e| e.to_string())
     }
 
-    fn reload_model_settings(&mut self) {
-        if let Some(settings) = crate::get_launcher_settings() {
-            self.discovered_models = settings.discovered_models;
-            self.update_model_options();
-            self.model_reasoning_overrides = settings.model_reasoning_overrides;
-            self.model_1m_overrides = settings.model_1m_overrides;
-            self.real_model = settings.real_model;
-            self.real_model_sonnet = settings.real_model_sonnet;
-            self.real_model_opus = settings.real_model_opus;
-            self.real_model_haiku = settings.real_model_haiku;
-        }
-    }
-
     pub fn update_model_options(&mut self) {
         let mut opts = vec!["(自動/動態別名)".to_string()];
         opts.extend(self.discovered_models.clone());
         self.model_options = opts;
     }
 
-    fn save_theme_mode(&self) {
-        if let Some(mut settings) = crate::get_launcher_settings() {
-            settings.theme_mode = self.theme_mode.as_str().to_string();
-            let _ = crate::save_launcher_settings(&settings);
-        }
-    }
-
-    pub fn refresh_status(&mut self) {
-        match crate::detect_claude_path() {
+    fn apply_status(&mut self, path: Option<std::path::PathBuf>) {
+        match path {
             Some(path) => {
                 self.status_text = format!("已偵測 Claude Desktop\n{}", path.display());
                 self.status_ok = true;
+                let known = crate::launcher::known_claude_paths();
+                let path_text = path.to_string_lossy();
+                if !known.contains(&path) && !path_text.to_lowercase().contains("windowsapps") {
+                    self.use_custom_path = true;
+                    self.custom_path = path_text.into_owned();
+                }
             }
             None => {
                 self.status_text = "尚未找到 Claude.exe，可使用下方自訂路徑".into();
@@ -366,9 +433,73 @@ impl LauncherApp {
             }
         }
     }
+
+    fn apply_settings(&mut self, settings: crate::Settings) {
+        if settings.real_base_url.contains("openrouter.ai") {
+            self.provider = Some("OpenRouter".into());
+            self.auth_scheme = Some("bearer".into());
+        } else if settings.real_base_url.contains("api.nvidia.com") {
+            self.provider = Some("NVIDIA".into());
+            self.auth_scheme = Some("bearer".into());
+        } else {
+            self.provider = Some("自訂".into());
+            self.auth_scheme = Some(settings.real_auth_scheme.clone());
+        }
+        self.base_url = settings.real_base_url;
+        if !settings.real_api_key.is_empty() {
+            self.api_key_placeholder = "已儲存 API Key，留空沿用".into();
+        }
+        self.enable_quota_check_mock = settings.enable_quota_check_mock;
+        self.enable_prefix_detection = settings.enable_prefix_detection;
+        self.enable_title_generation_skip = settings.enable_title_generation_skip;
+        self.enable_suggestion_mode_skip = settings.enable_suggestion_mode_skip;
+        self.enable_filepath_extraction_mock = settings.enable_filepath_extraction_mock;
+        self.enable_web_server_tools = settings.enable_web_server_tools;
+        self.web_fetch_allow_private_networks = settings.web_fetch_allow_private_networks;
+        self.web_fetch_allowed_schemes = settings.web_fetch_allowed_schemes;
+        self.reasoning_replay_mode = settings.reasoning_replay_mode;
+        self.transport_type = settings.transport_type;
+        self.theme_mode = ThemeMode::parse(&settings.theme_mode);
+        self.discovered_models = settings.discovered_models;
+        self.update_model_options();
+        self.model_reasoning_overrides = settings.model_reasoning_overrides;
+        self.model_1m_overrides = settings.model_1m_overrides;
+        self.real_model = settings.real_model;
+        self.real_model_sonnet = settings.real_model_sonnet;
+        self.real_model_opus = settings.real_model_opus;
+        self.real_model_haiku = settings.real_model_haiku;
+    }
 }
 
 mod update;
 mod utils;
 
 pub use utils::{compact_path, json_result};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_job_result_is_rejected() {
+        let mut tracker = JobTracker::default();
+        let (old, _) = tracker.begin(JobKind::Saving);
+        let (current, _) = tracker.begin(JobKind::Refreshing);
+
+        assert!(!tracker.accept(old));
+        assert!(tracker.accept(current));
+        assert_eq!(tracker.state(), &JobState::Idle);
+    }
+
+    #[tokio::test]
+    async fn starting_new_job_aborts_previous_future() {
+        let mut tracker = JobTracker::default();
+        let (_, old_registration) = tracker.begin(JobKind::Saving);
+        let _ = tracker.begin(JobKind::Refreshing);
+
+        let result =
+            futures::future::Abortable::new(futures::future::pending::<()>(), old_registration)
+                .await;
+        assert!(result.is_err());
+    }
+}

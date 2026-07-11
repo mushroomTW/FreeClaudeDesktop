@@ -255,29 +255,29 @@ pub(super) fn confirm_bar<'a>(
     }
 }
 
-pub(super) fn action_buttons<'a>(palette: ColorPalette) -> Element<'a, Message> {
-    let buttons = row![
-        button(text("儲存並啟動 ↵").size(15).font(Font {
-            weight: Weight::Semibold,
-            ..Default::default()
-        }))
-        .on_press(Message::SaveAndLaunch)
-        .style(move |_theme, status| primary_btn_style(palette, status))
-        .padding([12, 24]),
-        button(text("僅儲存").size(15))
-            .on_press(Message::SaveOnly)
-            .style(move |_theme, status| secondary_btn_style(palette, status))
-            .padding([12, 20]),
-        button(text("從原版同步").size(15))
-            .on_press(Message::ResyncFromOfficial)
-            .style(move |_theme, status| secondary_btn_style(palette, status))
-            .padding([12, 20]),
-        button(text("重置鏡像 Profile").size(15).color(palette.text_dim))
-            .on_press(Message::RestoreRequested)
-            .style(move |_theme, status| outline_btn_style(palette, status))
-            .padding([12, 20]),
-    ]
-    .spacing(10);
+pub(super) fn action_buttons<'a>(app: &LauncherApp, palette: ColorPalette) -> Element<'a, Message> {
+    let mut save_launch = button(text("儲存並啟動 ↵").size(15).font(Font {
+        weight: Weight::Semibold,
+        ..Default::default()
+    }))
+    .style(move |_theme, status| primary_btn_style(palette, status))
+    .padding([12, 24]);
+    let mut save_only = button(text("僅儲存").size(15))
+        .style(move |_theme, status| secondary_btn_style(palette, status))
+        .padding([12, 20]);
+    let mut resync = button(text("從原版同步").size(15))
+        .style(move |_theme, status| secondary_btn_style(palette, status))
+        .padding([12, 20]);
+    let mut restore = button(text("重置鏡像 Profile").size(15).color(palette.text_dim))
+        .style(move |_theme, status| outline_btn_style(palette, status))
+        .padding([12, 20]);
+    if !app.is_busy() {
+        save_launch = save_launch.on_press(Message::SaveAndLaunch);
+        save_only = save_only.on_press(Message::SaveOnly);
+        resync = resync.on_press(Message::ResyncFromOfficial);
+        restore = restore.on_press(Message::RestoreRequested);
+    }
+    let buttons = row![save_launch, save_only, resync, restore].spacing(10);
     buttons.into()
 }
 

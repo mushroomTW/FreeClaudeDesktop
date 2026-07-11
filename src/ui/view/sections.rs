@@ -141,11 +141,14 @@ pub(super) fn tab_content<'a>(
             })
             .collect()
     };
+    let mut refresh_button = button(text("抓模型列表").size(13))
+        .style(move |_theme, status| secondary_btn_style(palette, status))
+        .padding([6, 12]);
+    if !app.is_busy() {
+        refresh_button = refresh_button.on_press(Message::RefreshModels);
+    }
     let model_reasoning_section = column![
-        button(text("抓模型列表").size(13))
-            .on_press(Message::RefreshModels)
-            .style(move |_theme, status| secondary_btn_style(palette, status))
-            .padding([6, 12]),
+        refresh_button,
         text("模型思考上限")
             .size(14)
             .color(palette.text)

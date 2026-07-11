@@ -1,11 +1,83 @@
-use super::{LauncherApp, Message, Toast};
+use super::{ConfigAction, JobKind, LauncherApp, Message, Toast};
 use iced::{
     window::{self, Mode},
     Task,
 };
-use std::path::Path;
 
 impl LauncherApp {
+    fn start_config_job(&mut self, action: ConfigAction) -> Task<Message> {
+        let kind = if action == ConfigAction::RefreshModels {
+            JobKind::Refreshing
+        } else {
+            JobKind::Saving
+        };
+        let (id, registration) = self.jobs.begin(kind);
+        let input = self.config_input();
+        Task::perform(
+            async move {
+                let operation = async move {
+                    if action == ConfigAction::RefreshModels {
+                        crate::config_service::refresh_models_async(input).await
+                    } else {
+                        crate::config_service::save_config_async(input).await
+                    }
+                    .map_err(|error| error.to_string())
+                };
+                futures::future::Abortable::new(operation, registration)
+                    .await
+                    .unwrap_or_else(|_| Err("工作已取消".to_string()))
+            },
+            move |result| Message::ConfigFinished(id, action, result),
+        )
+    }
+
+    fn start_launch_job(&mut self) -> Task<Message> {
+        let (id, registration) = self.jobs.begin(JobKind::Launching);
+        let custom_path = self
+            .use_custom_path
+            .then(|| std::path::PathBuf::from(self.custom_path.clone()));
+        Task::perform(
+            async move {
+                let operation = async move {
+                    tokio::task::spawn_blocking(move || {
+                        crate::launch_claude(custom_path.as_deref())
+                            .map_err(|error| error.to_string())
+                    })
+                    .await
+                    .map_err(|error| error.to_string())?
+                };
+                futures::future::Abortable::new(operation, registration)
+                    .await
+                    .unwrap_or_else(|_| Err("工作已取消".to_string()))
+            },
+            move |result| Message::LaunchFinished(id, result),
+        )
+    }
+
+    fn finish_unit_job(
+        &mut self,
+        id: u64,
+        result: Result<(), String>,
+        success: &str,
+        operation: &str,
+    ) {
+        match result {
+            Ok(()) if self.jobs.accept(id) => {
+                self.toast = Some(Toast {
+                    message: success.to_string(),
+                    is_success: true,
+                });
+            }
+            Err(error) if self.jobs.fail(id, error.clone()) => {
+                self.toast = Some(Toast {
+                    message: format!("{operation}失敗：{error}"),
+                    is_success: false,
+                });
+            }
+            _ => {}
+        }
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ProviderSelected(provider) => {
@@ -47,97 +119,50 @@ impl LauncherApp {
             }
             Message::SaveAndLaunch => {
                 self.confirming_restore = false;
-                match self.save_config() {
-                    Ok(()) => {
-                        self.reload_model_settings();
-                        let custom = if self.use_custom_path {
-                            Some(Path::new(&self.custom_path))
-                        } else {
-                            None
-                        };
-                        match crate::launch_claude(custom) {
-                            Ok(_path) => {
-                                self.api_key.clear();
-                                self.api_key_placeholder = "已儲存 API Key，留空沿用".into();
-                                self.refresh_status();
-                                self.toast = None;
-                                if let Some(id) = self.window_id {
-                                    self.is_hidden = true;
-                                    return window::set_mode(id, Mode::Hidden);
-                                }
-                            }
-                            Err(e) => {
-                                self.toast = Some(Toast {
-                                    message: format!("❌ 啟動失敗：{e}"),
-                                    is_success: false,
-                                });
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        self.toast = Some(Toast {
-                            message: format!("❌ 儲存失敗：{e}"),
-                            is_success: false,
-                        });
-                    }
-                }
+                return self.start_config_job(ConfigAction::SaveAndLaunch);
             }
             Message::SaveOnly => {
                 self.confirming_restore = false;
-                match self.save_config() {
-                    Ok(()) => {
-                        self.reload_model_settings();
-                        self.api_key.clear();
-                        self.api_key_placeholder = "已儲存 API Key，留空沿用".into();
-                        self.toast = Some(Toast {
-                            message: "✅ 設定已寫入 Claude。".into(),
-                            is_success: true,
-                        });
-                    }
-                    Err(e) => {
-                        self.toast = Some(Toast {
-                            message: format!("❌ 儲存失敗：{e}"),
-                            is_success: false,
-                        });
-                    }
-                }
+                return self.start_config_job(ConfigAction::SaveOnly);
             }
-            Message::ResyncFromOfficial => match crate::launcher::resync_from_official() {
-                Ok(()) => {
-                    self.toast = Some(Toast {
-                        message: "✅ 已從原版 Claude 重新同步設定至鏡像目錄。".into(),
-                        is_success: true,
-                    });
-                }
-                Err(e) => {
-                    self.toast = Some(Toast {
-                        message: format!("❌ 同步失敗：{e}"),
-                        is_success: false,
-                    });
-                }
-            },
+            Message::ResyncFromOfficial => {
+                let (id, registration) = self.jobs.begin(JobKind::Resyncing);
+                return Task::perform(
+                    async move {
+                        let operation = async {
+                            tokio::task::spawn_blocking(crate::launcher::resync_from_official)
+                                .await
+                                .map_err(|error| error.to_string())?
+                                .map_err(|error| error.to_string())
+                        };
+                        futures::future::Abortable::new(operation, registration)
+                            .await
+                            .unwrap_or_else(|_| Err("工作已取消".to_string()))
+                    },
+                    move |result| Message::ResyncFinished(id, result),
+                );
+            }
             Message::RestoreRequested => {
                 self.confirming_restore = true;
                 self.toast = None;
             }
             Message::ConfirmRestore => {
                 self.confirming_restore = false;
-                match crate::launcher::reset_mirror_profile() {
-                    Ok(()) => {
-                        self.api_key.clear();
-                        self.api_key_placeholder = "輸入 API Key".into();
-                        self.toast = Some(Toast {
-                            message: "✅ 鏡像 Profile 目錄已重置。原版目錄完全不受影響。".into(),
-                            is_success: true,
-                        });
-                    }
-                    Err(e) => {
-                        self.toast = Some(Toast {
-                            message: format!("❌ 重置失敗：{e}"),
-                            is_success: false,
-                        });
-                    }
-                }
+                let (id, registration) = self.jobs.begin(JobKind::Restoring);
+                return Task::perform(
+                    async move {
+                        let operation = async {
+                            tokio::task::spawn_blocking(crate::launcher::reset_mirror_profile)
+                                .await
+                                .map_err(|error| error.to_string())?
+                                .map_err(|error| error.to_string())
+                        };
+                        futures::future::Abortable::new(operation, registration)
+                            .await
+                            .unwrap_or_else(|_| Err("工作已取消".to_string()))
+                    },
+                    move |result| Message::RestoreFinished(id, result),
+                );
             }
             Message::CancelRestore => {
                 self.confirming_restore = false;
@@ -154,6 +179,7 @@ impl LauncherApp {
                 return window::set_mode(id, Mode::Hidden);
             }
             Message::TrayQuit => {
+                self.jobs.cancel();
                 if let Some(id) = self.window_id {
                     return window::close(id);
                 }
@@ -176,23 +202,103 @@ impl LauncherApp {
             Message::TabSelected(tab) => self.current_tab = tab,
             Message::ThemeModeSelected(mode) => {
                 self.theme_mode = mode;
-                self.save_theme_mode();
+                return Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            let Some(mut settings) = crate::get_launcher_settings() else {
+                                return Ok(());
+                            };
+                            settings.theme_mode = mode.as_str().to_string();
+                            crate::save_launcher_settings(&settings)
+                                .map_err(|error| error.to_string())
+                        })
+                        .await
+                        .map_err(|error| error.to_string())?
+                    },
+                    Message::ThemeSaved,
+                );
             }
-            Message::RefreshModels => match self.save_config() {
-                Ok(()) => {
-                    self.reload_model_settings();
+            Message::RefreshModels => return self.start_config_job(ConfigAction::RefreshModels),
+            Message::ConfigFinished(id, action, result) => match result {
+                Ok(output) if self.jobs.accept(id) => {
+                    self.discovered_models = output.discovered_models;
+                    self.update_model_options();
+                    self.api_key.clear();
+                    self.api_key_placeholder = "已儲存 API Key，留空沿用".into();
+                    if action == ConfigAction::SaveAndLaunch {
+                        return self.start_launch_job();
+                    }
+                    let message = if action == ConfigAction::RefreshModels {
+                        format!("已更新模型列表：{} 個模型", self.discovered_models.len())
+                    } else {
+                        "設定已寫入 Claude。".into()
+                    };
                     self.toast = Some(Toast {
-                        message: format!("已更新模型列表：{} 個模型", self.discovered_models.len()),
+                        message,
                         is_success: true,
                     });
                 }
-                Err(e) => {
+                Err(error) if self.jobs.fail(id, error.clone()) => {
                     self.toast = Some(Toast {
-                        message: format!("更新模型列表失敗：{e}"),
+                        message: format!("工作失敗：{error}"),
                         is_success: false,
                     });
                 }
+                _ => {}
             },
+            Message::LaunchFinished(id, result) => match result {
+                Ok(path) if self.jobs.accept(id) => {
+                    self.apply_status(Some(path));
+                    self.toast = None;
+                    if let Some(window_id) = self.window_id {
+                        self.is_hidden = true;
+                        return window::set_mode(window_id, Mode::Hidden);
+                    }
+                }
+                Err(error) if self.jobs.fail(id, error.clone()) => {
+                    self.toast = Some(Toast {
+                        message: format!("啟動失敗：{error}"),
+                        is_success: false,
+                    });
+                }
+                _ => {}
+            },
+            Message::ResyncFinished(id, result) => {
+                self.finish_unit_job(
+                    id,
+                    result,
+                    "已從原版 Claude 重新同步設定至鏡像目錄。",
+                    "同步",
+                );
+            }
+            Message::RestoreFinished(id, result) => match result {
+                Ok(()) if self.jobs.accept(id) => {
+                    self.api_key.clear();
+                    self.api_key_placeholder = "輸入 API Key".into();
+                    self.toast = Some(Toast {
+                        message: "鏡像 Profile 目錄已重置。原版目錄完全不受影響。".into(),
+                        is_success: true,
+                    });
+                }
+                Err(error) => self.finish_unit_job(id, Err(error), "", "重置"),
+                _ => {}
+            },
+            Message::StatusLoaded(path) => self.apply_status(path),
+            Message::SettingsLoaded(Ok(Some(settings))) => self.apply_settings(settings.0),
+            Message::SettingsLoaded(Ok(None)) => {}
+            Message::SettingsLoaded(Err(error)) => {
+                self.toast = Some(Toast {
+                    message: format!("載入設定失敗：{error}"),
+                    is_success: false,
+                });
+            }
+            Message::ThemeSaved(Err(error)) => {
+                self.toast = Some(Toast {
+                    message: format!("儲存佈景主題失敗：{error}"),
+                    is_success: false,
+                });
+            }
+            Message::ThemeSaved(Ok(())) => {}
             // Per-feature optimization toggles
             Message::QuotaCheckMockToggled(v) => self.enable_quota_check_mock = v,
             Message::PrefixDetectionToggled(v) => self.enable_prefix_detection = v,

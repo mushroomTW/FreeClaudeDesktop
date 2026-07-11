@@ -20,7 +20,7 @@ pub fn view(app: &LauncherApp) -> Element<'_, Message> {
         content = content.push(toast_widget);
     }
 
-    let buttons = chrome::action_buttons(palette);
+    let buttons = chrome::action_buttons(app, palette);
     let sidebar = chrome::sidebar(app, palette);
 
     // 滾動內容區（包含 header 與主要分頁內容）
