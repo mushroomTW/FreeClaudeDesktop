@@ -1,6 +1,6 @@
 use crate::config_service::{load_runtime_settings, run_config_io, unprotect_runtime_api_key};
 use crate::conversion::response_converter::{
-    build_inference_models, normalize_models_response_with_overrides,
+    apply_model_visibility, build_inference_models, normalize_models_response_with_overrides,
 };
 use crate::models::openai::NormalizedModels;
 use axum::{http::HeaderMap, response::IntoResponse, Json};
@@ -13,6 +13,7 @@ struct ModelsCache {
     auth_scheme: String,
     reasoning_overrides: std::collections::HashMap<String, String>,
     m1_overrides: std::collections::HashMap<String, bool>,
+    visibility_overrides: std::collections::HashMap<String, bool>,
     models: NormalizedModels,
 }
 
@@ -27,6 +28,7 @@ pub fn store_models_cache(
     auth_scheme: &str,
     reasoning_overrides: &std::collections::HashMap<String, String>,
     m1_overrides: &std::collections::HashMap<String, bool>,
+    visibility_overrides: &std::collections::HashMap<String, bool>,
     models: &NormalizedModels,
 ) {
     if let Ok(mut cache) = models_cache().lock() {
@@ -35,6 +37,7 @@ pub fn store_models_cache(
             auth_scheme: auth_scheme.to_string(),
             reasoning_overrides: reasoning_overrides.clone(),
             m1_overrides: m1_overrides.clone(),
+            visibility_overrides: visibility_overrides.clone(),
             models: models.clone(),
         });
     }
@@ -45,13 +48,15 @@ fn cached_models(
     auth_scheme: &str,
     reasoning_overrides: &std::collections::HashMap<String, String>,
     m1_overrides: &std::collections::HashMap<String, bool>,
+    visibility_overrides: &std::collections::HashMap<String, bool>,
 ) -> Option<NormalizedModels> {
     let cache = models_cache().lock().ok()?;
     let cache = cache.as_ref()?;
     (cache.base_url == base_url.trim()
         && cache.auth_scheme == auth_scheme
         && &cache.reasoning_overrides == reasoning_overrides
-        && &cache.m1_overrides == m1_overrides)
+        && &cache.m1_overrides == m1_overrides
+        && &cache.visibility_overrides == visibility_overrides)
         .then(|| cache.models.clone())
 }
 
@@ -109,6 +114,7 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
         &settings.real_auth_scheme,
         &settings.model_reasoning_overrides,
         &settings.model_1m_overrides,
+        &settings.model_visibility_overrides,
     ) {
         return (axum::http::StatusCode::OK, Json(models)).into_response();
     }
@@ -141,15 +147,17 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
             &settings.model_reasoning_overrides,
             &settings.model_1m_overrides,
         ) {
-            Ok(normalized) => {
-                tracing::info!("<- 獲取模型列表成功，模型數量: {}", normalized.data.len());
-                settings.real_model_routes = normalized.routes.clone();
-                settings.real_model_reasoning_efforts = normalized.reasoning_effort_routes.clone();
-                settings.discovered_models = normalized
+            Ok(mut normalized) => {
+                let discovered_models = normalized
                     .data
                     .iter()
                     .map(|model| model.provider_model_id.clone())
                     .collect();
+                apply_model_visibility(&mut normalized, &settings.model_visibility_overrides);
+                tracing::info!("<- 獲取模型列表成功，模型數量: {}", normalized.data.len());
+                settings.real_model_routes = normalized.routes.clone();
+                settings.real_model_reasoning_efforts = normalized.reasoning_effort_routes.clone();
+                settings.discovered_models = discovered_models;
                 let inference_models = build_inference_models(&normalized.data);
                 let port = settings
                     .active_port
@@ -180,6 +188,7 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
                     &settings.real_auth_scheme,
                     &settings.model_reasoning_overrides,
                     &settings.model_1m_overrides,
+                    &settings.model_visibility_overrides,
                     &normalized,
                 );
 
@@ -273,11 +282,13 @@ mod tests {
         clear_models_cache_for_tests();
         let empty_reasoning = HashMap::new();
         let empty_m1: HashMap<String, bool> = HashMap::new();
+        let empty_visibility: HashMap<String, bool> = HashMap::new();
         store_models_cache(
             "http://localhost:4000",
             "bearer",
             &empty_reasoning,
             &empty_m1,
+            &empty_visibility,
             &normalized_models(),
         );
 
@@ -285,21 +296,33 @@ mod tests {
             "http://localhost:4000",
             "bearer",
             &empty_reasoning,
-            &empty_m1
+            &empty_m1,
+            &empty_visibility
         )
         .is_some());
         assert!(cached_models(
             "http://localhost:4001",
             "bearer",
             &empty_reasoning,
-            &empty_m1
+            &empty_m1,
+            &empty_visibility
         )
         .is_none());
         assert!(cached_models(
             "http://localhost:4000",
             "x-api-key",
             &empty_reasoning,
-            &empty_m1
+            &empty_m1,
+            &empty_visibility
+        )
+        .is_none());
+        let hidden_visibility = HashMap::from([("glm-5.2".to_string(), false)]);
+        assert!(cached_models(
+            "http://localhost:4000",
+            "bearer",
+            &empty_reasoning,
+            &empty_m1,
+            &hidden_visibility
         )
         .is_none());
     }

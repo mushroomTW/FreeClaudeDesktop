@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows MSI and portable ZIP
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify tag matches Cargo version
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $cargoVersion = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          if ($env:GITHUB_REF_NAME -ne "v$cargoVersion") { throw "Tag $env:GITHUB_REF_NAME does not match Cargo.toml version $cargoVersion" }
+      - name: Test and build
+        run: |
+          cargo test --locked
+          cargo build --release --locked
+      - name: Install cargo-wix
+        run: cargo install cargo-wix --version 0.3.9 --locked
+      - name: Locate or install WiX Toolset 3
+        id: wix
+        shell: pwsh
+        run: |
+          $candle = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset v3.*\bin\candle.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $candle) {
+            choco install wixtoolset --yes --no-progress
+            $candle = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset v3.*\bin\candle.exe" | Select-Object -First 1
+          }
+          "bin=$($candle.DirectoryName)" >> $env:GITHUB_OUTPUT
+      - name: Build MSI and portable ZIP
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          New-Item -ItemType Directory -Force dist | Out-Null
+          cargo wix --no-build --bin-path "${{ steps.wix.outputs.bin }}" --output "dist/FreeClaudeLauncher-v$version-windows-x86_64.msi"
+          New-Item -ItemType Directory -Force portable | Out-Null
+          Copy-Item target/release/FreeClaudeLauncher.exe, README.md, README_zh.md -Destination portable
+          Compress-Archive -Path portable/* -DestinationPath "dist/FreeClaudeLauncher-v$version-windows-x86_64-portable.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: dist/*
+          if-no-files-found: error
+
+  linux:
+    name: Linux DEB and portable archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
+      - name: Verify tag matches Cargo version
+        if: github.ref_type == 'tag'
+        run: test "$GITHUB_REF_NAME" = "v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+      - name: Test and build
+        run: |
+          cargo test --locked
+          cargo build --release --locked
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --version 3.7.0 --locked
+      - name: Build DEB and portable archive
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          mkdir -p dist portable
+          cargo deb --locked --no-build --output "dist/FreeClaudeLauncher-v${version}-linux-x86_64.deb"
+          cp target/release/FreeClaudeLauncher README.md README_zh.md portable/
+          tar -C portable -czf "dist/FreeClaudeLauncher-v${version}-linux-x86_64.tar.gz" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    if: github.ref_type == 'tag'
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: release-assets
+        run: sha256sum * > SHA256SUMS.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --generate-notes --title "FreeClaudeLauncher $GITHUB_REF_NAME"

@@ -30,6 +30,9 @@ pub struct Settings {
     pub model_reasoning_overrides: HashMap<String, String>,
     #[serde(default)]
     pub model_1m_overrides: HashMap<String, bool>,
+    /// 是否在 Claude Desktop 顯示各上游模型；未設定時預設顯示。
+    #[serde(default)]
+    pub model_visibility_overrides: HashMap<String, bool>,
     /// 寫入 Claude Desktop gateway config 的本機 proxy token
     #[serde(default = "default_proxy_auth_token")]
     pub proxy_auth_token: String,
@@ -124,6 +127,7 @@ impl Default for Settings {
             discovered_models: Vec::new(),
             model_reasoning_overrides: HashMap::new(),
             model_1m_overrides: HashMap::new(),
+            model_visibility_overrides: HashMap::new(),
             proxy_auth_token: default_proxy_auth_token(),
             active_port: None,
             transport_type: String::new(),

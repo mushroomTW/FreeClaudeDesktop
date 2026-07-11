@@ -1,5 +1,6 @@
 use crate::conversion::response_converter::{
-    build_inference_models, normalize_messages_url, normalize_models_response_with_overrides,
+    apply_model_visibility, build_inference_models, normalize_messages_url,
+    normalize_models_response_with_overrides,
 };
 use crate::crypto::{protect_secret, unprotect_secret};
 use crate::{AppError, AppResult, Settings};
@@ -24,6 +25,7 @@ pub struct SaveConfigInput {
     pub theme_mode: String,
     pub model_reasoning_overrides: HashMap<String, String>,
     pub model_1m_overrides: HashMap<String, bool>,
+    pub model_visibility_overrides: HashMap<String, bool>,
     pub real_model: Option<String>,
     pub real_model_sonnet: Option<String>,
     pub real_model_opus: Option<String>,
@@ -102,7 +104,7 @@ async fn save_or_refresh(
     let real_api_key =
         run_config_io(move || resolve_api_key(&api_key_input, key_existing.as_ref())).await?;
 
-    let normalized = match crate::server::models_endpoint::fetch_models_list_async(
+    let mut normalized = match crate::server::models_endpoint::fetch_models_list_async(
         &base_url,
         &real_api_key,
         &input.auth_scheme,
@@ -122,6 +124,26 @@ async fn save_or_refresh(
         Err(_) => None,
     };
 
+    // Launcher 清單保留所有上游模型；顯示設定只影響 Claude Desktop 輸出。
+    let discovered_models = normalized
+        .as_ref()
+        .map(|models| {
+            models
+                .data
+                .iter()
+                .map(|model| model.provider_model_id.clone())
+                .collect()
+        })
+        .or_else(|| {
+            existing
+                .as_ref()
+                .map(|settings| settings.discovered_models.clone())
+        })
+        .unwrap_or_default();
+    if let Some(models) = normalized.as_mut() {
+        apply_model_visibility(models, &input.model_visibility_overrides);
+    }
+
     let routes = normalized
         .as_ref()
         .map(|models| models.routes.clone())
@@ -140,21 +162,6 @@ async fn save_or_refresh(
                 .map(|settings| settings.real_model_reasoning_efforts.clone())
         })
         .unwrap_or_default();
-    let discovered_models = normalized
-        .as_ref()
-        .map(|models| {
-            models
-                .data
-                .iter()
-                .map(|model| model.provider_model_id.clone())
-                .collect()
-        })
-        .or_else(|| {
-            existing
-                .as_ref()
-                .map(|settings| settings.discovered_models.clone())
-        })
-        .unwrap_or_default();
     let inference_models = normalized
         .as_ref()
         .map(|models| build_inference_models(&models.data))
@@ -167,6 +174,7 @@ async fn save_or_refresh(
     let cache_auth_scheme = input.auth_scheme.clone();
     let cache_reasoning = input.model_reasoning_overrides.clone();
     let cache_m1 = input.model_1m_overrides.clone();
+    let cache_visibility = input.model_visibility_overrides.clone();
 
     run_config_io(move || {
         let stored_api_key = protect_secret(&real_api_key)?;
@@ -197,6 +205,7 @@ async fn save_or_refresh(
             discovered_models,
             model_reasoning_overrides: input.model_reasoning_overrides,
             model_1m_overrides: input.model_1m_overrides,
+            model_visibility_overrides: input.model_visibility_overrides,
             proxy_auth_token: proxy_auth_token.clone(),
             active_port: Some(input.port),
             transport_type: input.transport_type,
@@ -235,6 +244,7 @@ async fn save_or_refresh(
             &cache_auth_scheme,
             &cache_reasoning,
             &cache_m1,
+            &cache_visibility,
             &models,
         );
     }

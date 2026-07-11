@@ -112,13 +112,28 @@ pub(super) fn tab_content<'a>(
                     .map(|s| s.as_str())
                     .unwrap_or("none");
                 let is_1m_enabled = app.model_1m_overrides.get(model).copied().unwrap_or(false);
+                let is_visible = app
+                    .model_visibility_overrides
+                    .get(model)
+                    .copied()
+                    .unwrap_or(true);
                 let model_id = model.clone();
                 let model_id_1m = model.clone();
+                let model_id_visibility = model.clone();
                 row![
                     text(model.clone())
                         .size(13)
                         .color(palette.text)
                         .width(Length::Fill),
+                    checkbox(is_visible)
+                        .label("顯示")
+                        .text_size(13)
+                        .spacing(6)
+                        .on_toggle(move |visible| Message::ModelVisibilityToggled(
+                            model_id_visibility.clone(),
+                            visible
+                        ))
+                        .style(move |_theme, status| custom_checkbox_style(palette, status)),
                     checkbox(is_1m_enabled)
                         .label("1M 上下文")
                         .text_size(13)
