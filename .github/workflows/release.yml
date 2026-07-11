@@ -14,7 +14,7 @@ jobs:
     name: Windows MSI and portable ZIP
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Verify tag matches Cargo version
         if: github.ref_type == 'tag'
@@ -47,7 +47,7 @@ jobs:
           New-Item -ItemType Directory -Force portable | Out-Null
           Copy-Item target/release/FreeClaudeLauncher.exe, README.md, README_zh.md -Destination portable
           Compress-Archive -Path portable/* -DestinationPath "dist/FreeClaudeLauncher-v$version-windows-x86_64-portable.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-release
           path: dist/*
@@ -57,7 +57,7 @@ jobs:
     name: Linux DEB and portable archive
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux build dependencies
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
@@ -77,7 +77,7 @@ jobs:
           cargo deb --locked --no-build --output "dist/FreeClaudeLauncher-v${version}-linux-x86_64.deb"
           cp target/release/FreeClaudeLauncher README.md README_zh.md portable/
           tar -C portable -czf "dist/FreeClaudeLauncher-v${version}-linux-x86_64.tar.gz" .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-release
           path: dist/*
@@ -91,7 +91,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
