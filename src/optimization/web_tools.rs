@@ -6,8 +6,18 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashSet;
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
+
+const MAX_WEB_FETCH_BYTES: usize = 2 * 1024 * 1024;
+const MAX_REDIRECTS: usize = 5;
+
+#[derive(Debug)]
+struct ResolvedTarget {
+    url: url::Url,
+    host: String,
+    addr: SocketAddr,
+}
 
 /// Egress policy for local web_fetch tool execution.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -67,16 +77,17 @@ pub fn validate_url(policy: &WebFetchEgressPolicy, url: &str) -> Result<(), Stri
         ));
     }
 
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "URL must include a host".to_string())?;
     if !policy.allow_private_networks {
-        if let Some(host) = parsed.host_str() {
-            let normalized = host.to_lowercase();
-            if is_private_address(&normalized) {
-                return Err(format!("Private network access is not allowed: {host}"));
-            }
-            let port = parsed.port_or_known_default().unwrap_or(443);
-            if resolves_to_private_address(&normalized, port)? {
-                return Err(format!("Private network access is not allowed: {host}"));
-            }
+        let normalized = host.to_ascii_lowercase();
+        if is_private_address(&normalized)
+            || normalized
+                .parse::<IpAddr>()
+                .is_ok_and(|ip| !is_public_ip(ip))
+        {
+            return Err(format!("Private network access is not allowed: {host}"));
         }
     }
 
@@ -86,7 +97,11 @@ pub fn validate_url(policy: &WebFetchEgressPolicy, url: &str) -> Result<(), Stri
 /// Check if a hostname is a private/local address.
 fn is_private_address(host: &str) -> bool {
     // localhost variants
-    if host == "localhost" || host.ends_with(".local") {
+    if host == "localhost"
+        || host.ends_with(".localhost")
+        || host.starts_with("localhost.")
+        || host.ends_with(".local")
+    {
         return true;
     }
 
@@ -119,30 +134,68 @@ fn is_private_address(host: &str) -> bool {
     false
 }
 
-fn resolves_to_private_address(host: &str, port: u16) -> Result<bool, String> {
-    let addrs = (host, port)
-        .to_socket_addrs()
-        .map_err(|e| format!("DNS resolution failed for {host}: {e}"))?;
-    Ok(addrs.into_iter().any(|addr| is_private_ip(addr.ip())))
-}
-
-fn is_private_ip(ip: IpAddr) -> bool {
+fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
-        IpAddr::V4(ip) => {
-            ip.is_private()
-                || ip.is_loopback()
-                || ip.is_link_local()
-                || ip.is_unspecified()
-                || ip.octets()[0] == 0
-        }
+        IpAddr::V4(ip) => is_public_ipv4(ip),
         IpAddr::V6(ip) => {
+            if let Some(mapped) = ip.to_ipv4_mapped() {
+                return is_public_ipv4(mapped);
+            }
             let first = ip.segments()[0];
-            ip.is_loopback()
+            !(ip.is_loopback()
                 || ip.is_unspecified()
+                || ip.is_multicast()
                 || (first & 0xfe00) == 0xfc00
                 || (first & 0xffc0) == 0xfe80
+                || (ip.segments()[0] == 0x2001 && ip.segments()[1] == 0x0db8))
         }
     }
+}
+
+fn is_public_ipv4(ip: Ipv4Addr) -> bool {
+    let [a, b, c, _] = ip.octets();
+    !ip.is_private()
+        && !ip.is_loopback()
+        && !ip.is_link_local()
+        && !ip.is_unspecified()
+        && !ip.is_multicast()
+        && !ip.is_broadcast()
+        && a != 0
+        && !(a == 100 && (64..=127).contains(&b))
+        && !(a == 192 && b == 0 && c == 2)
+        && !(a == 198 && (b == 18 || b == 19))
+        && !(a == 198 && b == 51 && c == 100)
+        && !(a == 203 && b == 0 && c == 113)
+        && a < 240
+}
+
+async fn resolve_target(
+    policy: &WebFetchEgressPolicy,
+    url: url::Url,
+) -> Result<ResolvedTarget, String> {
+    validate_url(policy, url.as_str())?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| "URL must include a host".to_string())?
+        .to_string();
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| "URL has no usable port".to_string())?;
+    let addrs: Vec<_> = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .map_err(|error| format!("DNS resolution failed for {host}: {error}"))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(format!("DNS resolution returned no addresses for {host}"));
+    }
+    if !policy.allow_private_networks && addrs.iter().any(|addr| !is_public_ip(addr.ip())) {
+        return Err(format!("Private network access is not allowed: {host}"));
+    }
+    Ok(ResolvedTarget {
+        url,
+        host,
+        addr: addrs[0],
+    })
 }
 
 /// Extract a URL from a web_fetch tool call's arguments JSON
@@ -221,34 +274,80 @@ async fn execute_web_search(policy: &WebFetchEgressPolicy, input: &Value) -> Str
 }
 
 async fn fetch_url(policy: &WebFetchEgressPolicy, url: &str) -> String {
-    if let Err(error) = validate_url(policy, url) {
-        return error;
+    let mut current = match url::Url::parse(url) {
+        Ok(url) => url,
+        Err(error) => return format!("Invalid URL: {error}"),
+    };
+    for redirects in 0..=MAX_REDIRECTS {
+        let target = match resolve_target(policy, current).await {
+            Ok(target) => target,
+            Err(error) => return error,
+        };
+        let client = match reqwest::Client::builder()
+            .timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
+            .redirect(reqwest::redirect::Policy::none())
+            .resolve(&target.host, target.addr)
+            .build()
+        {
+            Ok(client) => client,
+            Err(error) => return format!("web client build failed: {error}"),
+        };
+        let response = match client.get(target.url.clone()).send().await {
+            Ok(response) => response,
+            Err(error) => return format!("web request failed: {error}"),
+        };
+        if response.status().is_redirection() {
+            if redirects == MAX_REDIRECTS {
+                return format!("web request exceeded {MAX_REDIRECTS} redirects");
+            }
+            let Some(location) = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+            else {
+                return "web redirect missing Location header".to_string();
+            };
+            current = match target.url.join(location) {
+                Ok(url) => url,
+                Err(error) => return format!("invalid redirect URL: {error}"),
+            };
+            continue;
+        }
+
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("unknown")
+            .to_string();
+        let bytes = match collect_limited(response).await {
+            Ok(bytes) => bytes,
+            Err(error) => return error,
+        };
+        let text = String::from_utf8_lossy(&bytes);
+        let body = truncate_chars(&strip_html_tags(&text), 20_000);
+        return format!(
+            "URL: {}\nStatus: {status}\nContent-Type: {content_type}\n\n{body}",
+            target.url
+        );
     }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+    unreachable!()
+}
 
-    let response = match client.get(url).send().await {
-        Ok(response) => response,
-        Err(error) => return format!("web request failed: {error}"),
-    };
-    let status = response.status();
-    let final_url = response.url().to_string();
-    let content_type = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("unknown")
-        .to_string();
-    let text = match response.text().await {
-        Ok(text) => text,
-        Err(error) => return format!("web response read failed: {error}"),
-    };
-    let body = truncate_chars(&strip_html_tags(&text), 20_000);
+async fn collect_limited(response: reqwest::Response) -> Result<Vec<u8>, String> {
+    use futures::StreamExt;
 
-    format!("URL: {final_url}\nStatus: {status}\nContent-Type: {content_type}\n\n{body}")
+    let mut stream = response.bytes_stream();
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| format!("web response read failed: {error}"))?;
+        if body.len().saturating_add(chunk.len()) > MAX_WEB_FETCH_BYTES {
+            return Err("web response exceeds 2 MiB limit".to_string());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 fn strip_html_tags(text: &str) -> String {
@@ -319,5 +418,67 @@ mod tests {
     #[test]
     fn test_strip_html_tags() {
         assert_eq!(strip_html_tags("<h1>Hello</h1><p>World</p>"), "HelloWorld");
+    }
+
+    #[test]
+    fn blocks_ipv4_mapped_private_ipv6() {
+        let ip: IpAddr = "::ffff:127.0.0.1".parse().unwrap();
+        assert!(!is_public_ip(ip));
+    }
+
+    #[test]
+    fn blocks_documentation_and_benchmark_ranges() {
+        for raw in ["192.0.2.1", "198.51.100.1", "203.0.113.1", "198.18.0.1"] {
+            assert!(!is_public_ip(raw.parse().unwrap()), "{raw}");
+        }
+    }
+
+    #[tokio::test]
+    async fn stops_reading_after_two_mibibytes() {
+        let app = axum::Router::new().route(
+            "/",
+            axum::routing::get(|| async { vec![b'a'; MAX_WEB_FETCH_BYTES + 1] }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let policy = WebFetchEgressPolicy {
+            allow_schemes: ["http".to_string()].into_iter().collect(),
+            allow_private_networks: true,
+            enabled: true,
+        };
+        let result = fetch_url(&policy, &format!("http://{addr}/")).await;
+        assert!(result.contains("2 MiB"));
+    }
+
+    #[tokio::test]
+    async fn accepts_exactly_two_mibibytes() {
+        let app = axum::Router::new().route(
+            "/",
+            axum::routing::get(|| async { vec![b'a'; MAX_WEB_FETCH_BYTES] }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let policy = WebFetchEgressPolicy {
+            allow_schemes: ["http".to_string()].into_iter().collect(),
+            allow_private_networks: true,
+            enabled: true,
+        };
+        let result = fetch_url(&policy, &format!("http://{addr}/")).await;
+        assert!(!result.contains("2 MiB limit"));
+        assert!(result.contains("Status: 200 OK"));
+    }
+
+    #[tokio::test]
+    async fn rejects_private_redirect_target_before_connecting() {
+        let policy = WebFetchEgressPolicy {
+            allow_schemes: ["http".to_string()].into_iter().collect(),
+            allow_private_networks: false,
+            enabled: true,
+        };
+        let target = url::Url::parse("http://127.0.0.1/private").unwrap();
+        let error = resolve_target(&policy, target).await.unwrap_err();
+        assert!(error.contains("Private network"));
     }
 }
