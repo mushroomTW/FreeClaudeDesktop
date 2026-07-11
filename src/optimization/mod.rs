@@ -263,7 +263,8 @@ mod tests {
             "model": "claude-test",
             "max_tokens": 1,
             "stream": false,
-            "messages": [{ "role": "user", "content": "quota check" }]
+            "tools": [{ "name": "usage_probe" }],
+            "messages": [{ "role": "user", "content": "count" }]
         })
         .to_string();
 

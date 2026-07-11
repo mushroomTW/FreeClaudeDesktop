@@ -3,6 +3,15 @@ use std::sync::atomic::Ordering;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, TrayIconBuilder, TrayIconEvent};
 
+fn menu_message(id: &str) -> Option<Message> {
+    match id {
+        "quit" => Some(Message::TrayQuit),
+        "show" => Some(Message::TrayShow),
+        "hide" => Some(Message::TrayHide),
+        _ => None,
+    }
+}
+
 /// 建立系統匣圖示並執行訊息迴圈（在獨立 thread 執行）
 pub fn run_tray_icon(tx: tokio::sync::mpsc::UnboundedSender<Message>) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_tray_icon_inner(tx)));
@@ -101,22 +110,29 @@ fn run_tray_icon_inner(tx: tokio::sync::mpsc::UnboundedSender<Message>) {
             DispatchMessageW(&msg);
         }
         #[cfg(not(target_os = "windows"))]
-        std::thread::park(); // 阻塞直到 unpark() 喚醒
+        {
+            let receiver = MenuEvent::receiver();
+            match receiver.recv_timeout(std::time::Duration::from_millis(250)) {
+                Ok(event) => {
+                    if let Some(message) = menu_message(event.id.0.as_str()) {
+                        let quitting = matches!(message, Message::TrayQuit);
+                        if tx.send(message).is_err() || quitting {
+                            return;
+                        }
+                    }
+                }
+                Err(error) if error.is_disconnected() => return,
+                Err(_) => {}
+            }
+        }
 
         // 處理選單事件
         while let Ok(event) = MenuEvent::receiver().try_recv() {
-            match event.id.0.as_str() {
-                "quit" => {
-                    let _ = tx.send(Message::TrayQuit);
+            if let Some(message) = menu_message(event.id.0.as_str()) {
+                let quitting = matches!(message, Message::TrayQuit);
+                if tx.send(message).is_err() || quitting {
                     return;
                 }
-                "show" => {
-                    let _ = tx.send(Message::TrayShow);
-                }
-                "hide" => {
-                    let _ = tx.send(Message::TrayHide);
-                }
-                _ => {}
             }
         }
 
@@ -135,5 +151,18 @@ fn run_tray_icon_inner(tx: tokio::sync::mpsc::UnboundedSender<Message>) {
         if crate::server::LAUNCHER_SHOW_REQUESTED.swap(false, Ordering::AcqRel) {
             let _ = tx.send(Message::TrayShow);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_known_menu_ids_only() {
+        assert!(matches!(menu_message("quit"), Some(Message::TrayQuit)));
+        assert!(matches!(menu_message("show"), Some(Message::TrayShow)));
+        assert!(matches!(menu_message("hide"), Some(Message::TrayHide)));
+        assert!(menu_message("unknown").is_none());
     }
 }

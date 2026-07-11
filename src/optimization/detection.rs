@@ -69,9 +69,12 @@ pub fn is_quota_check_request(body_str: &str) -> bool {
     let trimmed = content.trim();
     let lower = trimmed.to_lowercase();
 
-    lower.contains("quota")
-        || (v.get("tools").is_some() && trimmed.eq_ignore_ascii_case("count"))
-        || trimmed.starts_with("# Environment")
+    let is_user = messages[0].get("role").and_then(Value::as_str) == Some("user");
+    let has_tools = v
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_some_and(|tools| !tools.is_empty());
+    is_user && has_tools && lower == "count"
 }
 
 /// Check if this is a command prefix detection request.
@@ -346,7 +349,7 @@ mod tests {
             "messages": [{ "role": "user", "content": "# Environment\nYou are running in Windows..." }]
         })
         .to_string();
-        assert!(is_quota_check_request(&env_body));
+        assert!(!is_quota_check_request(&env_body));
 
         let normal_body = json!({
             "max_tokens": 1,
@@ -354,5 +357,15 @@ mod tests {
         })
         .to_string();
         assert!(!is_quota_check_request(&normal_body));
+    }
+
+    #[test]
+    fn ordinary_short_quota_question_is_not_a_probe() {
+        let body = json!({
+            "max_tokens": 1,
+            "messages": [{"role":"user","content":"What is my quota?"}]
+        })
+        .to_string();
+        assert!(!is_quota_check_request(&body));
     }
 }

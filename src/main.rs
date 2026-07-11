@@ -98,8 +98,16 @@ fn main() -> iced::Result {
     // 6. 更新設定檔中的 active_port 與寫入 Claude 配置
     if let Some(mut settings) = free_claude_launcher::get_launcher_settings() {
         settings.active_port = Some(final_port);
-        let _ = free_claude_launcher::save_launcher_settings(&settings);
-        let _ = free_claude_launcher::update_config_port(final_port);
+        if let Err(error) = free_claude_launcher::save_launcher_settings(&settings) {
+            tracing::error!("儲存實際 Proxy 埠失敗: {error}");
+            let _ = server.shutdown_and_join();
+            return Ok(());
+        }
+        if let Err(error) = free_claude_launcher::update_config_port(final_port) {
+            tracing::error!("更新 Claude 設定埠失敗: {error}");
+            let _ = server.shutdown_and_join();
+            return Ok(());
+        }
     }
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<free_claude_launcher::app::Message>();
