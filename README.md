@@ -53,17 +53,17 @@ sequenceDiagram
     autonumber
     participant CD as Claude Desktop
     participant P as Local proxy
-    participant OPT as Fast-path optimizer
+    participant FPO as Fast-path optimizer
     participant CONV as Request/response converter
     participant GW as Upstream gateway
 
     CD->>P: POST /v1/messages (Anthropic format)
     P->>P: Validate local proxy token
-    P->>OPT: Detect quota, title, suggestion, and probe requests
+    P->>FPO: Detect quota, title, suggestion, and probe requests
     alt Local fast path
-        OPT-->>CD: Return local response
+        FPO-->>CD: Return local response
     else Normal model request
-        OPT->>CONV: Convert request and resolve model alias
+        FPO->>CONV: Convert request and resolve model alias
         CONV->>GW: POST /v1/chat/completions or /v1/messages
         alt Successful JSON or SSE response
             GW-->>CONV: Response or reasoning_content stream
