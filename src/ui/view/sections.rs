@@ -327,15 +327,6 @@ pub(super) fn tab_content<'a>(
         );
     }
 
-    extensions_form = extensions_form.push(
-        checkbox(app.enable_computer_mcp_server)
-            .label("Computer MCP server (本機螢幕、滑鼠、鍵盤)")
-            .on_toggle(Message::ComputerMcpServerToggled)
-            .text_size(14)
-            .spacing(8)
-            .style(move |_theme, status| custom_checkbox_style(palette, status)),
-    );
-
     // ── 分頁 3: 效能優化 (Optimizations) ──
     let optimizations_title = text("效能優化").size(21).color(palette.text).font(Font {
         weight: Weight::Semibold,

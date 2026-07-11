@@ -14,6 +14,8 @@ pub enum AppError {
     Json(#[from] serde_json::Error),
     #[error("無效設定: {0}")]
     InvalidConfig(String),
+    #[error("無效設定 JSON: {0}")]
+    InvalidConfigJson(#[source] serde_json::Error),
 
     // 啟動器與進程錯誤
     #[error("啟動錯誤: {0}")]

@@ -3,10 +3,10 @@ pub mod models_endpoint;
 pub mod router;
 pub mod streaming;
 
-use reqwest::blocking::Client;
-use serde_json::Value;
+use crate::{AppError, AppResult};
 use std::sync::atomic::AtomicBool;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 pub static LAUNCHER_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub static TRAY_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -38,6 +38,49 @@ pub fn is_authorized_proxy_request(
 
 pub fn app_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
+}
+
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+pub(crate) fn http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
+pub(crate) fn apply_gateway_auth(
+    request: reqwest::RequestBuilder,
+    scheme: &str,
+    key: &str,
+    url: &str,
+) -> AppResult<reqwest::RequestBuilder> {
+    let scheme = match scheme {
+        "auto" => {
+            if url::Url::parse(url)
+                .map_err(|error| AppError::InvalidConfig(error.to_string()))?
+                .host_str()
+                == Some("api.anthropic.com")
+            {
+                "x-api-key"
+            } else {
+                "bearer"
+            }
+        }
+        "x-api-key" | "bearer" | "sso" => scheme,
+        _ => return Err(AppError::InvalidConfig("不支援的 Auth Scheme".to_string())),
+    };
+
+    if key.is_empty() {
+        Ok(request)
+    } else if scheme == "x-api-key" {
+        Ok(request.header("x-api-key", key))
+    } else {
+        Ok(request.bearer_auth(key))
+    }
 }
 
 static SHUTDOWN_TX: std::sync::OnceLock<tokio::sync::watch::Sender<bool>> =
@@ -126,45 +169,67 @@ pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error + Sen
     Ok(())
 }
 
-// Blocking version kept for lib.rs::save_config sync execution
-fn blocking_http_client() -> &'static Client {
-    static CLIENT: OnceLock<Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        Client::builder()
-            .timeout(std::time::Duration::from_secs(
-                crate::constants::HTTP_TIMEOUT_SECS,
-            ))
+#[cfg(test)]
+mod gateway_auth_tests {
+    use super::*;
+    use crate::AppError;
+
+    fn headers(scheme: &str, url: &str) -> reqwest::header::HeaderMap {
+        apply_gateway_auth(reqwest::Client::new().get(url), scheme, "secret", url)
+            .unwrap()
             .build()
-            .unwrap_or_else(|_| Client::new())
-    })
-}
-
-pub fn fetch_models_list(
-    base_url: &str,
-    api_key: &str,
-    auth_scheme: &str,
-) -> Result<Value, String> {
-    let model_info_url = crate::conversion::response_converter::normalize_model_info_url(base_url)?;
-    if let Ok(value) = fetch_json(&model_info_url, api_key, auth_scheme) {
-        return Ok(value);
+            .unwrap()
+            .headers()
+            .clone()
     }
 
-    let url = crate::conversion::response_converter::normalize_models_url(base_url)?;
-    fetch_json(&url, api_key, auth_scheme)
-}
+    #[test]
+    fn auto_uses_x_api_key_for_anthropic() {
+        let headers = headers("auto", "https://api.anthropic.com/v1/models");
+        assert_eq!(headers["x-api-key"], "secret");
+        assert!(!headers.contains_key(reqwest::header::AUTHORIZATION));
+    }
 
-fn fetch_json(url: &str, api_key: &str, auth_scheme: &str) -> Result<Value, String> {
-    let mut req = blocking_http_client().get(url);
-    if auth_scheme == "x-api-key" {
-        req = req.header("x-api-key", api_key);
-    } else {
-        req = req.bearer_auth(api_key);
+    #[test]
+    fn x_api_key_uses_named_header() {
+        assert_eq!(
+            headers("x-api-key", "https://example.com/v1/models")["x-api-key"],
+            "secret"
+        );
     }
-    let res = req.send().map_err(|e| format!("Request failed: {e}"))?;
-    let status = res.status();
-    let text = res.text().map_err(|e| e.to_string())?;
-    if !status.is_success() {
-        return Err(format!("API responded with status {status}: {text}"));
+
+    #[test]
+    fn bearer_uses_authorization_header() {
+        assert_eq!(
+            headers("bearer", "https://example.com/v1/models")[reqwest::header::AUTHORIZATION],
+            "Bearer secret"
+        );
     }
-    serde_json::from_str(&text).map_err(|e| format!("Failed to parse models response: {e}"))
+
+    #[test]
+    fn sso_uses_authorization_header() {
+        assert_eq!(
+            headers("sso", "https://example.com/v1/models")[reqwest::header::AUTHORIZATION],
+            "Bearer secret"
+        );
+    }
+
+    #[test]
+    fn auto_uses_bearer_for_other_hosts() {
+        assert_eq!(
+            headers("auto", "https://example.com/v1/models")[reqwest::header::AUTHORIZATION],
+            "Bearer secret"
+        );
+    }
+
+    #[test]
+    fn invalid_scheme_is_rejected() {
+        let result = apply_gateway_auth(
+            reqwest::Client::new().get("https://example.com"),
+            "basic",
+            "secret",
+            "https://example.com",
+        );
+        assert!(matches!(result, Err(AppError::InvalidConfig(_))));
+    }
 }

@@ -200,7 +200,6 @@ impl LauncherApp {
             Message::SuggestionModeSkipToggled(v) => self.enable_suggestion_mode_skip = v,
             Message::FilepathExtractionMockToggled(v) => self.enable_filepath_extraction_mock = v,
             Message::WebServerToolsToggled(v) => self.enable_web_server_tools = v,
-            Message::ComputerMcpServerToggled(v) => self.enable_computer_mcp_server = v,
             Message::WebFetchPrivateNetworkToggled(v) => self.web_fetch_allow_private_networks = v,
             Message::WebFetchAllowedSchemesChanged(v) => self.web_fetch_allowed_schemes = v,
             Message::ReasoningReplayModeSelected(v) => self.reasoning_replay_mode = v,

@@ -8,6 +8,7 @@ use std::process::Command;
 
 use crate::common::local_app_data;
 use crate::error::{AppError, AppResult};
+use crate::platform::atomic_file::{write_transaction, PendingWrite};
 
 pub fn mirror_profile_dir() -> PathBuf {
     local_app_data()
@@ -68,18 +69,12 @@ pub fn resync_from_official() -> AppResult<()> {
     if official.exists() {
         copy_dir_all(&official, &mirror)?;
     }
-    let settings = crate::config::get_launcher_settings();
+    let settings = crate::config::load_launcher_settings()?;
     let port = settings
         .as_ref()
         .and_then(|s| s.active_port)
         .unwrap_or(crate::constants::DEFAULT_PORT);
-    let enable_computer_mcp = settings
-        .as_ref()
-        .map(|s| s.enable_computer_mcp_server)
-        .unwrap_or(false);
-
     apply_3p_deployment_mode()?;
-    apply_computer_mcp_server_config(enable_computer_mcp)?;
     update_config_port(port)?;
     Ok(())
 }
@@ -220,10 +215,15 @@ pub fn validate_launch_path(target_path: &Path) -> AppResult<PathBuf> {
 }
 
 pub fn write_config_to_all_paths(file_name: &str, content: &str) -> AppResult<()> {
+    let mut writes = Vec::new();
     for dir in config_library_dirs() {
         fs::create_dir_all(&dir)?;
-        fs::write(dir.join(file_name), content)?;
+        writes.push(PendingWrite::new(
+            dir.join(file_name),
+            content.as_bytes().to_vec(),
+        ));
     }
+    write_transaction(writes)?;
     Ok(())
 }
 
@@ -314,29 +314,42 @@ pub fn remove_managed_meta_entry(mut meta: Value) -> Value {
 }
 
 pub fn write_managed_meta_to_all_paths() -> AppResult<()> {
+    let mut writes = Vec::new();
     for dir in config_library_dirs() {
         fs::create_dir_all(&dir)?;
         let path = dir.join("_meta.json");
-        let meta = fs::read_to_string(&path)
-            .ok()
-            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .unwrap_or_else(|| json!({}));
+        let meta = if path.exists() {
+            let text = fs::read_to_string(&path)?;
+            serde_json::from_str::<Value>(&text).map_err(AppError::InvalidConfigJson)?
+        } else {
+            json!({})
+        };
         let content = serde_json::to_string_pretty(&upsert_managed_meta_entry(meta))?;
-        fs::write(path, content)?;
+        writes.push(PendingWrite::new(path, content.into_bytes()));
     }
+    write_transaction(writes)?;
     Ok(())
 }
 
 fn remove_managed_config_from_all_paths() -> AppResult<()> {
+    let mut writes = Vec::new();
+    let mut configs = Vec::new();
     for dir in config_library_dirs() {
-        let _ = fs::remove_file(dir.join(format!("{CONFIG_ID}.json")));
+        configs.push(dir.join(format!("{CONFIG_ID}.json")));
         let meta_path = dir.join("_meta.json");
         if meta_path.exists() {
             let text = fs::read_to_string(&meta_path)?;
-            if let Ok(meta) = serde_json::from_str::<Value>(&text) {
-                let content = serde_json::to_string_pretty(&remove_managed_meta_entry(meta))?;
-                fs::write(meta_path, content)?;
-            }
+            let meta = serde_json::from_str::<Value>(&text).map_err(AppError::InvalidConfigJson)?;
+            let content = serde_json::to_string_pretty(&remove_managed_meta_entry(meta))?;
+            writes.push(PendingWrite::new(meta_path, content.into_bytes()));
+        }
+    }
+    write_transaction(writes)?;
+    for path in configs {
+        match fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
     }
     Ok(())
@@ -492,18 +505,25 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
 
 pub fn restore_official_config() -> AppResult<()> {
     kill_claude_processes();
-    let _ = remove_managed_config_from_all_paths();
-    let _ = remove_anthropic_base_url_env();
-    let _ = apply_computer_mcp_server_config(false);
-    let _ = restore_1p_deployment_mode();
+    remove_managed_config_from_all_paths()?;
+    remove_anthropic_base_url_env()?;
+    restore_1p_deployment_mode()?;
 
-    let _ = fs::remove_file(crate::config::settings_file());
+    match fs::remove_file(crate::config::settings_file()) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
     let legacy = env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("launcher_settings.json");
     let s_file = crate::config::settings_file();
     if legacy != s_file {
-        let _ = fs::remove_file(legacy);
+        match fs::remove_file(legacy) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
     }
     Ok(())
 }
@@ -587,12 +607,20 @@ pub fn update_applied_claude_config(
     port: u16,
     inference_models: &[crate::models::openai::InferenceModel],
 ) {
-    let token = crate::config::get_launcher_settings()
+    if let Err(error) = try_update_applied_claude_config(port, inference_models) {
+        tracing::error!(%error, "Failed to update applied Claude config");
+    }
+}
+
+pub fn try_update_applied_claude_config(
+    port: u16,
+    inference_models: &[crate::models::openai::InferenceModel],
+) -> AppResult<()> {
+    let token = crate::config::load_launcher_settings()?
         .map(|settings| settings.proxy_auth_token)
         .unwrap_or_else(crate::config::default_proxy_auth_token);
-    let content =
-        serde_json::to_string_pretty(&claude_config(port, inference_models, &token)).unwrap();
-    let _ = write_config_to_all_paths(&format!("{CONFIG_ID}.json"), &content);
+    let content = serde_json::to_string_pretty(&claude_config(port, inference_models, &token))?;
+    write_config_to_all_paths(&format!("{CONFIG_ID}.json"), &content)
 }
 
 pub fn update_config_port(port: u16) -> AppResult<()> {
@@ -611,16 +639,18 @@ fn with_gateway_port(mut config: Value, port: u16) -> Value {
 }
 
 fn update_gateway_port_in_all_paths(port: u16) -> AppResult<()> {
+    let mut writes = Vec::new();
     for dir in config_library_dirs() {
         let path = dir.join(format!("{CONFIG_ID}.json"));
         if !path.exists() {
             continue;
         }
         let text = fs::read_to_string(&path)?;
-        let config = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({}));
+        let config = serde_json::from_str::<Value>(&text).map_err(AppError::InvalidConfigJson)?;
         let content = serde_json::to_string_pretty(&with_gateway_port(config, port))?;
-        fs::write(path, content)?;
+        writes.push(PendingWrite::new(path, content.into_bytes()));
     }
+    write_transaction(writes)?;
     Ok(())
 }
 
@@ -676,7 +706,7 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
     let path = claude_settings_json_path();
     let mut data: Value = if path.exists() {
         let text = std::fs::read_to_string(&path)?;
-        serde_json::from_str(&text).unwrap_or(json!({}))
+        serde_json::from_str(&text).map_err(AppError::InvalidConfigJson)?
     } else {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -735,7 +765,7 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
     }
 
     let content = serde_json::to_string_pretty(&data)?;
-    std::fs::write(&path, content)?;
+    write_transaction(vec![PendingWrite::new(path, content.into_bytes())])?;
     Ok(())
 }
 
@@ -743,48 +773,47 @@ pub fn remove_anthropic_base_url_env() -> AppResult<()> {
     let path = claude_settings_json_path();
     if path.exists() {
         let text = std::fs::read_to_string(&path)?;
-        if let Ok(mut data) = serde_json::from_str::<Value>(&text) {
-            let mut changed = false;
-            if let Some(obj) = data.as_object_mut() {
-                if let Some(previous) = obj.remove(PREVIOUS_CLAUDE_SETTINGS_KEY) {
-                    changed = true;
-                    if let Some(auto_mode) = previous.get("autoModeEnabled") {
-                        restore_previous_setting(obj, "autoModeEnabled", auto_mode);
-                    }
+        let mut data = serde_json::from_str::<Value>(&text).map_err(AppError::InvalidConfigJson)?;
+        let mut changed = false;
+        if let Some(obj) = data.as_object_mut() {
+            if let Some(previous) = obj.remove(PREVIOUS_CLAUDE_SETTINGS_KEY) {
+                changed = true;
+                if let Some(auto_mode) = previous.get("autoModeEnabled") {
+                    restore_previous_setting(obj, "autoModeEnabled", auto_mode);
+                }
 
-                    let env_present = previous
-                        .get("envPresent")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(true);
-                    if obj.get("env").is_none() {
-                        obj.insert("env".to_string(), json!({}));
-                    }
-                    if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
-                        if let Some(previous_env) = previous.get("env").and_then(Value::as_object) {
-                            for key in MANAGED_CLAUDE_ENV_KEYS {
-                                if let Some(previous_value) = previous_env.get(key) {
-                                    restore_previous_setting(env_obj, key, previous_value);
-                                } else {
-                                    env_obj.remove(key);
-                                }
+                let env_present = previous
+                    .get("envPresent")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
+                if obj.get("env").is_none() {
+                    obj.insert("env".to_string(), json!({}));
+                }
+                if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
+                    if let Some(previous_env) = previous.get("env").and_then(Value::as_object) {
+                        for key in MANAGED_CLAUDE_ENV_KEYS {
+                            if let Some(previous_value) = previous_env.get(key) {
+                                restore_previous_setting(env_obj, key, previous_value);
+                            } else {
+                                env_obj.remove(key);
                             }
                         }
-                        if env_obj.is_empty() && !env_present {
-                            obj.remove("env");
-                        }
                     }
-                } else if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
-                    for key in MANAGED_CLAUDE_ENV_KEYS {
-                        if env_obj.remove(key).is_some() {
-                            changed = true;
-                        }
+                    if env_obj.is_empty() && !env_present {
+                        obj.remove("env");
+                    }
+                }
+            } else if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
+                for key in MANAGED_CLAUDE_ENV_KEYS {
+                    if env_obj.remove(key).is_some() {
+                        changed = true;
                     }
                 }
             }
-            if changed {
-                let content = serde_json::to_string_pretty(&data)?;
-                std::fs::write(&path, content)?;
-            }
+        }
+        if changed {
+            let content = serde_json::to_string_pretty(&data)?;
+            write_transaction(vec![PendingWrite::new(path, content.into_bytes())])?;
         }
     }
     Ok(())
@@ -916,56 +945,40 @@ pub fn clean_json_text(input: &str) -> String {
 }
 
 pub fn read_json_config(path: &Path) -> Option<Value> {
-    if !path.exists() {
-        return None;
-    }
-    let text = fs::read_to_string(path).ok()?;
-    let cleaned = clean_json_text(&text);
-    serde_json::from_str(&cleaned).ok()
+    read_json_config_result(path).ok().flatten()
 }
 
-pub fn is_managed_computer_mcp_server(name: &str, val: &Value) -> bool {
-    if name == COMPUTER_MCP_SERVER_NAME || name == "launcher-computer" {
-        return true;
+fn read_json_config_result(path: &Path) -> AppResult<Option<Value>> {
+    if !path.exists() {
+        return Ok(None);
     }
-    if let Some(cmd) = val.get("command").and_then(Value::as_str) {
-        let lower = cmd.to_lowercase();
-        if lower.contains("freeclaude") || lower.contains("launcher") {
-            return true;
-        }
-    }
-    if let Some(args) = val.get("args").and_then(Value::as_array) {
-        for arg in args {
-            if let Some(s) = arg.as_str() {
-                let trimmed = s.trim_start_matches('-');
-                if trimmed == "mcp" || trimmed == "mcp-computer-server" {
-                    return true;
-                }
-            }
-        }
-    }
-    false
+    let text = fs::read_to_string(path)?;
+    let cleaned = clean_json_text(&text);
+    let value = serde_json::from_str(&cleaned).map_err(AppError::InvalidConfigJson)?;
+    Ok(Some(value))
 }
 
 pub fn collect_all_mcp_servers() -> serde_json::Map<String, Value> {
+    collect_all_mcp_servers_result().unwrap_or_default()
+}
+
+pub fn collect_all_mcp_servers_result() -> AppResult<serde_json::Map<String, Value>> {
     let mut merged = serde_json::Map::new();
     let mut search_paths = mcp_config_paths();
     search_paths.push(official_app_data_dir().join("claude_desktop_config.json"));
 
     for path in search_paths {
-        if path.exists() {
-            if let Some(data) = read_json_config(&path) {
-                if let Some(servers) = data.get("mcpServers").and_then(Value::as_object) {
-                    for (k, v) in servers {
-                        if !is_managed_computer_mcp_server(k, v) && !merged.contains_key(k) {
-                            merged.insert(k.clone(), v.clone());
-                        }
+        if let Some(data) = read_json_config_result(&path)? {
+            if let Some(servers) = data.get("mcpServers").and_then(Value::as_object) {
+                for (k, v) in servers {
+                    if !merged.contains_key(k) {
+                        merged.insert(k.clone(), v.clone());
                     }
                 }
             }
         }
     }
-    merged
+    Ok(merged)
 }
 
 pub fn merge_mcp_servers(mut data: Value, all_servers: &serde_json::Map<String, Value>) -> Value {
@@ -990,85 +1003,18 @@ pub fn merge_mcp_servers(mut data: Value, all_servers: &serde_json::Map<String, 
     data
 }
 
-const COMPUTER_MCP_SERVER_NAME: &str = "free-claude-computer";
-
-pub fn with_computer_mcp_server(mut data: Value, enabled: bool, command: &Path) -> Value {
-    if !data.is_object() {
-        data = json!({});
-    }
-
-    let obj = data.as_object_mut().unwrap();
-    if let Some(servers) = obj.get_mut("mcpServers").and_then(Value::as_object_mut) {
-        let legacy_keys: Vec<String> = servers
-            .iter()
-            .filter(|(k, v)| is_managed_computer_mcp_server(k, v))
-            .map(|(k, _)| k.clone())
-            .collect();
-        for key in legacy_keys {
-            servers.remove(&key);
-        }
-    }
-
-    if enabled {
-        let servers = obj.entry("mcpServers").or_insert_with(|| json!({}));
-        if !servers.is_object() {
-            *servers = json!({});
-        }
-        servers.as_object_mut().unwrap().insert(
-            COMPUTER_MCP_SERVER_NAME.to_string(),
-            json!({
-                "command": command.to_string_lossy(),
-                "args": ["--mcp-computer-server"]
-            }),
-        );
-    } else if let Some(servers) = obj.get_mut("mcpServers").and_then(Value::as_object_mut) {
-        if servers.is_empty() {
-            obj.remove("mcpServers");
-        }
-    }
-
-    data
-}
-
-pub fn apply_computer_mcp_server_config(enabled: bool) -> AppResult<()> {
-    let command = if enabled {
-        env::current_exe().map_err(|error| AppError::Launcher(error.to_string()))?
-    } else {
-        PathBuf::new()
+pub(crate) fn strip_removed_computer_mcp(mut data: Value) -> Value {
+    let Some(root) = data.as_object_mut() else {
+        return data;
     };
-
-    let all_mcp_servers = collect_all_mcp_servers();
-
-    for path in mcp_config_paths() {
-        let (data_opt, file_existed) = if path.exists() {
-            (read_json_config(&path), true)
-        } else {
-            if !enabled && all_mcp_servers.is_empty() {
-                continue;
-            }
-            (Some(json!({})), false)
-        };
-
-        if file_existed && data_opt.is_none() {
-            tracing::warn!(
-                "Skipping writing MCP config to {:?} because JSON parsing failed",
-                path
-            );
-            continue;
+    if let Some(servers) = root.get_mut("mcpServers").and_then(Value::as_object_mut) {
+        servers.remove("free-claude-computer");
+        servers.remove("launcher-computer");
+        if servers.is_empty() {
+            root.remove("mcpServers");
         }
-
-        let data = data_opt.unwrap_or_else(|| json!({}));
-        let data = merge_mcp_servers(data, &all_mcp_servers);
-        let data = with_computer_mcp_server(data, enabled, &command);
-
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        let content = serde_json::to_string_pretty(&data)?;
-        fs::write(&path, content)?;
     }
-
-    Ok(())
+    data
 }
 
 const PREVIOUS_DEPLOYMENT_MODE_KEY: &str = "freeClaudeLauncherPreviousDeploymentMode";
@@ -1109,52 +1055,48 @@ pub fn restore_managed_deployment_mode(mut data: Value) -> Value {
 }
 
 pub fn apply_3p_deployment_mode() -> AppResult<()> {
-    let all_mcp_servers = collect_all_mcp_servers();
+    let all_mcp_servers = collect_all_mcp_servers_result()?;
+    let mut writes = Vec::new();
 
     for path in mcp_config_paths() {
-        let (data_opt, file_existed) = if path.exists() {
-            (read_json_config(&path), true)
+        let data_opt = if path.exists() {
+            read_json_config_result(&path)?
         } else {
             let parent_exists = path.parent().map(|p| p.exists()).unwrap_or(false);
             if !parent_exists && all_mcp_servers.is_empty() {
                 continue;
             }
-            (Some(json!({})), false)
+            Some(json!({}))
         };
-
-        if file_existed && data_opt.is_none() {
-            tracing::warn!(
-                "Skipping writing config to {:?} because JSON parsing failed",
-                path
-            );
-            continue;
-        }
 
         let data = data_opt.unwrap_or_else(|| json!({}));
         let data = merge_mcp_servers(data, &all_mcp_servers);
-        let data = apply_managed_deployment_mode(data);
+        let data = strip_removed_computer_mcp(apply_managed_deployment_mode(data));
 
         if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(&data)?;
-        let _ = fs::write(&path, content);
+        writes.push(PendingWrite::new(path, content.into_bytes()));
     }
+    write_transaction(writes)?;
     Ok(())
 }
 
 pub fn restore_1p_deployment_mode() -> AppResult<()> {
-    let all_mcp_servers = collect_all_mcp_servers();
+    let all_mcp_servers = collect_all_mcp_servers_result()?;
+    let mut writes = Vec::new();
 
     for path in mcp_config_paths() {
         if path.exists() {
-            if let Some(data) = read_json_config(&path) {
+            if let Some(data) = read_json_config_result(&path)? {
                 let data = merge_mcp_servers(data, &all_mcp_servers);
                 let content = serde_json::to_string_pretty(&restore_managed_deployment_mode(data))?;
-                let _ = fs::write(&path, content);
+                writes.push(PendingWrite::new(path, content.into_bytes()));
             }
         }
     }
+    write_transaction(writes)?;
     Ok(())
 }
 

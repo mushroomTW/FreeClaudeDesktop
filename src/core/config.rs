@@ -1,6 +1,7 @@
 use crate::common::local_app_data;
 use crate::crypto::unprotect_secret;
 use crate::error::{AppError, AppResult};
+use crate::platform::atomic_file::{write_transaction, PendingWrite};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -64,9 +65,6 @@ pub struct Settings {
     /// 是否啟用 Web 工具攔截（本地執行 web_search/web_fetch）
     #[serde(default = "default_false")]
     pub enable_web_server_tools: bool,
-    /// 是否寫入本機 computer MCP server 設定
-    #[serde(default = "default_false")]
-    pub enable_computer_mcp_server: bool,
     /// web_fetch 允許的 URL 方案清單（逗號分隔，如 "http,https"）
     #[serde(default = "default_web_fetch_schemes")]
     pub web_fetch_allowed_schemes: String,
@@ -136,7 +134,6 @@ impl Default for Settings {
             enable_suggestion_mode_skip: true,
             enable_filepath_extraction_mock: true,
             enable_web_server_tools: false,
-            enable_computer_mcp_server: false,
             web_fetch_allowed_schemes: "http,https".to_string(),
             web_fetch_allow_private_networks: false,
             theme_mode: default_theme_mode(),
@@ -189,28 +186,32 @@ fn legacy_settings_file() -> PathBuf {
         .join("launcher_settings.json")
 }
 
-fn migrate_legacy_settings() {
+fn migrate_legacy_settings() -> AppResult<()> {
     let legacy = legacy_settings_file();
     let new_file = settings_file();
     if legacy.exists() && !new_file.exists() {
         if let Some(parent) = new_file.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent)?;
         }
-        if fs::copy(&legacy, &new_file).is_ok() {
-            let _ = fs::remove_file(legacy);
-        }
+        write_transaction(vec![PendingWrite::new(new_file, fs::read(&legacy)?)])?;
+        fs::remove_file(legacy)?;
     }
+    Ok(())
+}
+
+pub fn load_launcher_settings() -> AppResult<Option<Settings>> {
+    migrate_legacy_settings()?;
+    let path = settings_file();
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = fs::read_to_string(path)?;
+    let value = parse_json_text(&text).map_err(AppError::InvalidConfigJson)?;
+    Ok(Some(serde_json::from_value(value)?))
 }
 
 pub fn get_launcher_settings() -> Option<Settings> {
-    migrate_legacy_settings();
-    let path = settings_file();
-    if !path.exists() {
-        return None;
-    }
-    let text = fs::read_to_string(path).ok()?;
-    let value = parse_json_text(&text).ok()?;
-    serde_json::from_value(value).ok()
+    load_launcher_settings().ok().flatten()
 }
 
 pub fn save_launcher_settings(settings: &Settings) -> AppResult<()> {
@@ -219,11 +220,28 @@ pub fn save_launcher_settings(settings: &Settings) -> AppResult<()> {
         fs::create_dir_all(parent)?;
     }
     let serialized = serde_json::to_string_pretty(settings)?;
-    fs::write(&path, serialized)?;
+    write_transaction(vec![PendingWrite::new(
+        path.clone(),
+        serialized.into_bytes(),
+    )])?;
 
     let legacy = legacy_settings_file();
     if legacy.exists() && legacy != path {
-        let _ = fs::remove_file(legacy);
+        fs::remove_file(legacy)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removed_feature_field_is_not_serialized() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value["enableComputerMcpServer"] = serde_json::Value::Bool(true);
+        let settings: Settings = serde_json::from_value(value).unwrap();
+        let saved = serde_json::to_value(settings).unwrap();
+        assert!(saved.get("enableComputerMcpServer").is_none());
+    }
 }

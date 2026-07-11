@@ -1,10 +1,11 @@
-use crate::config::{get_launcher_settings, save_launcher_settings};
+use crate::config_service::{
+    load_runtime_settings, save_runtime_settings, unprotect_runtime_api_key,
+};
 use crate::conversion::request_converter::anthropic_to_openai_request;
 use crate::conversion::response_converter::{
     normalize_chat_completions_url, normalize_messages_url, openai_to_anthropic_response,
     prepare_proxy_body, rewrite_stale_model_request,
 };
-use crate::crypto::unprotect_secret;
 use crate::optimization;
 use crate::server::streaming::{start_sse_stream_conversion, ReasoningReplayMode};
 use axum::{
@@ -15,29 +16,7 @@ use axum::{
 };
 use reqwest::Client;
 use serde_json::{json, Value};
-use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
-
-static ASYNC_CLIENT: OnceLock<Client> = OnceLock::new();
-static STREAMING_CLIENT: OnceLock<Client> = OnceLock::new();
-
-fn async_client() -> &'static Client {
-    ASYNC_CLIENT.get_or_init(|| {
-        Client::builder()
-            .timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
-            .build()
-            .unwrap_or_else(|_| Client::new())
-    })
-}
-
-fn streaming_client() -> &'static Client {
-    STREAMING_CLIENT.get_or_init(|| {
-        Client::builder()
-            .connect_timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
-            .build()
-            .unwrap_or_else(|_| Client::new())
-    })
-}
 
 fn is_model_gone_or_invalid_error(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
@@ -58,7 +37,7 @@ fn build_upstream_request(
     headers: &HeaderMap,
     api_key: &str,
     auth_scheme: &str,
-) -> reqwest::RequestBuilder {
+) -> crate::AppResult<reqwest::RequestBuilder> {
     let mut request = client.post(target_url).body(body);
     for (name, value) in headers {
         let lower = name.as_str().to_ascii_lowercase();
@@ -71,13 +50,7 @@ fn build_upstream_request(
         }
     }
 
-    if api_key.is_empty() {
-        request
-    } else if auth_scheme == "x-api-key" {
-        request.header("x-api-key", api_key)
-    } else {
-        request.bearer_auth(api_key)
-    }
+    crate::server::apply_gateway_auth(request, auth_scheme, api_key, target_url)
 }
 
 pub async fn handle_root() -> impl IntoResponse {
@@ -126,13 +99,24 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     }
 
     // 1. Load settings for the configured proxy token.
-    let Some(mut settings) = get_launcher_settings() else {
-        tracing::error!("<- 錯誤: Launcher 尚未配置");
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Launcher has not been configured yet." })),
-        )
-            .into_response();
+    let mut settings = match load_runtime_settings().await {
+        Ok(Some(settings)) => settings,
+        Ok(None) => {
+            tracing::error!("<- 錯誤: Launcher 尚未配置");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Launcher has not been configured yet." })),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            tracing::error!("<- 錯誤: 讀取 Launcher 設定失敗: {error}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error.to_string() })),
+            )
+                .into_response();
+        }
     };
 
     // 2. Validate authorization
@@ -399,7 +383,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         }
     };
 
-    let api_key = match unprotect_secret(&settings.real_api_key) {
+    let api_key = match unprotect_runtime_api_key(settings.real_api_key.clone()).await {
         Ok(key) => key,
         Err(error) => {
             tracing::error!("<- 錯誤: 解密 API key 失敗: {:?}", error);
@@ -424,19 +408,23 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     );
 
     // 5. Build Upstream request
-    let client = if is_openai_format && is_stream {
-        streaming_client()
-    } else {
-        async_client()
-    };
-    let upstream_req = build_upstream_request(
-        client,
+    let upstream_req = match build_upstream_request(
+        crate::server::http_client(),
         &target_url,
         proxy_body.clone(),
         &headers,
         &api_key,
         &settings.real_auth_scheme,
-    );
+    ) {
+        Ok(request) => request,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": error.to_string() })),
+            )
+                .into_response()
+        }
+    };
 
     // 6. Send request
     match upstream_req.send().await {
@@ -505,10 +493,17 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                             settings
                                 .real_model_routes
                                 .insert(req_model.clone(), rewrite.fallback_model.clone());
-                            let _ = save_launcher_settings(&settings);
+                            if let Err(error) = save_runtime_settings(settings.clone()).await {
+                                tracing::error!("<- 儲存 fallback 模型路由失敗: {error}");
+                                return (
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    Json(json!({ "error": error.to_string() })),
+                                )
+                                    .into_response();
+                            }
 
                             let retry_req = build_upstream_request(
-                                async_client(),
+                                crate::server::http_client(),
                                 &target_url,
                                 rewrite.updated_body.to_string(),
                                 &headers,
@@ -516,15 +511,17 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 &settings.real_auth_scheme,
                             );
 
-                            if let Ok(retry_response) = retry_req.send().await {
-                                if retry_response.status().is_success() {
-                                    let retry_text =
-                                        retry_response.text().await.unwrap_or_default();
-                                    if let Ok(anthropic_res) =
-                                        openai_to_anthropic_response(&retry_text, &req_model)
-                                    {
-                                        return (StatusCode::OK, Json(anthropic_res))
-                                            .into_response();
+                            if let Ok(retry_req) = retry_req {
+                                if let Ok(retry_response) = retry_req.send().await {
+                                    if retry_response.status().is_success() {
+                                        let retry_text =
+                                            retry_response.text().await.unwrap_or_default();
+                                        if let Ok(anthropic_res) =
+                                            openai_to_anthropic_response(&retry_text, &req_model)
+                                        {
+                                            return (StatusCode::OK, Json(anthropic_res))
+                                                .into_response();
+                                        }
                                     }
                                 }
                             }
@@ -550,10 +547,17 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                             settings
                                 .real_model_routes
                                 .insert(req_model.clone(), rewrite.fallback_model.clone());
-                            let _ = save_launcher_settings(&settings);
+                            if let Err(error) = save_runtime_settings(settings.clone()).await {
+                                tracing::error!("<- 儲存 fallback 模型路由失敗: {error}");
+                                return (
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    Json(json!({ "error": error.to_string() })),
+                                )
+                                    .into_response();
+                            }
 
                             let retry_req = build_upstream_request(
-                                async_client(),
+                                crate::server::http_client(),
                                 &target_url,
                                 rewrite.updated_body.to_string(),
                                 &headers,
@@ -561,15 +565,19 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 &settings.real_auth_scheme,
                             );
 
-                            if let Ok(retry_response) = retry_req.send().await {
-                                let mut res_builder = axum::response::Response::builder()
-                                    .status(retry_response.status());
-                                for (name, value) in retry_response.headers() {
-                                    res_builder = res_builder.header(name.clone(), value.clone());
+                            if let Ok(retry_req) = retry_req {
+                                if let Ok(retry_response) = retry_req.send().await {
+                                    let mut res_builder = axum::response::Response::builder()
+                                        .status(retry_response.status());
+                                    for (name, value) in retry_response.headers() {
+                                        res_builder =
+                                            res_builder.header(name.clone(), value.clone());
+                                    }
+                                    let body = axum::body::Body::from_stream(
+                                        retry_response.bytes_stream(),
+                                    );
+                                    return res_builder.body(body).unwrap();
                                 }
-                                let body =
-                                    axum::body::Body::from_stream(retry_response.bytes_stream());
-                                return res_builder.body(body).unwrap();
                             }
                         }
                     }

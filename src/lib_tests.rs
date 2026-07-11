@@ -2,6 +2,35 @@ use super::*;
 use serde_json::{json, Value};
 
 #[test]
+#[allow(clippy::type_complexity)]
+fn save_config_keeps_legacy_function_signature() {
+    let _: fn(
+        u16,
+        &str,
+        &str,
+        &str,
+        bool,
+        bool,
+        bool,
+        bool,
+        bool,
+        bool,
+        bool,
+        bool,
+        &str,
+        &str,
+        &str,
+        &str,
+        &HashMap<String, String>,
+        &HashMap<String, bool>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) -> AppResult<()> = save_config;
+}
+
+#[test]
 fn normalizes_provider_urls_to_messages_endpoint() {
     assert_eq!(
         normalize_messages_url("https://openrouter.ai/api").unwrap(),

@@ -1,8 +1,7 @@
-use crate::config::{get_launcher_settings, save_launcher_settings};
+use crate::config_service::{load_runtime_settings, run_config_io, unprotect_runtime_api_key};
 use crate::conversion::response_converter::{
     build_inference_models, normalize_models_response_with_overrides,
 };
-use crate::crypto::unprotect_secret;
 use crate::models::openai::NormalizedModels;
 use axum::{http::HeaderMap, response::IntoResponse, Json};
 use serde_json::{json, Value};
@@ -69,13 +68,24 @@ fn clear_models_cache_for_tests() {
 
 pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
     // 1. Load settings for the configured proxy token.
-    let Some(mut settings) = get_launcher_settings() else {
-        tracing::error!("<- 錯誤: Launcher 尚未配置");
-        return (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Launcher has not been configured yet." })),
-        )
-            .into_response();
+    let mut settings = match load_runtime_settings().await {
+        Ok(Some(settings)) => settings,
+        Ok(None) => {
+            tracing::error!("<- 錯誤: Launcher 尚未配置");
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Launcher has not been configured yet." })),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            tracing::error!("<- 錯誤: 讀取 Launcher 設定失敗: {error}");
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error.to_string() })),
+            )
+                .into_response();
+        }
     };
 
     // 2. Validate authorization
@@ -104,7 +114,7 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
     }
 
     // 3. Decrypt API key
-    let api_key = match unprotect_secret(&settings.real_api_key) {
+    let api_key = match unprotect_runtime_api_key(settings.real_api_key.clone()).await {
         Ok(key) => key,
         Err(error) => {
             tracing::error!("<- 錯誤: 解密 API key 失敗: {:?}", error);
@@ -133,13 +143,6 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
         ) {
             Ok(normalized) => {
                 tracing::info!("<- 獲取模型列表成功，模型數量: {}", normalized.data.len());
-                store_models_cache(
-                    &settings.real_base_url,
-                    &settings.real_auth_scheme,
-                    &settings.model_reasoning_overrides,
-                    &settings.model_1m_overrides,
-                    &normalized,
-                );
                 settings.real_model_routes = normalized.routes.clone();
                 settings.real_model_reasoning_efforts = normalized.reasoning_effort_routes.clone();
                 settings.discovered_models = normalized
@@ -147,21 +150,37 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
                     .iter()
                     .map(|model| model.provider_model_id.clone())
                     .collect();
-                let _ = save_launcher_settings(&settings);
-
                 let inference_models = build_inference_models(&normalized.data);
                 let port = settings
                     .active_port
                     .unwrap_or(crate::constants::DEFAULT_PORT);
-                let content = serde_json::to_string_pretty(&crate::launcher::claude_config(
-                    port,
-                    &inference_models,
-                    &settings.proxy_auth_token,
-                ))
-                .unwrap();
-                let _ = crate::launcher::write_config_to_all_paths(
-                    &format!("{}.json", crate::constants::CONFIG_ID),
-                    &content,
+                let settings_to_persist = settings.clone();
+                let config_name = format!("{}.json", crate::constants::CONFIG_ID);
+                if let Err(error) = run_config_io(move || {
+                    crate::config::save_launcher_settings(&settings_to_persist)?;
+                    let content = serde_json::to_string_pretty(&crate::launcher::claude_config(
+                        port,
+                        &inference_models,
+                        &settings_to_persist.proxy_auth_token,
+                    ))?;
+                    crate::launcher::write_config_to_all_paths(&config_name, &content)
+                })
+                .await
+                {
+                    tracing::error!("<- 儲存模型設定失敗: {error}");
+                    return (
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "error": error.to_string() })),
+                    )
+                        .into_response();
+                }
+
+                store_models_cache(
+                    &settings.real_base_url,
+                    &settings.real_auth_scheme,
+                    &settings.model_reasoning_overrides,
+                    &settings.model_1m_overrides,
+                    &normalized,
                 );
 
                 (axum::http::StatusCode::OK, Json(normalized)).into_response()
@@ -192,18 +211,13 @@ pub async fn fetch_models_list_async(
     auth_scheme: &str,
 ) -> Result<Value, String> {
     let model_info_url = crate::conversion::response_converter::normalize_model_info_url(base_url)?;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(
-            crate::constants::HTTP_TIMEOUT_SECS,
-        ))
-        .build()
-        .map_err(|e| e.to_string())?;
-    if let Ok(value) = fetch_json(&client, &model_info_url, api_key, auth_scheme).await {
+    let client = crate::server::http_client();
+    if let Ok(value) = fetch_json(client, &model_info_url, api_key, auth_scheme).await {
         return Ok(value);
     }
 
     let url = crate::conversion::response_converter::normalize_models_url(base_url)?;
-    fetch_json(&client, &url, api_key, auth_scheme).await
+    fetch_json(client, &url, api_key, auth_scheme).await
 }
 
 async fn fetch_json(
@@ -212,12 +226,8 @@ async fn fetch_json(
     api_key: &str,
     auth_scheme: &str,
 ) -> Result<Value, String> {
-    let mut req = client.get(url);
-    if auth_scheme == "x-api-key" {
-        req = req.header("x-api-key", api_key);
-    } else {
-        req = req.bearer_auth(api_key);
-    }
+    let req = crate::server::apply_gateway_auth(client.get(url), auth_scheme, api_key, url)
+        .map_err(|error| error.to_string())?;
     let res = req
         .send()
         .await

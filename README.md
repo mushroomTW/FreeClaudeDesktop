@@ -1,8 +1,8 @@
 # FreeClaudeLauncher
 
-**FreeClaudeLauncher** 是一款專為 [Claude Desktop](https://claude.ai/download) 設計的跨平台 (Windows, macOS, Linux) 桌面啟動器、本機 API Proxy 與強大桌面自動化 MCP 伺服器。
+**FreeClaudeLauncher** 是一款專為 [Claude Desktop](https://claude.ai/download) 設計的跨平台 (Windows, macOS, Linux) 桌面啟動器與本機 API Proxy。
 
-它能將 Claude Desktop 的請求無縫轉接至任何 OpenAI-compatible 或 Anthropic-compatible 上游 Gateway（如 One API, LiteLLM, DeepSeek, Ollama, vLLM 等），並內建完整媲美 Claude Desktop 原生 Chicago 規格的跨平台 **`free-claude-computer` MCP 伺服器**。
+它能將 Claude Desktop 的請求無縫轉接至任何 OpenAI-compatible 或 Anthropic-compatible 上游 Gateway（如 One API, LiteLLM, DeepSeek, Ollama, vLLM 等）。
 
 ---
 
@@ -29,17 +29,6 @@ flowchart TD
             Fallback["Stale Model Route Fallback Handler"]
         end
 
-        subgraph MCPServer ["🖥️ free-claude-computer MCP Server (Stdio)"]
-            StdioRPC["JSON-RPC 2.0 Dispatcher (stdio)"]
-            ToolsManifest["Tools Manifest (29+ Tools / 20+ Actions)"]
-            ActionHandlers["Action Handlers (batch, zoom, active_window, etc.)"]
-            
-            subgraph NativeDesktop ["🖥️ Native Desktop Drivers"]
-                WinDrv["Windows Driver (WinAPI / GDI)"]
-                MacDrv["macOS Driver (screencapture / osascript)"]
-                UnixDrv["Linux Driver (xdotool / xclip / grim)"]
-            end
-        end
     end
 
     subgraph Upstream ["☁️ Upstream Gateways"]
@@ -48,8 +37,6 @@ flowchart TD
     end
 
     CD -- "HTTP /v1/messages" --> Router
-    CD -- "Stdio JSON-RPC" --> StdioRPC
-    
     GUI <--> Config
     Config -- "Set Proxy Port & Keys" --> Router
     Config -- "Write Config" --> CD
@@ -65,10 +52,6 @@ flowchart TD
     Fallback -- "Retry Alternate Route" --> GW1 & GW2
     RespConv --> CD
 
-    StdioRPC --> ToolsManifest --> ActionHandlers
-    ActionHandlers --> WinDrv & MacDrv & UnixDrv
-    WinDrv & MacDrv & UnixDrv -- "OS Controls & Screenshots" --> ActionHandlers
-    ActionHandlers -- "Image / Text Output" --> StdioRPC
 ```
 
 ---
@@ -111,47 +94,6 @@ sequenceDiagram
 
 ---
 
-### 3. 🖥️ Computer MCP 視窗與桌面自動化執行流程 (MCP Server Execution Flow)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant CD as Claude Desktop
-    participant MCP as free-claude-computer MCP Server
-    participant H as Handlers / Dispatcher
-    participant OS as Native Desktop Driver (Win/Mac/Linux)
-
-    CD->>MCP: Call Tool (e.g. computer, active_window_screenshot, list_windows, batch)
-    MCP->>MCP: Parse JSON-RPC 2.0 Request
-    MCP->>H: Dispatch to Specific Action Handler
-
-    alt Action: active_window_screenshot
-        H->>OS: Get Foreground Window Rect (GetForegroundWindow / System Events)
-        OS-->>H: Window Bounding Rect [L, T, R, B]
-        H->>OS: Capture Full Screen & Crop to Window Rect
-        OS-->>H: Cropped Window PNG Buffer
-        H-->>CD: Return Base64 PNG + Window Dims
-    else Action: list_windows
-        H->>OS: Enum Visible Windows (EnumWindows / osascript / xdotool)
-        OS-->>H: List of Window Titles
-        H-->>CD: Return Formatted Window Titles List
-    else Action: computer_batch
-        loop For Each Sub-Action in Batch
-            H->>OS: Execute Sub-Action (Click ➔ Type Fast-Path ➔ Key ➔ Screenshot)
-            OS-->>H: Action Result / Image
-        end
-        H-->>CD: Return Interleaved Execution Results & Final Screenshot
-    else Action: type (Multi-line / Long Text)
-        H->>OS: Write Text to Clipboard (pbcopy / Win32 / xclip)
-        H->>OS: Trigger Ctrl+V / Cmd+V Hotkey
-        H->>OS: Restore Previous Clipboard State
-        OS-->>H: Success
-        H-->>CD: Return Success Note
-    end
-```
-
----
-
 ## 🌟 核心特色
 
 ### 1. 🔌 高能本機 API Proxy (`/v1/messages` & `/v1/models`)
@@ -164,23 +106,17 @@ sequenceDiagram
 * **動態 Model Alias Rewrite**：
   * 自動根據 Gateway 提供的模型思考能力，將請求映射至正確的 Claude 模型別名。
 
-### 2. 🖥️ 本機 Computer MCP 伺服器
-
-* **跨平台 Native 操控**：原生支援 Windows (WinAPI)、macOS (System Events/screencapture) 與 Linux (xdotool/xclip)。
-* **完備功能支援**：內建畫面截圖、Active 視窗獨佔截圖 (`active_window_screenshot`)、視窗列表 (`list_windows`)、區域縮放 (`zoom`) 與 Teach Mode。
-* **效能最佳化**：支援動作鏈批次執行 (`computer_batch`) 與剪貼簿 Fast-Path 快速打字。
-
-### 3. ⚡ 本機 Fast-Path 最佳化
+### 2. ⚡ 本機 Fast-Path 最佳化
 
 * **無效請求攔截**：對 Claude Desktop 的探測請求、標題產生、語意建議、Quota 檢測與檔案路徑提取等提供本機 Fast-Path 直回，節省無效上游 Token 費用。
 * **Web Tools 安全邊界**：內建 private network 防護，預設阻擋私有網路 Web Fetch 請求。
 
-### 4. 🔒 跨平台安全憑證儲存
+### 3. 🔒 跨平台安全憑證儲存
 
 * API Keys 使用系統原生憑證庫 (`keyring` / DPAPI) 加密保存。
 * 可隨時寫入與還原 Claude Desktop `configLibrary` 設定。
 
-### 5. 🛡️ 鏡像數據隔離與 Profile 隔離 (Mirror Profile)
+### 4. 🛡️ 鏡像數據隔離與 Profile 隔離 (Mirror Profile)
 
 * **官方原版數據 100% 唯讀保護**：絕不修改或破壞官方原版 `%APPDATA%\Claude` 的任何數據與登入狀態。
 * **獨立隔離 Profile 運行**：藉由 Electron 原生 `--user-data-dir` 參數，將所有 3P 代理配置、自訂 MCP、`configLibrary` 與日誌完全隔離至 `%LOCALAPPDATA%\FreeClaudeLauncher\claude_profile`。
@@ -195,7 +131,7 @@ sequenceDiagram
 1. **首次啟動同步 (First-time Sync)**：
    * 當首次執行 FreeClaudeLauncher 時，程式會自動將當前平台官方原版目錄（如 `%APPDATA%\Claude`）中的登入 Session（Local Storage / IndexedDB）與自訂 MCP 伺服器配置複製至鏡像目錄中，免去重新登入帳號的麻煩。
 2. **從原版同步 (Re-sync from Official)**：
-   * 當您在官方原版 Claude 登入新帳號或新增了其他自訂 MCP 伺服器後，可一鍵點擊介面上的 **「從原版同步」**，程式會立即拉取原版最新狀態並重新套用代理代理與本機 MCP 設定。
+   * 當您在官方原版 Claude 登入新帳號或新增了其他自訂 MCP 伺服器後，可一鍵點擊介面上的 **「從原版同步」**，程式會立即拉取原版最新狀態並重新套用代理設定。
 3. **重置鏡像 Profile (Reset Mirror Profile)**：
    * 點擊 **「重置鏡像 Profile」** 僅會清空鏡像 Profile 並重新初始化，官方原版資料完全不受任何影響。
 
@@ -213,12 +149,6 @@ src/
 ├── conversion/    Anthropic ⇄ OpenAI Request / Response 雙向轉換與模型路由重寫
 ├── optimization/  Claude Desktop 特殊請求 Fast-Path 與 Web 工具安全防護
 ├── models/        Claude 與 OpenAI / Gateway 內部資料結構
-├── mcp/           獨立 Computer MCP 伺服器模組
-│   ├── mod.rs       MCP 入口點、JSON-RPC 協議與整合測試
-│   ├── types.rs     Screenshot 結構體、Base64 編碼與 JSON-RPC 格式化
-│   ├── tools.rs     29+ 原生 MCP 工具 Manifest 與 Input Schemas 定義
-│   ├── handlers.rs  工具調用分發與執行邏輯 (computer, batch, zoom 等)
-│   └── desktop.rs   跨平台 (Windows, macOS, Linux) 底層 Native 控制實作
 ├── lib.rs         公開 API、設定套用流程與向後相容導出
 └── main.rs        GUI 應用程式入口點
 ```

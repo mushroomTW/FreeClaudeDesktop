@@ -1,6 +1,6 @@
+pub mod config_service;
 pub mod conversion;
 pub mod core;
-pub mod mcp;
 pub mod models;
 pub mod optimization;
 pub mod platform;
@@ -49,7 +49,7 @@ pub fn save_config(
     enable_suggestion_mode_skip: bool,
     enable_filepath_extraction_mock: bool,
     enable_web_server_tools: bool,
-    enable_computer_mcp_server: bool,
+    _: bool,
     web_fetch_allow_private_networks: bool,
     reasoning_replay_mode: &str,
     transport_type: &str,
@@ -62,124 +62,34 @@ pub fn save_config(
     real_model_opus: Option<String>,
     real_model_haiku: Option<String>,
 ) -> AppResult<()> {
-    let existing = get_launcher_settings();
-    let real_api_key = if api_key.trim().is_empty() {
-        existing
-            .as_ref()
-            .and_then(|s| unprotect_secret(&s.real_api_key).ok())
-            .unwrap_or_default()
-    } else {
-        api_key.trim().to_string()
-    };
-    if base_url.trim().is_empty() {
-        return Err(AppError::InvalidConfig("缺少 Gateway Base URL".to_string()));
-    }
-    if auth_scheme != "bearer" && auth_scheme != "x-api-key" {
-        return Err(AppError::InvalidConfig("不支援的 Auth Scheme".to_string()));
-    }
-    normalize_messages_url(base_url).map_err(AppError::InvalidConfig)?;
-
-    let mut inference_models = Vec::new();
-    let mut routes = HashMap::new();
-    let mut reasoning_efforts = HashMap::new();
-    let mut discovered_models = Vec::new();
-    if let Ok(raw_models) = server::fetch_models_list(base_url, &real_api_key, auth_scheme) {
-        if let Ok(normalized) = normalize_models_response_with_overrides(
-            raw_models,
-            model_reasoning_overrides,
-            model_1m_overrides,
-        ) {
-            routes = normalized.routes.clone();
-            reasoning_efforts = normalized.reasoning_effort_routes.clone();
-            discovered_models = normalized
-                .data
-                .iter()
-                .map(|model| model.provider_model_id.clone())
-                .collect();
-            inference_models = build_inference_models(&normalized.data);
-            server::models_endpoint::store_models_cache(
-                base_url,
-                auth_scheme,
-                model_reasoning_overrides,
-                model_1m_overrides,
-                &normalized,
-            );
-        }
-    }
-    let stored_api_key = protect_secret(&real_api_key)?;
-    let proxy_auth_token = match existing.as_ref().map(|s| s.proxy_auth_token.as_str()) {
-        Some(token) if !token.is_empty() && token != constants::PROXY_AUTH_TOKEN => {
-            token.to_string()
-        }
-        _ => generate_proxy_auth_token()?,
-    };
-
-    let settings = Settings {
-        real_base_url: base_url.trim().to_string(),
-        real_api_key: stored_api_key,
-        real_auth_scheme: auth_scheme.to_string(),
-        real_model: real_model.or_else(|| existing.as_ref().and_then(|s| s.real_model.clone())),
-        real_model_sonnet: real_model_sonnet
-            .or_else(|| existing.as_ref().and_then(|s| s.real_model_sonnet.clone())),
-        real_model_opus: real_model_opus
-            .or_else(|| existing.as_ref().and_then(|s| s.real_model_opus.clone())),
-        real_model_haiku: real_model_haiku
-            .or_else(|| existing.as_ref().and_then(|s| s.real_model_haiku.clone())),
-        real_model_routes: if routes.is_empty() {
-            existing
-                .as_ref()
-                .map(|s| s.real_model_routes.clone())
-                .unwrap_or_default()
-        } else {
-            routes
-        },
-        real_model_reasoning_efforts: if reasoning_efforts.is_empty() {
-            existing
-                .as_ref()
-                .map(|s| s.real_model_reasoning_efforts.clone())
-                .unwrap_or_default()
-        } else {
-            reasoning_efforts
-        },
-        discovered_models: if discovered_models.is_empty() {
-            existing
-                .as_ref()
-                .map(|s| s.discovered_models.clone())
-                .unwrap_or_default()
-        } else {
-            discovered_models
-        },
-        model_reasoning_overrides: model_reasoning_overrides.clone(),
-        model_1m_overrides: model_1m_overrides.clone(),
-        proxy_auth_token: proxy_auth_token.clone(),
-        active_port: Some(port),
-        transport_type: transport_type.to_string(),
-        reasoning_replay_mode: reasoning_replay_mode.to_string(),
+    let input = config_service::SaveConfigInput {
+        port,
+        base_url: base_url.to_string(),
+        api_key: api_key.to_string(),
+        auth_scheme: auth_scheme.to_string(),
         enable_quota_check_mock,
         enable_prefix_detection,
         enable_title_generation_skip,
         enable_suggestion_mode_skip,
         enable_filepath_extraction_mock,
         enable_web_server_tools,
-        enable_computer_mcp_server,
-        web_fetch_allowed_schemes: web_fetch_allowed_schemes.to_string(),
         web_fetch_allow_private_networks,
+        reasoning_replay_mode: reasoning_replay_mode.to_string(),
+        transport_type: transport_type.to_string(),
+        web_fetch_allowed_schemes: web_fetch_allowed_schemes.to_string(),
         theme_mode: theme_mode.to_string(),
+        model_reasoning_overrides: model_reasoning_overrides.clone(),
+        model_1m_overrides: model_1m_overrides.clone(),
+        real_model,
+        real_model_sonnet,
+        real_model_opus,
+        real_model_haiku,
     };
-    crate::server::models_endpoint::clear_models_cache();
-    save_launcher_settings(&settings)?;
-
-    let content = serde_json::to_string_pretty(&launcher::claude_config(
-        port,
-        &inference_models,
-        &proxy_auth_token,
-    ))
-    .unwrap();
-    launcher::write_config_to_all_paths(&format!("{CONFIG_ID}.json"), &content)?;
-    let _ = launcher::remove_anthropic_base_url_env();
-    launcher::apply_3p_deployment_mode()?;
-    launcher::apply_computer_mcp_server_config(enable_computer_mcp_server)?;
-    launcher::write_managed_meta_to_all_paths()?;
+    std::thread::spawn(move || {
+        tokio::runtime::Runtime::new()?.block_on(config_service::save_config_async(input))
+    })
+    .join()
+    .map_err(|_| AppError::Launcher("設定執行緒異常結束".to_string()))??;
     Ok(())
 }
 

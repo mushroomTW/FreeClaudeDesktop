@@ -146,6 +146,22 @@ fn anthropic_base_url_env_restore_keeps_previous_values() {
 }
 
 #[test]
+fn invalid_claude_settings_are_not_replaced_with_empty_json() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let root = std::env::temp_dir().join(format!("fcl_invalid_json_{}", std::process::id()));
+    let (_, _, old_env) = set_test_app_dirs(&root);
+    let path = claude_settings_json_path();
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "{broken").unwrap();
+    let result = apply_anthropic_base_url_env(3000);
+    assert!(result.is_err());
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "{broken");
+    restore_env(old_env);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn gateway_port_rewrite_updates_config_value() {
     let updated = with_gateway_port(
         json!({
@@ -161,27 +177,23 @@ fn gateway_port_rewrite_updates_config_value() {
 }
 
 #[test]
-fn computer_mcp_config_preserves_other_servers() {
-    let command = Path::new("C:\\FreeClaudeLauncher.exe");
-    let enabled = with_computer_mcp_server(
-        json!({
-            "mcpServers": {
-                "other": { "command": "node" }
-            }
-        }),
-        true,
-        command,
-    );
+fn update_applied_claude_config_keeps_unit_return_signature() {
+    let update: fn(u16, &[crate::models::openai::InferenceModel]) = update_applied_claude_config;
+    let _ = update;
+}
 
-    assert_eq!(enabled["mcpServers"]["other"]["command"], "node");
-    assert_eq!(
-        enabled["mcpServers"]["free-claude-computer"]["args"][0],
-        "--mcp-computer-server"
-    );
-
-    let disabled = with_computer_mcp_server(enabled, false, command);
-    assert_eq!(disabled["mcpServers"]["other"]["command"], "node");
-    assert!(disabled["mcpServers"].get("free-claude-computer").is_none());
+#[test]
+fn strip_removed_computer_mcp_keeps_unrelated_servers() {
+    let cleaned = strip_removed_computer_mcp(json!({
+        "mcpServers": {
+            "free-claude-computer": { "command": "old.exe" },
+            "launcher-computer": { "command": "old.exe" },
+            "custom": { "command": "node" }
+        }
+    }));
+    assert!(cleaned["mcpServers"].get("free-claude-computer").is_none());
+    assert!(cleaned["mcpServers"].get("launcher-computer").is_none());
+    assert_eq!(cleaned["mcpServers"]["custom"]["command"], "node");
 }
 
 #[test]
@@ -279,22 +291,27 @@ fn merge_mcp_servers_preserves_and_merges_custom_servers() {
 }
 
 #[test]
-fn removes_legacy_launcher_computer_mcp_entry() {
-    let command = Path::new("C:\\FreeClaudeLauncher.exe");
-    let data = json!({
-        "mcpServers": {
-            "launcher-computer": { "command": "C:\\FreeClaudeLauncher.exe", "args": ["mcp"] },
-            "custom": { "command": "node" }
-        }
-    });
+fn invalid_official_mcp_config_stops_deployment_write() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let root = std::env::temp_dir().join(format!("fcl_invalid_official_{}", std::process::id()));
+    let (official, mirror_profile, old_env) = set_test_app_dirs(&root);
+    let official_config = official.join("claude_desktop_config.json");
+    let mirror_config = mirror_profile.join("claude_desktop_config.json");
 
-    let updated = with_computer_mcp_server(data, true, command);
-    assert!(updated["mcpServers"].get("launcher-computer").is_none());
-    assert_eq!(
-        updated["mcpServers"]["free-claude-computer"]["args"][0],
-        "--mcp-computer-server"
-    );
-    assert_eq!(updated["mcpServers"]["custom"]["command"], "node");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(official_config.parent().unwrap()).unwrap();
+    fs::create_dir_all(mirror_config.parent().unwrap()).unwrap();
+    fs::write(&official_config, "{broken").unwrap();
+    fs::write(&mirror_config, r#"{"deploymentMode":"1p"}"#).unwrap();
+
+    let result = apply_3p_deployment_mode();
+    let mirror_contents = fs::read_to_string(&mirror_config).unwrap();
+
+    restore_env(old_env);
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(result.is_err());
+    assert_eq!(mirror_contents, r#"{"deploymentMode":"1p"}"#);
 }
 
 #[test]

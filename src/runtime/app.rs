@@ -78,7 +78,6 @@ pub enum Message {
     SuggestionModeSkipToggled(bool),
     FilepathExtractionMockToggled(bool),
     WebServerToolsToggled(bool),
-    ComputerMcpServerToggled(bool),
     WebFetchPrivateNetworkToggled(bool),
     WebFetchAllowedSchemesChanged(String),
     ReasoningReplayModeSelected(String),
@@ -117,7 +116,6 @@ pub struct LauncherApp {
     pub enable_suggestion_mode_skip: bool,
     pub enable_filepath_extraction_mock: bool,
     pub enable_web_server_tools: bool,
-    pub enable_computer_mcp_server: bool,
     pub web_fetch_allow_private_networks: bool,
     pub web_fetch_allowed_schemes: String,
     pub reasoning_replay_mode: String,
@@ -161,7 +159,6 @@ impl LauncherApp {
             enable_suggestion_mode_skip: true,
             enable_filepath_extraction_mock: true,
             enable_web_server_tools: false,
-            enable_computer_mcp_server: false,
             web_fetch_allow_private_networks: false,
             web_fetch_allowed_schemes: "http,https".to_string(),
             reasoning_replay_mode: "separate".to_string(),
@@ -208,7 +205,6 @@ impl LauncherApp {
             app.enable_suggestion_mode_skip = settings.enable_suggestion_mode_skip;
             app.enable_filepath_extraction_mock = settings.enable_filepath_extraction_mock;
             app.enable_web_server_tools = settings.enable_web_server_tools;
-            app.enable_computer_mcp_server = settings.enable_computer_mcp_server;
             app.web_fetch_allow_private_networks = settings.web_fetch_allow_private_networks;
             app.web_fetch_allowed_schemes = settings.web_fetch_allowed_schemes;
             app.reasoning_replay_mode = settings.reasoning_replay_mode;
@@ -316,7 +312,7 @@ impl LauncherApp {
             self.enable_suggestion_mode_skip,
             self.enable_filepath_extraction_mock,
             self.enable_web_server_tools,
-            self.enable_computer_mcp_server,
+            false,
             self.web_fetch_allow_private_networks,
             &self.reasoning_replay_mode,
             &self.transport_type,

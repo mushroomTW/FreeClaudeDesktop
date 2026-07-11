@@ -15,16 +15,6 @@ fn load_icon() -> Option<window::Icon> {
 }
 
 fn main() -> iced::Result {
-    if std::env::args().any(|arg| {
-        let trimmed = arg.trim_start_matches('-');
-        trimmed == "mcp" || trimmed == "mcp-computer-server"
-    }) {
-        if let Err(error) = free_claude_launcher::mcp::run_computer_server() {
-            eprintln!("Computer MCP server failed: {error}");
-        }
-        return Ok(());
-    }
-
     // 1. 初始化日誌系統
     let _guard = free_claude_launcher::server::init_logging();
     tracing::info!("FreeClaudeLauncher 啟動...");
@@ -37,28 +27,14 @@ fn main() -> iced::Result {
         }
     }
 
-    // 3. 嘗試向舊實例發送喚醒請求
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_millis(800))
-        .build();
-    let mut waked_up = false;
-    if let Ok(client) = &client {
-        if let Ok(resp) = client
-            .get(format!("http://127.0.0.1:{}/__launcher_show", test_port))
-            .send()
-        {
-            if resp.status().is_success() {
-                if let Ok(text) = resp.text() {
-                    if text == "ok" {
-                        waked_up = true;
-                    }
-                }
-            }
-        }
-    }
-
-    if waked_up {
-        tracing::info!("舊實例已被喚醒，新實例直接退出。");
+    // 3. 已有 listener 代表舊實例正在使用預計埠。
+    if std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], test_port)),
+        Duration::from_millis(800),
+    )
+    .is_ok()
+    {
+        tracing::info!("舊實例正在執行，新實例直接退出。");
         return Ok(());
     }
 
