@@ -1,10 +1,9 @@
-use crate::config_service::{
-    load_runtime_settings, save_runtime_settings, unprotect_runtime_api_key,
-};
+use crate::config_service::{load_runtime_settings, unprotect_runtime_api_key};
 use crate::conversion::request_converter::anthropic_to_openai_request;
 use crate::conversion::response_converter::{
-    normalize_chat_completions_url, normalize_messages_url, openai_to_anthropic_response,
-    prepare_proxy_body, rewrite_stale_model_request,
+    normalize_chat_completions_url, normalize_messages_url,
+    normalize_models_response_with_overrides, openai_to_anthropic_response, prepare_proxy_body,
+    rewrite_stale_model_request,
 };
 use crate::optimization;
 use crate::server::streaming::{start_sse_stream_conversion, ReasoningReplayMode};
@@ -18,6 +17,8 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::{Duration, SystemTime};
 
+const MAX_UPSTREAM_ERROR_BYTES: usize = 64 * 1024;
+
 fn is_model_gone_or_invalid_error(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     lower.contains("has reached its end of life")
@@ -28,6 +29,34 @@ fn is_model_gone_or_invalid_error(text: &str) -> bool {
         || lower.contains("call /v1/models")
         || lower.contains("model not found")
         || lower.contains("degraded function cannot be invoked")
+}
+
+fn may_retry_stale_model(output_started: bool, retry_available: bool, error: &str) -> bool {
+    !output_started && retry_available && is_model_gone_or_invalid_error(error)
+}
+
+fn request_diagnostic(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<Value>(body).ok()?;
+    let messages = value
+        .get("messages")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let max_tokens = value.get("max_tokens").and_then(Value::as_u64).unwrap_or(0);
+    let stream = value
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let tools = value.get("tools").is_some();
+    let system_type = match value.get("system") {
+        Some(Value::String(_)) => "text",
+        Some(Value::Array(_)) => "array",
+        Some(_) => "other",
+        None => "none",
+    };
+    Some(format!(
+        "msgs={messages}, max_tokens={max_tokens}, stream={stream}, tools={tools}, system={system_type}, body_len={}",
+        body.len()
+    ))
 }
 
 fn build_upstream_request(
@@ -51,6 +80,61 @@ fn build_upstream_request(
     }
 
     crate::server::apply_gateway_auth(request, auth_scheme, api_key, target_url)
+}
+
+fn copy_safe_response_headers(source: &reqwest::header::HeaderMap, target: &mut HeaderMap) {
+    for (name, value) in source {
+        if !matches!(
+            name.as_str().to_ascii_lowercase().as_str(),
+            "connection" | "content-length" | "transfer-encoding" | "content-encoding"
+        ) {
+            target.insert(name.clone(), value.clone());
+        }
+    }
+}
+
+async fn read_bounded_error(response: reqwest::Response) -> String {
+    use futures::StreamExt;
+
+    let mut stream = response.bytes_stream();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let Ok(chunk) = chunk else { break };
+        let remaining = MAX_UPSTREAM_ERROR_BYTES.saturating_sub(bytes.len());
+        bytes.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
+        if bytes.len() == MAX_UPSTREAM_ERROR_BYTES {
+            break;
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+async fn refresh_settings_for_retry(
+    settings: &crate::Settings,
+    api_key: &str,
+) -> Option<crate::Settings> {
+    let raw = crate::server::models_endpoint::fetch_models_list_async(
+        &settings.real_base_url,
+        api_key,
+        &settings.real_auth_scheme,
+    )
+    .await
+    .ok()?;
+    let normalized = normalize_models_response_with_overrides(
+        raw,
+        &settings.model_reasoning_overrides,
+        &settings.model_1m_overrides,
+    )
+    .ok()?;
+    let mut refreshed = settings.clone();
+    refreshed.real_model_routes = normalized.routes;
+    refreshed.real_model_reasoning_efforts = normalized.reasoning_effort_routes;
+    refreshed.discovered_models = normalized
+        .data
+        .into_iter()
+        .map(|model| model.provider_model_id)
+        .collect();
+    Some(refreshed)
 }
 
 pub async fn handle_root() -> impl IntoResponse {
@@ -99,7 +183,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     }
 
     // 1. Load settings for the configured proxy token.
-    let mut settings = match load_runtime_settings().await {
+    let settings = match load_runtime_settings().await {
         Ok(Some(settings)) => settings,
         Ok(None) => {
             tracing::error!("<- 錯誤: Launcher 尚未配置");
@@ -142,61 +226,8 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         return response;
     }
 
-    // 診斷日誌：記錄未被攔截的請求特徵，便於識別可額外攔截的輔助請求
-    if let Ok(diag) = serde_json::from_str::<Value>(&body_str) {
-        let msg_count = diag
-            .get("messages")
-            .and_then(Value::as_array)
-            .map(|a| a.len())
-            .unwrap_or(0);
-        let max_tokens = diag.get("max_tokens").and_then(Value::as_u64).unwrap_or(0);
-        let has_tools = diag.get("tools").is_some();
-        let _has_system = diag.get("system").is_some();
-        let is_stream = diag.get("stream").and_then(Value::as_bool).unwrap_or(false);
-        let system_hint = diag
-            .get("system")
-            .and_then(|s| s.as_str())
-            .map(|s| {
-                let lower = s.to_lowercase();
-                if lower.contains("title") {
-                    "title-related"
-                } else if lower.contains("suggestion") {
-                    "suggestion-related"
-                } else if lower.contains("extract") || lower.contains("filepath") {
-                    "filepath-related"
-                } else if lower.contains("transcript") {
-                    "classifier-related"
-                } else if s.len() < 200 {
-                    "short-system"
-                } else {
-                    "long-system"
-                }
-            })
-            .unwrap_or("no-system");
-        let first_user_preview = diag
-            .get("messages")
-            .and_then(Value::as_array)
-            .and_then(|arr| {
-                arr.iter()
-                    .find(|m| m.get("role").and_then(Value::as_str) == Some("user"))
-            })
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
-            .map(|s| {
-                let preview: String = s.chars().take(120).collect();
-                preview
-            })
-            .unwrap_or_default();
-        tracing::info!(
-            "[未攔截請求] msgs={}, max_tokens={}, stream={}, tools={}, system={}, body_len={}, user_preview=\"{}\"",
-            msg_count,
-            max_tokens,
-            is_stream,
-            has_tools,
-            system_hint,
-            body_str.len(),
-            first_user_preview
-        );
+    if let Some(diagnostic) = request_diagnostic(&body_str) {
+        tracing::info!("[未攔截請求] {diagnostic}");
     }
 
     // 4. Determine transport type
@@ -396,16 +427,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     };
 
     tracing::info!("-> 轉發請求至: {}", target_url);
-    tracing::debug!(
-        "-> 轉發 Body[{}]: first 4 hex bytes={:02x?}",
-        proxy_body.len(),
-        proxy_body
-            .as_bytes()
-            .iter()
-            .take(4)
-            .copied()
-            .collect::<Vec<u8>>()
-    );
+    tracing::debug!("-> 轉發 Body 長度: {} bytes", proxy_body.len());
 
     // 5. Build Upstream request
     let upstream_req = match build_upstream_request(
@@ -435,8 +457,59 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
             if is_openai_format && is_stream {
                 tracing::info!("<- 上游回應狀態碼(流式): {}", status_u16);
                 if !status.is_success() {
-                    let text = response.text().await.unwrap_or_default();
-                    tracing::error!("<- 上游流式錯誤狀態碼: {}, Body: {}", status_u16, text);
+                    let text = read_bounded_error(response).await;
+                    tracing::error!("<- 上游流式錯誤狀態碼: {}", status_u16);
+                    if may_retry_stale_model(false, true, &text) {
+                        let retry_settings = refresh_settings_for_retry(&settings, &api_key)
+                            .await
+                            .unwrap_or_else(|| settings.clone());
+                        if let Some(rewrite) =
+                            rewrite_stale_model_request(&proxy_body, &retry_settings, &req_model)
+                        {
+                            tracing::warn!(
+                                "[model fallback] model error ({}), retrying {} with {}",
+                                status_u16,
+                                req_model,
+                                rewrite.fallback_model
+                            );
+                            if let Ok(request) = build_upstream_request(
+                                crate::server::http_client(),
+                                &target_url,
+                                rewrite.updated_body.to_string(),
+                                &headers,
+                                &api_key,
+                                &retry_settings.real_auth_scheme,
+                            ) {
+                                if let Ok(retry) = request.send().await {
+                                    if retry.status().is_success() {
+                                        let reasoning_mode =
+                                            match settings.reasoning_replay_mode.as_str() {
+                                                "inline" => Some(ReasoningReplayMode::Inline),
+                                                "separate" => Some(ReasoningReplayMode::Separate),
+                                                _ => None,
+                                            };
+                                        let rx = start_sse_stream_conversion(
+                                            retry,
+                                            req_model,
+                                            reasoning_mode,
+                                        );
+                                        let stream =
+                                            tokio_stream::wrappers::ReceiverStream::new(rx);
+                                        return axum::response::Response::builder()
+                                            .status(StatusCode::OK)
+                                            .header(
+                                                "Content-Type",
+                                                "text/event-stream; charset=utf-8",
+                                            )
+                                            .header("Cache-Control", "no-cache")
+                                            .header("Connection", "keep-alive")
+                                            .body(axum::body::Body::from_stream(stream))
+                                            .unwrap();
+                                    }
+                                }
+                            }
+                        }
+                    }
                     return (status, Json(json!({ "error": text }))).into_response();
                 }
 
@@ -478,11 +551,14 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                             .into_response(),
                     }
                 } else if is_openai_format {
-                    let text = response.text().await.unwrap_or_default();
-                    tracing::error!("<- 上游錯誤 Body: {}", text);
-                    if is_model_gone_or_invalid_error(&text) {
+                    let text = read_bounded_error(response).await;
+                    tracing::error!("<- 上游錯誤狀態碼: {}", status_u16);
+                    if may_retry_stale_model(false, true, &text) {
+                        let retry_settings = refresh_settings_for_retry(&settings, &api_key)
+                            .await
+                            .unwrap_or_else(|| settings.clone());
                         if let Some(rewrite) =
-                            rewrite_stale_model_request(&proxy_body, &settings, &req_model)
+                            rewrite_stale_model_request(&proxy_body, &retry_settings, &req_model)
                         {
                             tracing::warn!(
                                 "[model fallback] model error ({}), retrying {} with {}",
@@ -490,25 +566,13 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 req_model,
                                 rewrite.fallback_model
                             );
-                            settings
-                                .real_model_routes
-                                .insert(req_model.clone(), rewrite.fallback_model.clone());
-                            if let Err(error) = save_runtime_settings(settings.clone()).await {
-                                tracing::error!("<- 儲存 fallback 模型路由失敗: {error}");
-                                return (
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    Json(json!({ "error": error.to_string() })),
-                                )
-                                    .into_response();
-                            }
-
                             let retry_req = build_upstream_request(
                                 crate::server::http_client(),
                                 &target_url,
                                 rewrite.updated_body.to_string(),
                                 &headers,
                                 &api_key,
-                                &settings.real_auth_scheme,
+                                &retry_settings.real_auth_scheme,
                             );
 
                             if let Ok(retry_req) = retry_req {
@@ -533,10 +597,21 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                 } else {
                     // Passthrough raw Anthropic response headers and body
                     let headers_to_forward = response.headers().clone();
-                    let text = response.text().await.unwrap_or_default();
-                    if is_model_gone_or_invalid_error(&text) {
+                    if status.is_success() {
+                        let mut output = axum::response::Response::new(
+                            axum::body::Body::from_stream(response.bytes_stream()),
+                        );
+                        *output.status_mut() = status;
+                        copy_safe_response_headers(&headers_to_forward, output.headers_mut());
+                        return output;
+                    }
+                    let text = read_bounded_error(response).await;
+                    if may_retry_stale_model(false, true, &text) {
+                        let retry_settings = refresh_settings_for_retry(&settings, &api_key)
+                            .await
+                            .unwrap_or_else(|| settings.clone());
                         if let Some(rewrite) =
-                            rewrite_stale_model_request(&proxy_body, &settings, &req_model)
+                            rewrite_stale_model_request(&proxy_body, &retry_settings, &req_model)
                         {
                             tracing::warn!(
                                 "[model fallback] model error ({}), retrying {} with {}",
@@ -544,25 +619,13 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 req_model,
                                 rewrite.fallback_model
                             );
-                            settings
-                                .real_model_routes
-                                .insert(req_model.clone(), rewrite.fallback_model.clone());
-                            if let Err(error) = save_runtime_settings(settings.clone()).await {
-                                tracing::error!("<- 儲存 fallback 模型路由失敗: {error}");
-                                return (
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    Json(json!({ "error": error.to_string() })),
-                                )
-                                    .into_response();
-                            }
-
                             let retry_req = build_upstream_request(
                                 crate::server::http_client(),
                                 &target_url,
                                 rewrite.updated_body.to_string(),
                                 &headers,
                                 &api_key,
-                                &settings.real_auth_scheme,
+                                &retry_settings.real_auth_scheme,
                             );
 
                             if let Ok(retry_req) = retry_req {

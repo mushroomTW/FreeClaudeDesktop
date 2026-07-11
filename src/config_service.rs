@@ -53,10 +53,6 @@ pub(crate) async fn unprotect_runtime_api_key(stored: String) -> AppResult<Strin
     run_config_io(move || unprotect_secret(&stored)).await
 }
 
-pub(crate) async fn save_runtime_settings(settings: Settings) -> AppResult<()> {
-    run_config_io(move || crate::config::save_launcher_settings(&settings)).await
-}
-
 fn resolve_api_key(api_key: &str, existing: Option<&Settings>) -> AppResult<String> {
     resolve_api_key_with(api_key, existing, unprotect_secret)
 }
