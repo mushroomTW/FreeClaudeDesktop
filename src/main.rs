@@ -63,33 +63,37 @@ fn main() -> iced::Result {
     };
 
     // 5. 啟動背景代理伺服器
-    if let Err(e) = free_claude_launcher::server::start_server_background(final_port) {
-        tracing::error!("無法啟動背景代理伺服器: {:?}", e);
-        #[cfg(target_os = "windows")]
-        unsafe {
-            use std::os::windows::ffi::OsStrExt;
-            let title: Vec<u16> = std::ffi::OsStr::new("啟動失敗")
-                .encode_wide()
-                .chain(std::iter::once(0))
-                .collect();
-            let msg_str = format!("無法啟動背景代理伺服器，可能已被其他程式佔用。\n詳細錯誤: {e}");
-            let message: Vec<u16> = std::ffi::OsStr::new(&msg_str)
-                .encode_wide()
-                .chain(std::iter::once(0))
-                .collect();
-            winapi::um::winuser::MessageBoxW(
-                std::ptr::null_mut(),
-                message.as_ptr(),
-                title.as_ptr(),
-                winapi::um::winuser::MB_OK | winapi::um::winuser::MB_ICONERROR,
-            );
+    let server = match free_claude_launcher::server::start_server_background(final_port) {
+        Ok(server) => server,
+        Err(e) => {
+            tracing::error!("無法啟動背景代理伺服器: {:?}", e);
+            #[cfg(target_os = "windows")]
+            unsafe {
+                use std::os::windows::ffi::OsStrExt;
+                let title: Vec<u16> = std::ffi::OsStr::new("啟動失敗")
+                    .encode_wide()
+                    .chain(std::iter::once(0))
+                    .collect();
+                let msg_str =
+                    format!("無法啟動背景代理伺服器，可能已被其他程式佔用。\n詳細錯誤: {e}");
+                let message: Vec<u16> = std::ffi::OsStr::new(&msg_str)
+                    .encode_wide()
+                    .chain(std::iter::once(0))
+                    .collect();
+                winapi::um::winuser::MessageBoxW(
+                    std::ptr::null_mut(),
+                    message.as_ptr(),
+                    title.as_ptr(),
+                    winapi::um::winuser::MB_OK | winapi::um::winuser::MB_ICONERROR,
+                );
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                eprintln!("無法啟動背景代理伺服器，可能已被其他程式佔用。\n詳細錯誤: {e}");
+            }
+            return Ok(());
         }
-        #[cfg(not(target_os = "windows"))]
-        {
-            eprintln!("無法啟動背景代理伺服器，可能已被其他程式佔用。\n詳細錯誤: {e}");
-        }
-        return Ok(());
-    }
+    };
 
     // 6. 更新設定檔中的 active_port 與寫入 Claude 配置
     if let Some(mut settings) = free_claude_launcher::get_launcher_settings() {
@@ -126,8 +130,9 @@ fn main() -> iced::Result {
     .run();
 
     // 優雅關閉背景 proxy server
-    free_claude_launcher::server::trigger_shutdown();
-    std::thread::sleep(Duration::from_millis(150));
+    if let Err(error) = server.shutdown_and_join() {
+        tracing::error!("關閉背景代理伺服器失敗: {error}");
+    }
 
     run_res
 }

@@ -83,15 +83,6 @@ pub(crate) fn apply_gateway_auth(
     }
 }
 
-static SHUTDOWN_TX: std::sync::OnceLock<tokio::sync::watch::Sender<bool>> =
-    std::sync::OnceLock::new();
-
-pub fn trigger_shutdown() {
-    if let Some(tx) = SHUTDOWN_TX.get() {
-        let _ = tx.send(true);
-    }
-}
-
 pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 
@@ -125,12 +116,7 @@ pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     Some(guard)
 }
 
-async fn shutdown_signal() {
-    let mut rx = if let Some(tx) = SHUTDOWN_TX.get() {
-        tx.subscribe()
-    } else {
-        return;
-    };
+async fn shutdown_signal(mut rx: tokio::sync::watch::Receiver<bool>) {
     while !*rx.borrow() {
         if rx.changed().await.is_err() {
             break;
@@ -139,32 +125,69 @@ async fn shutdown_signal() {
     tracing::info!("Proxy server received shutdown signal. Exiting gracefully...");
 }
 
-pub fn start_server_background(port: u16) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async move {
-            if let Err(e) = run_server(port).await {
-                tracing::error!("Proxy server failed: {:?}", e);
-            }
-        });
-    });
-    Ok(())
+type ServerError = Box<dyn std::error::Error + Send + Sync>;
+
+pub struct ServerHandle {
+    port: u16,
+    shutdown: tokio::sync::watch::Sender<bool>,
+    thread: Option<std::thread::JoinHandle<Result<(), ServerError>>>,
 }
 
-pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+impl ServerHandle {
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub fn shutdown_and_join(mut self) -> Result<(), ServerError> {
+        let _ = self.shutdown.send(true);
+        self.thread
+            .take()
+            .expect("server thread must exist")
+            .join()
+            .map_err(|_| std::io::Error::other("Proxy server thread panicked"))?
+    }
+}
+
+pub fn start_server_background(port: u16) -> Result<ServerHandle, ServerError> {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", port))?;
+    listener.set_nonblocking(true)?;
+    let port = listener.local_addr()?.port();
+    let runtime = tokio::runtime::Runtime::new()?;
+    let (shutdown, rx) = tokio::sync::watch::channel(false);
+    let thread = std::thread::spawn(move || {
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener)?;
+            serve(listener, port, rx).await
+        })
+    });
+    Ok(ServerHandle {
+        port,
+        shutdown,
+        thread: Some(thread),
+    })
+}
+
+pub async fn run_server(port: u16) -> Result<(), ServerError> {
     let addr = format!("127.0.0.1:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let (_tx, rx) = tokio::sync::watch::channel(false);
+    serve(listener, port, rx).await
+}
+
+async fn serve(
+    listener: tokio::net::TcpListener,
+    port: u16,
+    rx: tokio::sync::watch::Receiver<bool>,
+) -> Result<(), ServerError> {
+    let addr = listener.local_addr()?;
     tracing::info!("==================================================");
     tracing::info!("FreeClaudeLauncher Rust Axum Async Server 已啟動");
     tracing::info!("本機服務: http://{}", addr);
     tracing::info!("API 代理: http://{}/v1/messages", addr);
     tracing::info!("==================================================");
 
-    let (tx, _rx) = tokio::sync::watch::channel(false);
-    let _ = SHUTDOWN_TX.set(tx);
-
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, router::create_router(port))
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(shutdown_signal(rx))
         .await?;
     Ok(())
 }
@@ -231,5 +254,25 @@ mod gateway_auth_tests {
             "https://example.com",
         );
         assert!(matches!(result, Err(AppError::InvalidConfig(_))));
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn occupied_port_is_reported_before_return() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(start_server_background(port).is_err());
+    }
+
+    #[test]
+    fn shutdown_joins_server_and_releases_port() {
+        let server = start_server_background(0).unwrap();
+        let port = server.port();
+        server.shutdown_and_join().unwrap();
+        assert!(std::net::TcpListener::bind(("127.0.0.1", port)).is_ok());
     }
 }
