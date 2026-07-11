@@ -166,6 +166,7 @@ pub enum Message {
     TransportTypeSelected(String),
     ModelReasoningLevelSelected(String, String),
     Model1mToggled(String, bool),
+    ModelVisibilityToggled(String, bool),
     RealModelSelected(Option<String>),
     RealModelSonnetSelected(Option<String>),
     RealModelOpusSelected(Option<String>),
@@ -218,6 +219,7 @@ pub struct LauncherApp {
     pub model_options: Vec<String>,
     pub model_reasoning_overrides: HashMap<String, String>,
     pub model_1m_overrides: HashMap<String, bool>,
+    pub model_visibility_overrides: HashMap<String, bool>,
     pub real_model: Option<String>,
     pub real_model_sonnet: Option<String>,
     pub real_model_opus: Option<String>,
@@ -262,6 +264,7 @@ impl LauncherApp {
             model_options: vec!["(自動/動態別名)".to_string()],
             model_reasoning_overrides: HashMap::new(),
             model_1m_overrides: HashMap::new(),
+            model_visibility_overrides: HashMap::new(),
             real_model: None,
             real_model_sonnet: None,
             real_model_opus: None,
@@ -374,6 +377,7 @@ impl LauncherApp {
             theme_mode: self.theme_mode.as_str().to_string(),
             model_reasoning_overrides: self.model_reasoning_overrides.clone(),
             model_1m_overrides: self.model_1m_overrides.clone(),
+            model_visibility_overrides: self.model_visibility_overrides.clone(),
             real_model: self.real_model.clone(),
             real_model_sonnet: self.real_model_sonnet.clone(),
             real_model_opus: self.real_model_opus.clone(),
@@ -401,6 +405,7 @@ impl LauncherApp {
             self.theme_mode.as_str(),
             &self.model_reasoning_overrides,
             &self.model_1m_overrides,
+            &self.model_visibility_overrides,
             self.real_model.clone(),
             self.real_model_sonnet.clone(),
             self.real_model_opus.clone(),
@@ -464,6 +469,7 @@ impl LauncherApp {
         self.update_model_options();
         self.model_reasoning_overrides = settings.model_reasoning_overrides;
         self.model_1m_overrides = settings.model_1m_overrides;
+        self.model_visibility_overrides = settings.model_visibility_overrides;
         self.real_model = settings.real_model;
         self.real_model_sonnet = settings.real_model_sonnet;
         self.real_model_opus = settings.real_model_opus;

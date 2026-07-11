@@ -1,179 +1,201 @@
 # FreeClaudeLauncher
 
-**FreeClaudeLauncher** 是一款專為 [Claude Desktop](https://claude.ai/download) 設計的跨平台 (Windows, macOS, Linux) 桌面啟動器與本機 API Proxy。
+**FreeClaudeLauncher** is a cross-platform desktop launcher and local API proxy for [Claude Desktop](https://claude.ai/download), built for Windows, macOS, and Linux.
 
-它能將 Claude Desktop 的請求無縫轉接至任何 OpenAI-compatible 或 Anthropic-compatible 上游 Gateway（如 One API, LiteLLM, DeepSeek, Ollama, vLLM 等）。
+It connects Claude Desktop to OpenAI-compatible or Anthropic-compatible upstream gateways such as One API, LiteLLM, DeepSeek, Ollama, and vLLM.
+
+The project was inspired by [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code), especially its provider-backed local proxy, model-tier routing, and approachable configuration experience. FreeClaudeLauncher is an independent Rust implementation focused on Claude Desktop, native desktop configuration, and isolated profile management; it is not a fork of free-claude-code.
+
+**English** | [繁體中文](README_zh.md)
 
 ---
 
-## 📊 程式運行與架構流程圖
-
-### 1. 🔄 系統整體運行與資料流架構 (System Architecture & Data Flow)
+## Architecture and data flow
 
 ```mermaid
 flowchart TD
-    subgraph Client ["🖥️ Client Layer"]
-        CD["Claude Desktop (App)"]
+    subgraph Client ["Client"]
+        CD["Claude Desktop"]
     end
 
-    subgraph Launcher ["🚀 FreeClaudeLauncher (Rust Core)"]
-        GUI["Iced GUI / Tray Manager"]
-        Config["Config & Credential Manager (Keyring / DPAPI)"]
-        
-        subgraph ProxyServer ["🌐 Axum Local API Proxy (Port 127.0.0.1)"]
-            Router["Axum HTTP Router (/v1/messages, /v1/models)"]
-            AuthValidator["Authorization & Token Validator"]
-            FastPath["Optimization Fast-Path (Title/Quota/Suggest)"]
-            ReqConv["Request Converter (Anthropic ⇄ OpenAI / Thinking Budget)"]
-            RespConv["Response Converter & SSE Streamer (Reasoning ⇄ Thinking)"]
-            Fallback["Stale Model Route Fallback Handler"]
+    subgraph Launcher ["FreeClaudeLauncher (Rust)"]
+        GUI["Iced GUI and tray manager"]
+        Config["Configuration and credential manager"]
+
+        subgraph Proxy ["Axum local API proxy (127.0.0.1:3000)"]
+            Router["/v1/messages and /v1/models"]
+            Auth["Proxy authentication"]
+            FastPath["Local optimization fast paths"]
+            Converter["Protocol, model, and thinking conversion"]
+            Fallback["Stale model route fallback"]
         end
-
     end
 
-    subgraph Upstream ["☁️ Upstream Gateways"]
-        GW1["OpenAI-Compatible Gateway (One API / LiteLLM / DeepSeek)"]
-        GW2["Anthropic-Compatible Gateway"]
+    subgraph Upstream ["Upstream gateways"]
+        OpenAI["OpenAI-compatible gateway"]
+        Anthropic["Anthropic-compatible gateway"]
     end
 
-    CD -- "HTTP /v1/messages" --> Router
     GUI <--> Config
-    Config -- "Set Proxy Port & Keys" --> Router
-    Config -- "Write Config" --> CD
-
-    Router --> AuthValidator
-    AuthValidator --> FastPath
-    FastPath -- "Local Response (Fast-Path)" --> CD
-    FastPath -- "Pass Through" --> ReqConv
-
-    ReqConv --> GW1 & GW2
-    GW1 & GW2 -- "JSON / SSE Stream" --> RespConv
-    RespConv -- "Error (404/Stale Model)" --> Fallback
-    Fallback -- "Retry Alternate Route" --> GW1 & GW2
-    RespConv --> CD
-
+    Config --> CD
+    CD --> Router --> Auth --> FastPath --> Converter
+    Converter --> OpenAI & Anthropic
+    OpenAI & Anthropic --> Converter
+    Converter --> Fallback
+    Fallback --> OpenAI & Anthropic
+    Converter --> CD
 ```
 
----
-
-### 2. 🔌 API Proxy 請求與 Thinking / Reasoning 轉換流程 (API Proxy Flow)
+### Message conversion flow
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant CD as Claude Desktop
-    participant P as Local Proxy Server
-    participant OPT as Fast-Path Optimizer
-    participant CONV as Request / Response Converter
-    participant GW as Upstream Gateway (OpenAI/Anthropic)
+    participant P as Local proxy
+    participant OPT as Fast-path optimizer
+    participant CONV as Request/response converter
+    participant GW as Upstream gateway
 
-    CD->>P: POST /v1/messages (Anthropic Format)
-    P->>P: Validate Proxy Auth Token
-    P->>OPT: Check for Special Requests (Quota/Title/Suggest)
-    
-    alt Is Special Fast-Path Request
-        OPT-->>CD: Return Fast-Path Local JSON (0 Cost, 0 Latency)
-    else Normal Message Request
-        P->>CONV: Convert Anthropic JSON to Target Gateway Format
-        Note over CONV: Clamp thinking budget to reasoning_effort<br/>Map model aliases & tools
-        CONV->>GW: Forward POST /v1/chat/completions or /v1/messages
-        
-        alt Success Response (Stream / JSON)
-            GW-->>CONV: SSE Stream Events / JSON (reasoning_content)
-            Note over CONV: Convert reasoning_content to<br/>Anthropic thinking events (SSE)
-            CONV-->>CD: Stream Anthropic Events
-        else Stale Model Error (404 / Model Deprecated)
-            GW-->>CONV: Error 404 / Deprecated Model
-            CONV->>CONV: Trigger Stale Route Fallback
-            CONV->>GW: Retry Request with Fallback Model Route
-            GW-->>CONV: Success Response
-            CONV-->>CD: Stream Anthropic Events
+    CD->>P: POST /v1/messages (Anthropic format)
+    P->>P: Validate local proxy token
+    P->>OPT: Detect quota, title, suggestion, and probe requests
+    alt Local fast path
+        OPT-->>CD: Return local response
+    else Normal model request
+        OPT->>CONV: Convert request and resolve model alias
+        CONV->>GW: POST /v1/chat/completions or /v1/messages
+        alt Successful JSON or SSE response
+            GW-->>CONV: Response or reasoning_content stream
+            CONV-->>CD: Anthropic response or thinking events
+        else Stale or unavailable model
+            GW-->>CONV: Model error
+            CONV->>GW: Retry with a refreshed/fallback route
+            GW-->>CONV: Successful response
+            CONV-->>CD: Anthropic response
         end
     end
 ```
 
 ---
 
-## 🌟 核心特色
+## Features
 
-### 1. 🔌 高能本機 API Proxy (`/v1/messages` & `/v1/models`)
+### Local API proxy
 
-* **跨協議雙向轉換**：完整支援 Anthropic Messages 與 OpenAI Chat Completions 之 Request、Response 及 Streaming (SSE) 格式轉換。
-* **Thinking / Reasoning 適配**：
-  * 自動處理 DeepSeek R1 / OpenAI o1/o3 之 `reasoning_content` 與 Claude `thinking` (budget / effort clamp) 雙向事件轉換。
-* **模型路由與失效自動重試 (Stale Model Route Fallback)**：
-  * 當上游 Gateway 回報模型已下架或變更名稱時，系統會自動使用預備路由進行備用重試。
-* **動態 Model Alias Rewrite**：
-  * 自動根據 Gateway 提供的模型思考能力，將請求映射至正確的 Claude 模型別名。
+- Serves Claude Desktop-compatible `/v1/messages` and `/v1/models` endpoints.
+- Converts requests, responses, tool calls, and SSE streams between Anthropic Messages and OpenAI Chat Completions formats.
+- Supports both OpenAI-compatible and Anthropic-compatible upstream transports.
+- Retries stale or deprecated model routes when the gateway reports a model change.
 
-### 2. ⚡ 本機 Fast-Path 最佳化
+### Model discovery and routing
 
-* **無效請求攔截**：對 Claude Desktop 的探測請求、標題產生、語意建議、Quota 檢測與檔案路徑提取等提供本機 Fast-Path 直回，節省無效上游 Token 費用。
-* **Web Tools 安全邊界**：內建 private network 防護，預設阻擋私有網路 Web Fetch 請求。
+- Discovers models from the upstream `/v1/models` endpoint and generates unique Claude-compatible aliases.
+- Keeps the Claude Desktop configuration and model discovery IDs synchronized.
+- Exposes 1M context capability through `supports1m` without appending a synthetic `[1m]` suffix to model IDs.
+- Provides a per-model **Show** toggle in the GUI. Hidden models are removed from Claude Desktop configuration, discovery output, routes, and reasoning metadata, while remaining available in the Launcher for later re-enabling.
+- Supports explicit default, Opus, Sonnet, and Haiku route overrides.
 
-### 3. 🔒 跨平台安全憑證儲存
+### Thinking and reasoning
 
-* API Keys 使用系統原生憑證庫 (`keyring` / DPAPI) 加密保存。
-* 可隨時寫入與還原 Claude Desktop `configLibrary` 設定。
+- Converts Claude `thinking.budget_tokens` into upstream `reasoning_effort` levels.
+- Reads LiteLLM `model_info.supports_reasoning_effort` and `reasoning_effort_levels` metadata.
+- Allows per-model reasoning limits: `none`, `low`, `medium`, `high`, or `max`.
+- Clamps requested effort to the nearest level supported by the selected model.
+- Converts upstream `reasoning_content` into Claude thinking blocks and streaming events.
 
-### 4. 🛡️ 鏡像數據隔離與 Profile 隔離 (Mirror Profile)
+> **Known behavior — 1M context variants:** when a model is configured with 1M context support, Claude Desktop may expose both a regular 200K entry and a 1M entry for that model. This is Claude Desktop's presentation of `supports1m`; FreeClaudeLauncher keeps one stable discovery model ID and declares the 1M capability separately.
 
-* **官方原版數據 100% 唯讀保護**：絕不修改或破壞官方原版 `%APPDATA%\Claude` 的任何數據與登入狀態。
-* **獨立隔離 Profile 運行**：藉由 Electron 原生 `--user-data-dir` 參數，將所有 3P 代理配置、自訂 MCP、`configLibrary` 與日誌完全隔離至 `%LOCALAPPDATA%\FreeClaudeLauncher\claude_profile`。
-* **無縫無痕還原**：不經啟動器直接開啟官方原版 Claude Desktop 隨時均為 100% 純淨無修改的原生狀態。
+### Local optimization fast paths
+
+- Handles selected Claude Desktop probes, quota checks, title generation, suggestion mode, and file-path extraction locally to avoid unnecessary upstream token usage.
+- Includes optional local `web_search` and `web_fetch` handling with private-network protection enabled by default.
+
+### Credential and profile isolation
+
+- Protects API keys with platform-native credential storage (`keyring`/DPAPI where available).
+- Binds the proxy to the local loopback interface by default.
+- Runs Claude Desktop with an isolated mirror profile, leaving the official profile and login state unchanged.
+- Supports re-syncing login/session and custom MCP data from the official profile.
+- Can reset only the mirror profile without modifying official Claude Desktop data.
 
 ---
 
-## 🔄 數據隔離與同步機制 (Mirror Profile & Sync)
+## Mirror profile lifecycle
 
-本程式採用獨立 Profile 數據隔離機制，以確保官方原始資料的純淨性：
+1. **First launch:** relevant session and custom MCP data are copied from the official Claude Desktop profile into the isolated Launcher profile.
+2. **Re-sync from official:** refreshes the mirror from the current official profile, then reapplies managed proxy settings.
+3. **Reset mirror profile:** recreates only the Launcher-managed profile. Official Claude Desktop data is not removed or modified.
 
-1. **首次啟動同步 (First-time Sync)**：
-   * 當首次執行 FreeClaudeLauncher 時，程式會自動將當前平台官方原版目錄（如 `%APPDATA%\Claude`）中的登入 Session（Local Storage / IndexedDB）與自訂 MCP 伺服器配置複製至鏡像目錄中，免去重新登入帳號的麻煩。
-2. **從原版同步 (Re-sync from Official)**：
-   * 當您在官方原版 Claude 登入新帳號或新增了其他自訂 MCP 伺服器後，可一鍵點擊介面上的 **「從原版同步」**，程式會立即拉取原版最新狀態並重新套用代理設定。
-3. **重置鏡像 Profile (Reset Mirror Profile)**：
-   * 點擊 **「重置鏡像 Profile」** 僅會清空鏡像 Profile 並重新初始化，官方原版資料完全不受任何影響。
+FreeClaudeLauncher does not modify Claude Desktop source code, installation files, or bundled resources.
 
 ---
 
-## 📂 專案結構
+## Default local services
+
+| Service | Default address |
+|---|---|
+| FreeClaudeLauncher proxy | `127.0.0.1:3000` |
+| Typical local LiteLLM gateway | `127.0.0.1:4000` |
+
+The upstream gateway URL and authentication scheme are configurable in the GUI.
+
+---
+
+## Project structure
 
 ```text
 src/
-├── core/          設定檔模型、常數與錯誤型別
-├── platform/      跨平台路徑、API Key 保護、Claude Desktop 探測與設定寫入
-├── runtime/       GUI 狀態管理、事件更新邏輯與系統托盤 (tray-icon) 整合
-├── ui/            Iced 跨平台 UI 樣式與視窗元件
-├── server/        Axum 本機 Proxy、Router、Models Endpoint 與 Streaming 處理
-├── conversion/    Anthropic ⇄ OpenAI Request / Response 雙向轉換與模型路由重寫
-├── optimization/  Claude Desktop 特殊請求 Fast-Path 與 Web 工具安全防護
-├── models/        Claude 與 OpenAI / Gateway 內部資料結構
-├── lib.rs         公開 API、設定套用流程與向後相容導出
-└── main.rs        GUI 應用程式入口點
+├── core/          Configuration models, constants, and errors
+├── platform/      Cross-platform paths, secret protection, and Claude configuration
+├── runtime/       GUI state, update logic, jobs, and system tray integration
+├── ui/            Iced views and styling
+├── server/        Axum proxy, model endpoint, handlers, and streaming
+├── conversion/    Request/response conversion and model routing
+├── optimization/  Local fast paths and web-tool safety controls
+├── models/        Anthropic, OpenAI, and internal gateway types
+├── lib.rs         Public API and compatibility exports
+└── main.rs        Desktop application entry point
 ```
 
 ---
 
-## 🛠️ 建置與測試
+## Build and test
 
-### 1. 執行單元測試
+Requirements:
 
-專案包含 68+ 個嚴謹的單元與整合測試：
+- A stable Rust toolchain with Cargo
+- Platform build prerequisites required by Iced and `tray-icon`
+- An installed Claude Desktop application for launcher integration
+
+Run the 103 unit and integration tests:
 
 ```bash
 cargo test
 ```
 
-### 2. 建立 Release 版本
+Check the project without producing a release binary:
+
+```bash
+cargo check
+```
+
+Build a release binary:
 
 ```bash
 cargo build --release
 ```
 
-### 3. 開發與直接運行
+Build a Debian/Ubuntu package with [`cargo-deb`](https://docs.rs/crate/cargo-deb/latest):
 
-跨平台通用命令：
+```bash
+cargo install cargo-deb
+cargo deb --locked
+```
+
+The package installs the binary, desktop entry, 256×256 application icon, and both README files. The generated package is written under `target/debian/`.
+
+Run from source:
 
 ```bash
 cargo run
@@ -181,10 +203,23 @@ cargo run
 
 ---
 
-## 🛡️ 安全注意事項
+## Security notes
 
-**保護憑證**：請勿在 Log、錯誤訊息、測試資料或文件中寫入真實 API Key。
-**綁定邊界**：Proxy 預設僅綁定本機迴路地址 `127.0.0.1`。
-**私有網路防護**：`web_fetch` 預設不允許訪問 private network；若需開放，必須於 GUI 設定集中明確勾選啟用。
+- Never place real API keys in logs, error messages, tests, screenshots, or documentation.
+- Keep the proxy bound to loopback unless you have deliberately designed and secured remote access.
+- `web_fetch` blocks private-network targets by default; enable private-network access only when explicitly required.
+- Review generated Claude Desktop configuration before distributing it, because it contains local endpoint and authentication metadata.
 
 ---
+
+## Acknowledgements
+
+Thanks to [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) for demonstrating a practical way to connect Claude-compatible clients to cloud and local providers through one manageable local proxy. Its ideas around provider selection, Opus/Sonnet/Haiku tier routing, model discovery, and a user-friendly administration surface helped inspire this project's direction.
+
+FreeClaudeLauncher applies those broad ideas to a different product boundary and codebase: a native Rust launcher for Claude Desktop with Anthropic/OpenAI protocol conversion, `configLibrary` integration, system credential protection, and mirror-profile isolation. No source code from free-claude-code is included here.
+
+---
+
+## Documentation maintenance
+
+When model discovery, configuration fields, ports, security boundaries, or test counts change, update both [README.md](README.md) and [README_zh.md](README_zh.md) in the same change.

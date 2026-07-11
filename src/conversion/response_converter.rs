@@ -546,6 +546,28 @@ pub fn build_inference_models(models: &[NormalizedModel]) -> Vec<InferenceModel>
         .collect()
 }
 
+/// 依上游模型 ID 套用顯示設定，並同步清除不可見模型的路由與思考能力資料。
+/// 未出現在 overrides 的模型預設顯示。
+pub fn apply_model_visibility(models: &mut NormalizedModels, overrides: &HashMap<String, bool>) {
+    models.data.retain(|model| {
+        overrides
+            .get(&model.provider_model_id)
+            .copied()
+            .unwrap_or(true)
+    });
+
+    let visible_aliases: std::collections::HashSet<String> =
+        models.data.iter().map(|model| model.id.clone()).collect();
+    models
+        .routes
+        .retain(|alias, _| visible_aliases.contains(alias));
+    models
+        .reasoning_effort_routes
+        .retain(|alias, _| visible_aliases.contains(alias));
+    models.first_id = models.data.first().map(|model| model.id.clone());
+    models.last_id = models.data.last().map(|model| model.id.clone());
+}
+
 pub fn openai_to_anthropic_response(openai_body: &str, req_model: &str) -> Result<Value, String> {
     let data: Value = serde_json::from_str(openai_body).map_err(|e| e.to_string())?;
 

@@ -387,3 +387,46 @@ fn models_response_keeps_same_name_variants_when_neither_1m_enabled() {
     // Claude Sonnet 4.5 同名兩筆皆保留（族群里沒有 1M 勾選），glm-5.2 也保留
     assert_eq!(normalized.data.len(), 3);
 }
+
+#[test]
+fn model_visibility_hides_model_and_its_routes_but_defaults_to_visible() {
+    let mut normalized = normalize_models_response(json!({
+        "data": [
+            {
+                "model_name": "visible-model",
+                "model_info": {
+                    "supports_reasoning_effort": false,
+                    "reasoning_effort_levels": ["none"]
+                }
+            },
+            {
+                "model_name": "hidden-model",
+                "model_info": {
+                    "supports_reasoning_effort": true,
+                    "reasoning_effort_levels": ["none", "high"]
+                }
+            }
+        ]
+    }))
+    .unwrap();
+    let hidden_alias = normalized
+        .data
+        .iter()
+        .find(|model| model.provider_model_id == "hidden-model")
+        .unwrap()
+        .id
+        .clone();
+    let mut visibility = HashMap::new();
+    visibility.insert("hidden-model".to_string(), false);
+
+    apply_model_visibility(&mut normalized, &visibility);
+
+    assert_eq!(normalized.data.len(), 1);
+    assert_eq!(normalized.data[0].provider_model_id, "visible-model");
+    assert!(!normalized.routes.contains_key(&hidden_alias));
+    assert!(!normalized
+        .reasoning_effort_routes
+        .contains_key(&hidden_alias));
+    assert_eq!(normalized.first_id, Some(normalized.data[0].id.clone()));
+    assert_eq!(normalized.last_id, Some(normalized.data[0].id.clone()));
+}

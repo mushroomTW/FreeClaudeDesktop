@@ -23,6 +23,7 @@ fn save_config_keeps_legacy_function_signature() {
         &str,
         &HashMap<String, String>,
         &HashMap<String, bool>,
+        &HashMap<String, bool>,
         Option<String>,
         Option<String>,
         Option<String>,

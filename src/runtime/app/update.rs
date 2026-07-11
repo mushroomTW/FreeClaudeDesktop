@@ -326,6 +326,14 @@ impl LauncherApp {
                 }
                 self.toast = None;
             }
+            Message::ModelVisibilityToggled(model, visible) => {
+                if visible {
+                    self.model_visibility_overrides.remove(&model);
+                } else {
+                    self.model_visibility_overrides.insert(model, false);
+                }
+                self.toast = None;
+            }
             Message::RealModelSelected(opt) => {
                 self.real_model = opt;
                 self.toast = None;
