@@ -67,16 +67,16 @@ sequenceDiagram
     autonumber
     participant CD as Claude Desktop
     participant P as Local Proxy Server
-    participant OPT as Fast-Path Optimizer
+    participant FPO as Fast-Path Optimizer
     participant CONV as Request / Response Converter
     participant GW as Upstream Gateway (OpenAI/Anthropic)
 
     CD->>P: POST /v1/messages (Anthropic Format)
     P->>P: Validate Proxy Auth Token
-    P->>OPT: Check for Special Requests (Quota/Title/Suggest)
+    P->>FPO: Check for Special Requests (Quota/Title/Suggest)
     
     alt Is Special Fast-Path Request
-        OPT-->>CD: Return Fast-Path Local JSON (0 Cost, 0 Latency)
+        FPO-->>CD: Return Fast-Path Local JSON (0 Cost, 0 Latency)
     else Normal Message Request
         P->>CONV: Convert Anthropic JSON to Target Gateway Format
         Note over CONV: Clamp thinking budget to reasoning_effort<br/>Map model aliases & tools
