@@ -314,14 +314,6 @@ fn model_alias(
     }
 }
 
-fn model_id_with_1m_suffix(alias: String, is_1m: bool) -> String {
-    if is_1m {
-        format!("{alias}[1m]")
-    } else {
-        alias
-    }
-}
-
 fn display_name_with_1m_suffix(name: String, is_1m: bool) -> String {
     if !is_1m {
         return name;
@@ -444,11 +436,10 @@ pub fn normalize_models_response_with_overrides(
             let display_name = display_name_with_1m_suffix(display_name, is_1m);
 
             let name = display_name.clone();
-            let id = model_id_with_1m_suffix(alias, is_1m);
+            // 1M 能力只透過 `supports1m` 表達，避免 discovery 的模型 ID
+            // 與 Claude Desktop config 中的模型名稱不一致。
+            let id = alias;
             if supports_reasoning {
-                if let Some(base_id) = id.strip_suffix("[1m]") {
-                    reasoning_effort_routes.insert(base_id.to_string(), effort_levels.clone());
-                }
                 reasoning_effort_routes.insert(id.clone(), effort_levels);
             }
 
@@ -462,22 +453,13 @@ pub fn normalize_models_response_with_overrides(
                 max_input_tokens: max_input,
                 max_tokens: max_output,
                 capabilities: model_capabilities(&model, reasoning_overrides),
-                supports1m: None,
+                supports1m: is_1m.then_some(true),
             }
         })
         .collect();
     let routes = data
         .iter()
-        .flat_map(|model| {
-            let route = (model.id.clone(), model.provider_model_id.clone());
-            match model.id.strip_suffix("[1m]") {
-                Some(base_id) => vec![
-                    route,
-                    (base_id.to_string(), model.provider_model_id.clone()),
-                ],
-                None => vec![route],
-            }
-        })
+        .map(|model| (model.id.clone(), model.provider_model_id.clone()))
         .collect();
     Ok(NormalizedModels {
         first_id: data.first().map(|model| model.id.clone()),
