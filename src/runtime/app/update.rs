@@ -1,7 +1,7 @@
 use super::{ConfigAction, JobKind, LauncherApp, Message, Toast};
 use iced::{
-    window::{self, Mode},
     Task,
+    window::{self, Mode},
 };
 
 impl LauncherApp {
@@ -274,7 +274,10 @@ impl LauncherApp {
                         if self.language == crate::core::config::Language::ZhTw {
                             format!("已更新模型列表：{} 個模型", self.discovered_models.len())
                         } else {
-                            format!("Model list updated: {} models", self.discovered_models.len())
+                            format!(
+                                "Model list updated: {} models",
+                                self.discovered_models.len()
+                            )
                         }
                     } else {
                         self.language.tr("settings_written").into()
@@ -322,12 +325,7 @@ impl LauncherApp {
             Message::ResyncFinished(id, result) => {
                 let success_msg = self.language.tr("sync_success");
                 let op_msg = self.language.tr("sync");
-                self.finish_unit_job(
-                    id,
-                    result,
-                    success_msg,
-                    op_msg,
-                );
+                self.finish_unit_job(id, result, success_msg, op_msg);
             }
             Message::RestoreFinished(id, result) => match result {
                 Ok(()) if self.jobs.accept(id) => {

@@ -424,9 +424,11 @@ fn model_visibility_hides_model_and_its_routes_but_defaults_to_visible() {
     assert_eq!(normalized.data.len(), 1);
     assert_eq!(normalized.data[0].provider_model_id, "visible-model");
     assert!(!normalized.routes.contains_key(&hidden_alias));
-    assert!(!normalized
-        .reasoning_effort_routes
-        .contains_key(&hidden_alias));
+    assert!(
+        !normalized
+            .reasoning_effort_routes
+            .contains_key(&hidden_alias)
+    );
     assert_eq!(normalized.first_id, Some(normalized.data[0].id.clone()));
     assert_eq!(normalized.last_id, Some(normalized.data[0].id.clone()));
 }

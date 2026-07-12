@@ -3,7 +3,7 @@ use crate::error::{AppError, AppResult};
 use std::ptr;
 
 const KEYRING_PREFIX: &str = "keyring:";
-const KEYRING_SERVICE: &str = "FreeClaudeLauncher";
+const KEYRING_SERVICE: &str = "FreeClaudeDesktop";
 const KEYRING_USER: &str = "real_api_key";
 const DPAPI_PREFIX: &str = "dpapi:";
 
@@ -50,7 +50,7 @@ fn unprotect_dpapi_secret(_stored: &str) -> AppResult<String> {
 
 #[cfg(target_os = "windows")]
 fn unprotect_dpapi_secret(stored: &str) -> AppResult<String> {
-    use winapi::um::dpapi::{CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN};
+    use winapi::um::dpapi::{CRYPTPROTECT_UI_FORBIDDEN, CryptUnprotectData};
     use winapi::um::winbase::LocalFree;
     use winapi::um::wincrypt::DATA_BLOB;
 

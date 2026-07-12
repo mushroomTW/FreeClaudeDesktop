@@ -3,7 +3,7 @@ use crate::models::claude::{
     ClaudeContentBlock, ClaudeMessageContent, ClaudeMessagesRequest, ClaudeRole, ClaudeSystem,
     ClaudeToolResultContent,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn thinking_budget_to_effort(budget: u64) -> &'static str {
     if budget > 8192 {
@@ -313,7 +313,7 @@ pub fn anthropic_to_openai_request(
                                 {
                                     let mut text_parts = Vec::new();
 
-                                    if let Some(ref res_c) = content {
+                                    if let Some(res_c) = content {
                                         match res_c {
                                             ClaudeToolResultContent::Text(text) => {
                                                 text_parts.push(text.clone());

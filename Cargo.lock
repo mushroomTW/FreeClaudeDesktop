@@ -1417,8 +1417,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "free_claude_launcher"
-version = "0.1.0"
+name = "free-claude-desktop"
+version = "0.1.1"
 dependencies = [
  "axum",
  "futures",

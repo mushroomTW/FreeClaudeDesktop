@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::env;
 use std::fs;
 #[cfg(windows)]
@@ -8,11 +8,11 @@ use std::process::Command;
 
 use crate::common::local_app_data;
 use crate::error::{AppError, AppResult};
-use crate::platform::atomic_file::{write_transaction, PendingWrite};
+use crate::platform::atomic_file::{PendingWrite, write_transaction};
 
 pub fn mirror_profile_dir() -> PathBuf {
     local_app_data()
-        .join("FreeClaudeLauncher")
+        .join("FreeClaudeDesktop")
         .join("claude_profile")
 }
 
@@ -283,11 +283,11 @@ pub fn upsert_managed_meta_entry(mut meta: Value) -> Value {
 
     if let Some(entries) = entries {
         entries.retain(|entry| entry.get("id").and_then(Value::as_str) != Some(CONFIG_ID));
-        entries.push(json!({ "id": CONFIG_ID, "name": "FreeClaudeLauncher" }));
+        entries.push(json!({ "id": CONFIG_ID, "name": "FreeClaudeDesktop" }));
     } else {
         obj.insert(
             "entries".to_string(),
-            json!([{ "id": CONFIG_ID, "name": "FreeClaudeLauncher" }]),
+            json!([{ "id": CONFIG_ID, "name": "FreeClaudeDesktop" }]),
         );
     }
     meta
@@ -681,7 +681,7 @@ const MANAGED_CLAUDE_ENV_KEYS: [&str; 3] = [
     "ENABLE_TOOL_SEARCH",
     "CLAUDE_CODE_ENABLE_AUTO_MODE",
 ];
-const PREVIOUS_CLAUDE_SETTINGS_KEY: &str = "freeClaudeLauncherPreviousSettings";
+const PREVIOUS_CLAUDE_SETTINGS_KEY: &str = "freeClaudeDesktopPreviousSettings";
 
 fn previous_setting_entry(value: Option<&Value>) -> Value {
     json!({
@@ -1020,7 +1020,7 @@ pub(crate) fn strip_removed_computer_mcp(mut data: Value) -> Value {
     data
 }
 
-const PREVIOUS_DEPLOYMENT_MODE_KEY: &str = "freeClaudeLauncherPreviousDeploymentMode";
+const PREVIOUS_DEPLOYMENT_MODE_KEY: &str = "freeClaudeDesktopPreviousDeploymentMode";
 
 pub fn apply_managed_deployment_mode(mut data: Value) -> Value {
     if !data.is_object() {

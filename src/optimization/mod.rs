@@ -7,8 +7,8 @@ pub mod command_utils;
 pub mod detection;
 pub mod web_tools;
 
-use axum::{body::Bytes, response::IntoResponse, Json};
-use serde_json::{json, Value};
+use axum::{Json, body::Bytes, response::IntoResponse};
+use serde_json::{Value, json};
 use std::time::{Duration, SystemTime};
 
 use crate::config::Settings;
@@ -317,7 +317,7 @@ mod tests {
 
     #[tokio::test]
     async fn web_fetch_returns_page_text_when_allowed() {
-        use axum::{routing::get, Router};
+        use axum::{Router, routing::get};
 
         let app = Router::new().route("/page", get(|| async { "hello from web fetch" }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -1,12 +1,12 @@
 use super::components::{get_app_icon, shorten_path};
 use crate::app::{LauncherApp, Message, Tab, ThemeMode};
 use crate::ui::styles::{
-    custom_sidebar_btn_style, danger_btn_style, ghost_btn_style, outline_btn_style,
-    primary_btn_style, secondary_btn_style, segmented_button_style, ColorPalette,
-    custom_pick_list_style, custom_menu_style,
+    ColorPalette, custom_menu_style, custom_pick_list_style, custom_sidebar_btn_style,
+    danger_btn_style, ghost_btn_style, outline_btn_style, primary_btn_style, secondary_btn_style,
+    segmented_button_style,
 };
 use iced::font::Weight;
-use iced::widget::{button, column, container, image, pick_list, row, svg, text, Space};
+use iced::widget::{Space, button, column, container, image, pick_list, row, svg, text};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length, Shadow};
 
 static SYSTEM_SVG: &[u8] = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\" ry=\"2\"/><line x1=\"8\" y1=\"21\" x2=\"16\" y2=\"21\"/><line x1=\"12\" y1=\"17\" x2=\"12\" y2=\"21\"/></svg>";
@@ -104,9 +104,13 @@ pub(super) fn header_and_status<'a>(
                     weight: Weight::Bold,
                     ..Default::default()
                 }),
-            text(format!("{}{}", app.language.tr("local_proxy"), app.current_port))
-                .size(14)
-                .color(palette.text_dim),
+            text(format!(
+                "{}{}",
+                app.language.tr("local_proxy"),
+                app.current_port
+            ))
+            .size(14)
+            .color(palette.text_dim),
         ]
         .spacing(4)
         .width(Length::Fill),
@@ -230,14 +234,22 @@ pub(super) fn confirm_bar<'a>(
                     .size(13)
                     .color(palette.warning)
                     .width(Length::Fill),
-                button(text(app.language.tr("confirm_reset")).size(13).color(iced::Color::WHITE))
-                    .on_press(Message::ConfirmRestore)
-                    .style(move |_theme, status| danger_btn_style(palette, status))
-                    .padding([6, 16]),
-                button(text(app.language.tr("cancel")).size(13).color(palette.text_dim))
-                    .on_press(Message::CancelRestore)
-                    .style(move |_theme, status| secondary_btn_style(palette, status))
-                    .padding([6, 16]),
+                button(
+                    text(app.language.tr("confirm_reset"))
+                        .size(13)
+                        .color(iced::Color::WHITE)
+                )
+                .on_press(Message::ConfirmRestore)
+                .style(move |_theme, status| danger_btn_style(palette, status))
+                .padding([6, 16]),
+                button(
+                    text(app.language.tr("cancel"))
+                        .size(13)
+                        .color(palette.text_dim)
+                )
+                .on_press(Message::CancelRestore)
+                .style(move |_theme, status| secondary_btn_style(palette, status))
+                .padding([6, 16]),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
@@ -279,9 +291,13 @@ pub(super) fn action_buttons<'a>(app: &LauncherApp, palette: ColorPalette) -> El
     let mut resync = button(text(app.language.tr("sync_from_official")).size(15))
         .style(move |_theme, status| secondary_btn_style(palette, status))
         .padding([10, 12]);
-    let mut restore = button(text(app.language.tr("reset_mirror_profile")).size(15).color(palette.text_dim))
-        .style(move |_theme, status| outline_btn_style(palette, status))
-        .padding([10, 12]);
+    let mut restore = button(
+        text(app.language.tr("reset_mirror_profile"))
+            .size(15)
+            .color(palette.text_dim),
+    )
+    .style(move |_theme, status| outline_btn_style(palette, status))
+    .padding([10, 12]);
     if !app.is_busy() {
         save_launch = save_launch.on_press(Message::SaveAndLaunch);
         save_only = save_only.on_press(Message::SaveOnly);
@@ -366,11 +382,16 @@ pub(super) fn sidebar<'a>(app: &LauncherApp, palette: ColorPalette) -> Element<'
             row![
                 icon_widget,
                 column![
-                    text("FreeClaudeDesktop").size(15).color(palette.text).font(Font {
-                        weight: Weight::Bold,
-                        ..Default::default()
-                    }),
-                    text(app.language.tr("settings_menu")).size(13).color(palette.text_dim),
+                    text("FreeClaudeDesktop")
+                        .size(15)
+                        .color(palette.text)
+                        .font(Font {
+                            weight: Weight::Bold,
+                            ..Default::default()
+                        }),
+                    text(app.language.tr("settings_menu"))
+                        .size(13)
+                        .color(palette.text_dim),
                 ]
                 .spacing(2),
             ]

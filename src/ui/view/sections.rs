@@ -2,8 +2,8 @@ use super::components::form_row;
 use crate::app::{LauncherApp, Message, Tab};
 use crate::constants::AUTH_SCHEMES;
 use crate::ui::styles::{
-    custom_checkbox_style, custom_menu_style, custom_pick_list_style, custom_text_input_style,
-    secondary_btn_style, ColorPalette,
+    ColorPalette, custom_checkbox_style, custom_menu_style, custom_pick_list_style,
+    custom_text_input_style, secondary_btn_style,
 };
 use iced::font::Weight;
 use iced::widget::{button, checkbox, column, pick_list, row, rule, text, text_input};
@@ -15,10 +15,13 @@ pub(super) fn tab_content<'a>(
     status_card: Element<'a, Message>,
 ) -> Element<'a, Message> {
     // ── 區段標題 ──
-    let section_title = text(app.language.tr("connection_settings")).size(21).color(palette.text).font(Font {
-        weight: Weight::Semibold,
-        ..Default::default()
-    });
+    let section_title = text(app.language.tr("connection_settings"))
+        .size(21)
+        .color(palette.text)
+        .font(Font {
+            weight: Weight::Semibold,
+            ..Default::default()
+        });
 
     // ── 表單 ──
     let form = column![
@@ -27,9 +30,7 @@ pub(super) fn tab_content<'a>(
             pick_list(
                 app.provider_options.as_slice(),
                 app.provider.as_ref(),
-                |s| {
-                    Message::ProviderSelected(s.to_string())
-                },
+                |s| { Message::ProviderSelected(s.to_string()) },
             )
             .placeholder(app.language.tr("select_provider"))
             .width(Length::Fill)
@@ -94,18 +95,23 @@ pub(super) fn tab_content<'a>(
     .spacing(8);
 
     // ── 分頁 1: 模型與思考 (Models) ──
-    let models_title = text(app.language.tr("models_thinking")).size(21).color(palette.text).font(Font {
-        weight: Weight::Semibold,
-        ..Default::default()
-    });
+    let models_title = text(app.language.tr("models_thinking"))
+        .size(21)
+        .color(palette.text)
+        .font(Font {
+            weight: Weight::Semibold,
+            ..Default::default()
+        });
 
     const TRANSPORT_OPTIONS: &[&str] = &["openai_chat", "anthropic_messages"];
     const MODEL_REASONING_OPTIONS: &[&str] = &["none", "low", "medium", "high", "max"];
     let model_reasoning_rows: Vec<Element<'_, Message>> = if app.discovered_models.is_empty() {
-        vec![text(app.language.tr("no_models_fetched"))
-            .size(13)
-            .color(palette.text_dim)
-            .into()]
+        vec![
+            text(app.language.tr("no_models_fetched"))
+                .size(13)
+                .color(palette.text_dim)
+                .into(),
+        ]
     } else {
         app.discovered_models
             .iter()
@@ -306,17 +312,22 @@ pub(super) fn tab_content<'a>(
     .spacing(14);
 
     // ── 分頁 2: 擴充與技能 (Extensions) ──
-    let extensions_title = text(app.language.tr("extensions_skills")).size(21).color(palette.text).font(Font {
-        weight: Weight::Semibold,
-        ..Default::default()
-    });
+    let extensions_title = text(app.language.tr("extensions_skills"))
+        .size(21)
+        .color(palette.text)
+        .font(Font {
+            weight: Weight::Semibold,
+            ..Default::default()
+        });
 
-    let mut extensions_form = column![checkbox(app.enable_web_server_tools)
-        .label(app.language.tr("web_tool_intercept"))
-        .on_toggle(Message::WebServerToolsToggled)
-        .text_size(14)
-        .spacing(8)
-        .style(move |_theme, status| custom_checkbox_style(palette, status)),]
+    let mut extensions_form = column![
+        checkbox(app.enable_web_server_tools)
+            .label(app.language.tr("web_tool_intercept"))
+            .on_toggle(Message::WebServerToolsToggled)
+            .text_size(14)
+            .spacing(8)
+            .style(move |_theme, status| custom_checkbox_style(palette, status)),
+    ]
     .spacing(10);
 
     if app.enable_web_server_tools {
@@ -350,10 +361,13 @@ pub(super) fn tab_content<'a>(
     }
 
     // ── 分頁 3: 效能優化 (Optimizations) ──
-    let optimizations_title = text(app.language.tr("optimizations")).size(21).color(palette.text).font(Font {
-        weight: Weight::Semibold,
-        ..Default::default()
-    });
+    let optimizations_title = text(app.language.tr("optimizations"))
+        .size(21)
+        .color(palette.text)
+        .font(Font {
+            weight: Weight::Semibold,
+            ..Default::default()
+        });
 
     let optimizations_form = column![
         checkbox(app.enable_quota_check_mock)

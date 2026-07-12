@@ -1,5 +1,7 @@
 launcher_settings.json
 *.log
+*.pfx
+*.p12
 target/
 .omo
 .codex-target/

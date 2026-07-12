@@ -6,15 +6,15 @@ use crate::conversion::response_converter::{
     rewrite_stale_model_request,
 };
 use crate::optimization;
-use crate::server::streaming::{start_sse_stream_conversion, ReasoningReplayMode};
+use crate::server::streaming::{ReasoningReplayMode, start_sse_stream_conversion};
 use axum::{
+    Json,
     body::Bytes,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    Json,
 };
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::{Duration, SystemTime};
 
 const MAX_UPSTREAM_ERROR_BYTES: usize = 64 * 1024;
@@ -138,7 +138,7 @@ async fn refresh_settings_for_retry(
 }
 
 pub async fn handle_root() -> impl IntoResponse {
-    "FreeClaudeLauncher API proxy is running"
+    "FreeClaudeDesktop API proxy is running"
 }
 
 pub async fn handle_launcher_show() -> impl IntoResponse {
@@ -444,7 +444,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                 StatusCode::BAD_REQUEST,
                 Json(json!({ "error": error.to_string() })),
             )
-                .into_response()
+                .into_response();
         }
     };
 

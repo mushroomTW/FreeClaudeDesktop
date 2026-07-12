@@ -17,8 +17,8 @@ use std::collections::HashMap;
 
 // 重導出 main.rs 和外部需要的 API，保持向後相容
 pub use config::{
-    generate_proxy_auth_token, get_launcher_settings, save_launcher_settings, to_public_config,
-    Settings,
+    Settings, generate_proxy_auth_token, get_launcher_settings, save_launcher_settings,
+    to_public_config,
 };
 pub use constants::CONFIG_ID;
 pub use conversion::request_converter::anthropic_to_openai_request;
@@ -32,8 +32,8 @@ pub use launcher::{
 };
 pub use models::openai::InferenceModel;
 pub use server::{
-    is_authorized_proxy_request, is_valid_proxy_authorization, run_server, start_server_background,
-    LAUNCHER_SHOW_REQUESTED,
+    LAUNCHER_SHOW_REQUESTED, is_authorized_proxy_request, is_valid_proxy_authorization, run_server,
+    start_server_background,
 };
 
 /// 儲存配置，獲取模型列表，並生成 Claude Desktop 配置

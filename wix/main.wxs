@@ -60,9 +60,9 @@
 
     <Product
         Id='*'
-        Name='FreeClaudeLauncher'
+        Name='FreeClaudeDesktop'
         UpgradeCode='A4B81B99-B9AC-4DA1-B0DB-A6AD139ABA75'
-        Manufacturer='FreeClaudeLauncher'
+        Manufacturer='FreeClaudeDesktop'
         Language='1033'
         Codepage='1252'
         Version='$(var.Version)'>
@@ -70,9 +70,10 @@
         <Package Id='*'
             Keywords='Installer'
             Description='A cross-platform Claude Desktop launcher and local API proxy'
-            Manufacturer='FreeClaudeLauncher'
+            Manufacturer='FreeClaudeDesktop'
             InstallerVersion='450'
             Languages='1033'
+            Platform='x64'
             Compressed='yes'
             InstallScope='perMachine'
             SummaryCodepage='1252'
@@ -83,11 +84,11 @@
             DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
-        <Property Id='DiskPrompt' Value='FreeClaudeLauncher Installation'/>
+        <Property Id='DiskPrompt' Value='FreeClaudeDesktop Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
-                <Directory Id='APPLICATIONFOLDER' Name='FreeClaudeLauncher'>
+                <Directory Id='APPLICATIONFOLDER' Name='FreeClaudeDesktop'>
                     
                     <!--
                       Enabling the license sidecar file in the installer is a four step process:
@@ -110,7 +111,7 @@
                     -->
 
                     <Directory Id='Bin' Name='bin'>
-                        <Component Id='Path' Guid='C2EFE9CF-6094-4853-B68F-DB0E224089B5' KeyPath='yes'>
+                        <Component Id='Path' Guid='C2EFE9CF-6094-4853-B68F-DB0E224089B5' KeyPath='yes' Win64='yes'>
                             <Environment
                                 Id='PATH'
                                 Name='PATH'
@@ -120,20 +121,20 @@
                                 Action='set'
                                 System='yes'/>
                         </Component>
-                        <Component Id='binary0' Guid='*'>
+                        <Component Id='binary0' Guid='*' Win64='yes'>
                             <File
                                 Id='exe0'
-                                Name='FreeClaudeLauncher.exe'
+                                Name='FreeClaudeDesktop.exe'
                                 DiskId='1'
-                                Source='$(var.CargoTargetBinDir)\FreeClaudeLauncher.exe'
+                                Source='$(var.CargoTargetBinDir)\FreeClaudeDesktop.exe'
                                 KeyPath='yes'/>
                         </Component>
                     </Directory>
-                    <Component Id='ApplicationShortcut' Guid='*'>
+                    <Component Id='ApplicationShortcut' Guid='*' Win64='yes'>
                         <Shortcut
                             Id='ApplicationStartMenuShortcut'
                             Directory='ApplicationProgramsFolder'
-                            Name='FreeClaudeLauncher'
+                            Name='FreeClaudeDesktop'
                             Description='Connect Claude Desktop to compatible AI gateways'
                             Target='[#exe0]'
                             WorkingDirectory='APPLICATIONFOLDER'
@@ -141,7 +142,7 @@
                         <RemoveFolder Id='ApplicationProgramsFolder' Directory='ApplicationProgramsFolder' On='uninstall'/>
                         <RegistryValue
                             Root='HKLM'
-                            Key='Software\FreeClaudeLauncher'
+                            Key='Software\FreeClaudeDesktop'
                             Name='Installed'
                             Type='integer'
                             Value='1'
@@ -150,7 +151,7 @@
                 </Directory>
             </Directory>
             <Directory Id='ProgramMenuFolder'>
-                <Directory Id='ApplicationProgramsFolder' Name='FreeClaudeLauncher'/>
+                <Directory Id='ApplicationProgramsFolder' Name='FreeClaudeDesktop'/>
             </Directory>
         </Directory>
 

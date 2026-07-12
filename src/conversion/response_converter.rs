@@ -2,7 +2,7 @@ use crate::config::Settings;
 use crate::models::openai::{
     InferenceModel, NormalizedModel, NormalizedModels, ProviderModel, ProviderModelsResponse,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use url::Url;
 
@@ -180,11 +180,7 @@ fn is_free_model(model: &ProviderModel) -> bool {
 }
 
 fn model_priority(model: &ProviderModel) -> usize {
-    if is_free_model(model) {
-        100
-    } else {
-        200
-    }
+    if is_free_model(model) { 100 } else { 200 }
 }
 
 fn provider_model_id(model: &ProviderModel) -> String {
