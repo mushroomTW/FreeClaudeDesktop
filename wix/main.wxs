@@ -139,7 +139,7 @@
                             Target='[#exe0]'
                             WorkingDirectory='APPLICATIONFOLDER'
                             Icon='ProductICO'/>
-                        <RemoveFolder Id='ApplicationProgramsFolder' Directory='ApplicationProgramsFolder' On='uninstall'/>
+                        <RemoveFolder Id='CommonApplicationProgramsFolder' Directory='CommonApplicationProgramsFolder' On='uninstall'/>
                         <RegistryValue
                             Root='HKLM'
                             Key='Software\FreeClaudeDesktop'
