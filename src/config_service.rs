@@ -23,6 +23,7 @@ pub struct SaveConfigInput {
     pub transport_type: String,
     pub web_fetch_allowed_schemes: String,
     pub theme_mode: String,
+    pub language: String,
     pub model_reasoning_overrides: HashMap<String, String>,
     pub model_1m_overrides: HashMap<String, bool>,
     pub model_visibility_overrides: HashMap<String, bool>,
@@ -219,6 +220,7 @@ async fn save_or_refresh(
             web_fetch_allowed_schemes: input.web_fetch_allowed_schemes,
             web_fetch_allow_private_networks: input.web_fetch_allow_private_networks,
             theme_mode: input.theme_mode,
+            language: input.language,
         };
         crate::server::models_endpoint::clear_models_cache();
         crate::config::save_launcher_settings(&settings)?;

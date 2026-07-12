@@ -69,8 +69,13 @@ impl LauncherApp {
                 });
             }
             Err(error) if self.jobs.fail(id, error.clone()) => {
+                let msg = if self.language == crate::core::config::Language::ZhTw {
+                    format!("{operation}失敗：{error}")
+                } else {
+                    format!("{operation} failed: {error}")
+                };
                 self.toast = Some(Toast {
-                    message: format!("{operation}失敗：{error}"),
+                    message: msg,
                     is_success: false,
                 });
             }
@@ -218,20 +223,61 @@ impl LauncherApp {
                     Message::ThemeSaved,
                 );
             }
+            Message::LanguageSelected(lang) => {
+                self.language = lang;
+                self.update_model_options();
+                self.update_provider_options();
+                if let Some(ref p) = self.provider {
+                    if p == "自訂" || p == "Custom" {
+                        self.provider = Some(self.language.tr("custom").to_string());
+                    }
+                }
+                return Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            let Some(mut settings) = crate::get_launcher_settings() else {
+                                return Ok(());
+                            };
+                            settings.language = lang.as_str().to_string();
+                            crate::save_launcher_settings(&settings)
+                                .map_err(|error| error.to_string())
+                        })
+                        .await
+                        .map_err(|error| error.to_string())?
+                    },
+                    Message::LanguageSaved,
+                );
+            }
+            Message::LanguageSaved(Err(error)) => {
+                let msg = if self.language == crate::core::config::Language::ZhTw {
+                    format!("儲存語言設定失敗：{error}")
+                } else {
+                    format!("Failed to save language settings: {error}")
+                };
+                self.toast = Some(Toast {
+                    message: msg,
+                    is_success: false,
+                });
+            }
+            Message::LanguageSaved(Ok(())) => {}
             Message::RefreshModels => return self.start_config_job(ConfigAction::RefreshModels),
             Message::ConfigFinished(id, action, result) => match result {
                 Ok(output) if self.jobs.accept(id) => {
                     self.discovered_models = output.discovered_models;
                     self.update_model_options();
                     self.api_key.clear();
-                    self.api_key_placeholder = "已儲存 API Key，留空沿用".into();
+                    self.api_key_placeholder = self.language.tr("key_saved_tip").into();
                     if action == ConfigAction::SaveAndLaunch {
                         return self.start_launch_job();
                     }
                     let message = if action == ConfigAction::RefreshModels {
-                        format!("已更新模型列表：{} 個模型", self.discovered_models.len())
+                        if self.language == crate::core::config::Language::ZhTw {
+                            format!("已更新模型列表：{} 個模型", self.discovered_models.len())
+                        } else {
+                            format!("Model list updated: {} models", self.discovered_models.len())
+                        }
                     } else {
-                        "設定已寫入 Claude。".into()
+                        self.language.tr("settings_written").into()
                     };
                     self.toast = Some(Toast {
                         message,
@@ -239,8 +285,13 @@ impl LauncherApp {
                     });
                 }
                 Err(error) if self.jobs.fail(id, error.clone()) => {
+                    let msg = if self.language == crate::core::config::Language::ZhTw {
+                        format!("工作失敗：{error}")
+                    } else {
+                        format!("Job failed: {error}")
+                    };
                     self.toast = Some(Toast {
-                        message: format!("工作失敗：{error}"),
+                        message: msg,
                         is_success: false,
                     });
                 }
@@ -256,45 +307,65 @@ impl LauncherApp {
                     }
                 }
                 Err(error) if self.jobs.fail(id, error.clone()) => {
+                    let msg = if self.language == crate::core::config::Language::ZhTw {
+                        format!("啟動失敗：{error}")
+                    } else {
+                        format!("Launch failed: {error}")
+                    };
                     self.toast = Some(Toast {
-                        message: format!("啟動失敗：{error}"),
+                        message: msg,
                         is_success: false,
                     });
                 }
                 _ => {}
             },
             Message::ResyncFinished(id, result) => {
+                let success_msg = self.language.tr("sync_success");
+                let op_msg = self.language.tr("sync");
                 self.finish_unit_job(
                     id,
                     result,
-                    "已從原版 Claude 重新同步設定至鏡像目錄。",
-                    "同步",
+                    success_msg,
+                    op_msg,
                 );
             }
             Message::RestoreFinished(id, result) => match result {
                 Ok(()) if self.jobs.accept(id) => {
                     self.api_key.clear();
-                    self.api_key_placeholder = "輸入 API Key".into();
+                    self.api_key_placeholder = self.language.tr("key_enter_tip").into();
                     self.toast = Some(Toast {
-                        message: "鏡像 Profile 目錄已重置。原版目錄完全不受影響。".into(),
+                        message: self.language.tr("reset_success").into(),
                         is_success: true,
                     });
                 }
-                Err(error) => self.finish_unit_job(id, Err(error), "", "重置"),
+                Err(error) => {
+                    let op_msg = self.language.tr("reset");
+                    self.finish_unit_job(id, Err(error), "", op_msg);
+                }
                 _ => {}
             },
             Message::StatusLoaded(path) => self.apply_status(path),
             Message::SettingsLoaded(Ok(Some(settings))) => self.apply_settings(settings.0),
             Message::SettingsLoaded(Ok(None)) => {}
             Message::SettingsLoaded(Err(error)) => {
+                let msg = if self.language == crate::core::config::Language::ZhTw {
+                    format!("載入設定失敗：{error}")
+                } else {
+                    format!("Failed to load settings: {error}")
+                };
                 self.toast = Some(Toast {
-                    message: format!("載入設定失敗：{error}"),
+                    message: msg,
                     is_success: false,
                 });
             }
             Message::ThemeSaved(Err(error)) => {
+                let msg = if self.language == crate::core::config::Language::ZhTw {
+                    format!("儲存佈景主題失敗：{error}")
+                } else {
+                    format!("Failed to save theme: {error}")
+                };
                 self.toast = Some(Toast {
-                    message: format!("儲存佈景主題失敗：{error}"),
+                    message: msg,
                     is_success: false,
                 });
             }

@@ -1,10 +1,10 @@
-# FreeClaudeLauncher
+# FreeClaudeDesktop
 
-**FreeClaudeLauncher** 是一款專為 [Claude Desktop](https://claude.ai/download) 設計的跨平台 (Windows, macOS, Linux) 桌面啟動器與本機 API Proxy。
+**FreeClaudeDesktop** 是一款專為 [Claude Desktop](https://claude.ai/download) 設計的跨平台 (Windows, macOS, Linux) 桌面啟動器與本機 API Proxy。
 
-它能將 Claude Desktop 的請求無縫轉接至任何 OpenAI-compatible 或 Anthropic-compatible 上游 Gateway（如 One API, LiteLLM, DeepSeek, Ollama, vLLM 等）。
+它能將 Claude Desktop 的請求無縫轉接至 any OpenAI-compatible 或 Anthropic-compatible 上游 Gateway（如 One API, LiteLLM, DeepSeek, Ollama, vLLM 等）。
 
-本專案受到 [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) 啟發，尤其是以本機 Proxy 串接多種模型供應商、模型層級路由及易用設定介面的方向。FreeClaudeLauncher 是專注於 Claude Desktop、原生桌面設定與隔離 Profile 管理的獨立 Rust 實作，並非 free-claude-code 的 fork。
+本專案受到 [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) 啟發，尤其是以本機 Proxy 串接多種模型供應商、模型層級路由及易用設定介面的方向。FreeClaudeDesktop 是專注於 Claude Desktop、原生桌面設定與隔離 Profile 管理的獨立 Rust 實作，並非 free-claude-code 的 fork。
 
 [English](README.md) | **繁體中文**
 
@@ -20,7 +20,7 @@ flowchart TD
         CD["Claude Desktop (App)"]
     end
 
-    subgraph Launcher ["🚀 FreeClaudeLauncher (Rust Core)"]
+    subgraph Launcher ["🚀 FreeClaudeDesktop (Rust Core)"]
         GUI["Iced GUI / Tray Manager"]
         Config["Config & Credential Manager (Keyring / DPAPI)"]
         
@@ -133,6 +133,11 @@ sequenceDiagram
 * **獨立隔離 Profile 運行**：藉由 Electron 原生 `--user-data-dir` 參數，將所有 3P 代理配置、自訂 MCP、`configLibrary` 與日誌完全隔離至 `%LOCALAPPDATA%\FreeClaudeLauncher\claude_profile`。
 * **無縫無痕還原**：不經啟動器直接開啟官方原版 Claude Desktop 隨時均為 100% 純淨無修改的原生狀態。
 
+### 5. 🌐 多語言介面支援
+
+* **即時雙語切換**：可在左側邊欄底部的下拉清單中，自由切換 **English** 或 **繁體中文**。
+* **無縫無感重新整理**：介面文字會立即刷新套用，無須重啟應用程式，並自動儲存偏好設定。
+
 ---
 
 ## 🔄 數據隔離與同步機制 (Mirror Profile & Sync)
@@ -140,7 +145,7 @@ sequenceDiagram
 本程式採用獨立 Profile 數據隔離機制，以確保官方原始資料的純淨性：
 
 1. **首次啟動同步 (First-time Sync)**：
-   * 當首次執行 FreeClaudeLauncher 時，程式會自動將當前平台官方原版目錄（如 `%APPDATA%\Claude`）中的登入 Session（Local Storage / IndexedDB）與自訂 MCP 伺服器配置複製至鏡像目錄中，免去重新登入帳號的麻煩。
+   * 當首次執行 FreeClaudeDesktop 時，程式會自動將當前平台官方原版目錄（如 `%APPDATA%\Claude`）中的登入 Session（Local Storage / IndexedDB）與自訂 MCP 伺服器配置複製至鏡像目錄中，免去重新登入帳號的麻煩。
 2. **從原版同步 (Re-sync from Official)**：
    * 當您在官方原版 Claude 登入新帳號或新增了其他自訂 MCP 伺服器後，可一鍵點擊介面上的 **「從原版同步」**，程式會立即拉取原版最新狀態並重新套用代理設定。
 3. **重置鏡像 Profile (Reset Mirror Profile)**：
@@ -211,15 +216,10 @@ cargo run
 
 ## 🛡️ 安全注意事項
 
-**保護憑證**：請勿在 Log、錯誤訊息、測試資料或文件中寫入真實 API Key。
-**綁定邊界**：Proxy 預設僅綁定本機迴路地址 `127.0.0.1`。
-**私有網路防護**：`web_fetch` 預設不允許訪問 private network；若需開放，必須於 GUI 設定集中明確勾選啟用。
-
----
-
-## 📝 文件維護
-
-模型 discovery、設定欄位、連接埠、安全邊界或測試數量變更時，請在同一份變更中同步更新 [README.md](README.md) 與 [README_zh.md](README_zh.md)。
+* **保護憑證**：請勿在 Log、錯誤訊息、測試資料或文件中寫入真實 API Key。
+* **綁定邊界**：Proxy 預設僅綁定本機迴路地址 `127.0.0.1`。
+* **私有網路防護**：`web_fetch` 預設不允許訪問 private network；若需開放，必須於 GUI 設定集中明確勾選啟用。
+* **配置審查**：分發生成的 Claude Desktop 設定檔前請仔細審查，因為其中包含本機代理端點與身分驗證 Token。
 
 ---
 
@@ -227,4 +227,10 @@ cargo run
 
 感謝 [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) 展示如何透過單一、易於管理的本機 Proxy，將 Claude 相容客戶端連接到雲端與本機模型供應商。其供應商選擇、Opus／Sonnet／Haiku 分層路由、模型探索與管理介面的想法，啟發了本專案的發展方向。
 
-FreeClaudeLauncher 將這些廣義概念應用在不同的產品邊界與獨立程式碼庫：以 Rust 建立 Claude Desktop 原生啟動器，提供 Anthropic／OpenAI 協議轉換、`configLibrary` 整合、系統憑證保護及鏡像 Profile 隔離。本專案未包含 free-claude-code 的原始碼。
+FreeClaudeDesktop 將這些廣義概念應用在不同的產品邊界與獨立程式碼庫：以 Rust 建立 Claude Desktop 原生啟動器，提供 Anthropic／OpenAI 協議轉換、`configLibrary` 整合、系統憑證保護及鏡像 Profile 隔離。本專案未包含 free-claude-code 的原始碼。
+
+---
+
+## 📝 文件維護
+
+模型 discovery、設定欄位、連接埠、安全邊界或測試數量變更時，請在同一份變更中同步更新 [README.md](README.md) 與 [README_zh.md](README_zh.md)。
