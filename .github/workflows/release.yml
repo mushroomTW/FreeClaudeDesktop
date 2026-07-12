@@ -197,7 +197,7 @@ jobs:
           TAG: ${{ needs.prepare.outputs.release_tag }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             tag_ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
             tag_sha="$(jq -r '.object.sha' <<<"$tag_ref")"
             tag_type="$(jq -r '.object.type' <<<"$tag_ref")"
@@ -208,7 +208,7 @@ jobs:
               echo "Release $TAG already points to $tag_sha, not $GITHUB_SHA. Refusing to replace assets from a different commit." >&2
               exit 1
             fi
-            gh release upload "$TAG" ./* --clobber
+            gh release upload "$TAG" ./* --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" ./* --target "$GITHUB_SHA" --generate-notes --title "FreeClaudeDesktop $TAG"
+            gh release create "$TAG" ./* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes --title "FreeClaudeDesktop $TAG"
           fi
