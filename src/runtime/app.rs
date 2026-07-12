@@ -184,6 +184,8 @@ pub enum Message {
     StatusLoaded(Option<std::path::PathBuf>),
     SettingsLoaded(Result<Option<Box<LoadedSettings>>, String>),
     ThemeSaved(Result<(), String>),
+    LanguageSelected(crate::config::Language),
+    LanguageSaved(Result<(), String>),
 }
 
 pub struct LauncherApp {
@@ -215,8 +217,10 @@ pub struct LauncherApp {
     pub reasoning_replay_mode: String,
     pub transport_type: String,
     pub theme_mode: ThemeMode,
+    pub language: crate::config::Language,
     pub discovered_models: Vec<String>,
     pub model_options: Vec<String>,
+    pub provider_options: Vec<String>,
     pub model_reasoning_overrides: HashMap<String, String>,
     pub model_1m_overrides: HashMap<String, bool>,
     pub model_visibility_overrides: HashMap<String, bool>,
@@ -260,8 +264,14 @@ impl LauncherApp {
             reasoning_replay_mode: "separate".to_string(),
             transport_type: "openai_chat".to_string(),
             theme_mode: ThemeMode::Light,
+            language: crate::config::Language::En,
             discovered_models: Vec::new(),
-            model_options: vec!["(自動/動態別名)".to_string()],
+            model_options: vec![crate::config::Language::En.tr("auto_alias").to_string()],
+            provider_options: vec![
+                "OpenRouter".to_string(),
+                "NVIDIA".to_string(),
+                crate::config::Language::En.tr("custom").to_string(),
+            ],
             model_reasoning_overrides: HashMap::new(),
             model_1m_overrides: HashMap::new(),
             model_visibility_overrides: HashMap::new(),
@@ -375,6 +385,7 @@ impl LauncherApp {
             transport_type: self.transport_type.clone(),
             web_fetch_allowed_schemes: self.web_fetch_allowed_schemes.clone(),
             theme_mode: self.theme_mode.as_str().to_string(),
+            language: self.language.as_str().to_string(),
             model_reasoning_overrides: self.model_reasoning_overrides.clone(),
             model_1m_overrides: self.model_1m_overrides.clone(),
             model_visibility_overrides: self.model_visibility_overrides.clone(),
@@ -403,6 +414,7 @@ impl LauncherApp {
             &self.transport_type,
             &self.web_fetch_allowed_schemes,
             self.theme_mode.as_str(),
+            self.language.as_str(),
             &self.model_reasoning_overrides,
             &self.model_1m_overrides,
             &self.model_visibility_overrides,
@@ -415,15 +427,24 @@ impl LauncherApp {
     }
 
     pub fn update_model_options(&mut self) {
-        let mut opts = vec!["(自動/動態別名)".to_string()];
+        let mut opts = vec![self.language.tr("auto_alias").to_string()];
         opts.extend(self.discovered_models.clone());
         self.model_options = opts;
+    }
+
+    pub fn update_provider_options(&mut self) {
+        self.provider_options = vec![
+            "OpenRouter".to_string(),
+            "NVIDIA".to_string(),
+            self.language.tr("custom").to_string(),
+        ];
     }
 
     fn apply_status(&mut self, path: Option<std::path::PathBuf>) {
         match path {
             Some(path) => {
-                self.status_text = format!("已偵測 Claude Desktop\n{}", path.display());
+                let status_prefix = self.language.tr("detected_claude");
+                self.status_text = format!("{}\n{}", status_prefix, path.display());
                 self.status_ok = true;
                 let known = crate::launcher::known_claude_paths();
                 let path_text = path.to_string_lossy();
@@ -433,13 +454,14 @@ impl LauncherApp {
                 }
             }
             None => {
-                self.status_text = "尚未找到 Claude.exe，可使用下方自訂路徑".into();
+                self.status_text = self.language.tr("not_found_claude").into();
                 self.status_ok = false;
             }
         }
     }
 
     fn apply_settings(&mut self, settings: crate::Settings) {
+        self.language = crate::config::Language::parse(&settings.language);
         if settings.real_base_url.contains("openrouter.ai") {
             self.provider = Some("OpenRouter".into());
             self.auth_scheme = Some("bearer".into());
@@ -447,12 +469,12 @@ impl LauncherApp {
             self.provider = Some("NVIDIA".into());
             self.auth_scheme = Some("bearer".into());
         } else {
-            self.provider = Some("自訂".into());
+            self.provider = Some(self.language.tr("custom").into());
             self.auth_scheme = Some(settings.real_auth_scheme.clone());
         }
         self.base_url = settings.real_base_url;
         if !settings.real_api_key.is_empty() {
-            self.api_key_placeholder = "已儲存 API Key，留空沿用".into();
+            self.api_key_placeholder = self.language.tr("key_saved_tip").into();
         }
         self.enable_quota_check_mock = settings.enable_quota_check_mock;
         self.enable_prefix_detection = settings.enable_prefix_detection;
@@ -467,6 +489,7 @@ impl LauncherApp {
         self.theme_mode = ThemeMode::parse(&settings.theme_mode);
         self.discovered_models = settings.discovered_models;
         self.update_model_options();
+        self.update_provider_options();
         self.model_reasoning_overrides = settings.model_reasoning_overrides;
         self.model_1m_overrides = settings.model_1m_overrides;
         self.model_visibility_overrides = settings.model_visibility_overrides;
@@ -479,6 +502,8 @@ impl LauncherApp {
 
 mod update;
 mod utils;
+#[cfg(test)]
+mod i18n_tests;
 
 pub use utils::{compact_path, json_result};
 

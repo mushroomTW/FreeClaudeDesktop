@@ -77,10 +77,172 @@ pub struct Settings {
     /// 主題模式 ("light", "dark", "system")
     #[serde(default = "default_theme_mode")]
     pub theme_mode: String,
+    /// 語言設定 ("en", "zh-tw")
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 pub fn default_theme_mode() -> String {
     "light".to_string()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Language {
+    #[serde(rename = "en")]
+    En,
+    #[serde(rename = "zh-tw")]
+    ZhTw,
+}
+
+impl Language {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::En => "en",
+            Self::ZhTw => "zh-tw",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "zh-tw" => Self::ZhTw,
+            _ => Self::En,
+        }
+    }
+
+    pub fn tr(&self, key: &'static str) -> &'static str {
+        match self {
+            Self::En => match key {
+                "title" => "FreeClaudeDesktop",
+                "connection_settings" => "Connection Settings",
+                "api_provider" => "API Provider",
+                "select_provider" => "Select provider...",
+                "api_url" => "API URL",
+                "api_key" => "API Key",
+                "auth_scheme" => "Auth Scheme",
+                "use_custom_path" => "Use custom Claude.exe path",
+                "models_thinking" => "Models & Thinking",
+                "fetch_model_list" => "Fetch Models",
+                "model_reasoning_limit" => "Model Reasoning Limit",
+                "model_override_tip" => "These settings override Claude Desktop model routing.",
+                "no_models_fetched" => "No models fetched yet. Save settings to see models.",
+                "show" => "Show",
+                "context_1m" => "1M Context",
+                "opus_model" => "Opus Model",
+                "auto_alias" => "(Auto/Dynamic)",
+                "sonnet_model" => "Sonnet Model",
+                "haiku_model" => "Haiku Model",
+                "fallback_model" => "Fallback Model",
+                "transport_protocol" => "Transport Protocol",
+                "thinking_mode" => "Thinking Mode",
+                "extensions_skills" => "Extensions & Skills",
+                "web_tool_intercept" => "Web Tool Intercept (web_search / web_fetch)",
+                "allow_private_network" => "Allow private networks for web_fetch",
+                "allowed_url_schemes" => "Allowed URL Schemes",
+                "optimizations" => "Optimizations",
+                "quota_check_mock" => "Quota Check Mock",
+                "prefix_detection" => "Command Prefix Quick Detection",
+                "title_generation_skip" => "Skip Title Generation",
+                "suggestion_mode_skip" => "Skip Suggestion Mode",
+                "filepath_extraction_mock" => "Filepath Extraction Mock",
+                "settings_menu" => "Settings",
+                "local_proxy" => "Local Proxy: 127.0.0.1:",
+                "detecting" => "Detecting...",
+                "reset_confirm_msg" => "Are you sure you want to reset the mirror Profile? Official profile will not be affected.",
+                "confirm_reset" => "Confirm Reset",
+                "cancel" => "Cancel",
+                "save_launch" => "Save & Launch ↵",
+                "save_only" => "Save Only",
+                "sync_from_official" => "Sync from Official",
+                "reset_mirror_profile" => "Reset Mirror",
+                "detected_claude" => "Claude Desktop Detected",
+                "not_found_claude" => "Claude.exe not found. You can set custom path below.",
+                "job_cancelled" => "Job cancelled",
+                "sync_success" => "Settings synced from official Claude.",
+                "sync_failed" => "Sync failed",
+                "reset_success" => "Mirror Profile directory has been reset. Official directory is unaffected.",
+                "theme_save_failed" => "Failed to save theme",
+                "load_settings_failed" => "Failed to load settings",
+                "fetch_models_success" => "Model list updated: {} models",
+                "settings_written" => "Settings written to Claude.",
+                "saving" => "Saving...",
+                "refreshing" => "Refreshing...",
+                "launching" => "Launching...",
+                "resyncing" => "Syncing...",
+                "restoring" => "Resetting...",
+                "save_failed" => "Save failed",
+                "launch_failed" => "Launch failed",
+                "reset_failed" => "Reset failed",
+                _ => key,
+            },
+            Self::ZhTw => match key {
+                "connection_settings" => "連線設定",
+                "api_provider" => "API 供應商",
+                "select_provider" => "選擇供應商...",
+                "api_url" => "API URL",
+                "api_key" => "API Key",
+                "auth_scheme" => "驗證方式",
+                "use_custom_path" => "使用自訂 Claude.exe 路徑",
+                "models_thinking" => "模型與思考",
+                "fetch_model_list" => "抓模型列表",
+                "model_reasoning_limit" => "模型思考上限",
+                "model_override_tip" => "這裡的設定會覆寫本專案的 Claude Desktop 模型路由。",
+                "no_models_fetched" => "尚未抓到模型；儲存設定後會列出可設定的模型。",
+                "show" => "顯示",
+                "context_1m" => "1M 上下文",
+                "opus_model" => "Opus 模型",
+                "auto_alias" => "(自動/動態別名)",
+                "sonnet_model" => "Sonnet 模型",
+                "haiku_model" => "Haiku 模型",
+                "fallback_model" => "預設保底模型",
+                "transport_protocol" => "傳輸協定",
+                "thinking_mode" => "Thinking 模式",
+                "extensions_skills" => "擴充與技能",
+                "web_tool_intercept" => "Web 工具攔截 (本地執行 web_search / web_fetch)",
+                "allow_private_network" => "允許 web_fetch 存取私有網路目標",
+                "allowed_url_schemes" => "允許的 URL 方案",
+                "optimizations" => "效能優化",
+                "quota_check_mock" => "配額檢查攔截",
+                "prefix_detection" => "命令前綴快速檢測",
+                "title_generation_skip" => "標題生成跳過",
+                "suggestion_mode_skip" => "建議模式跳過",
+                "filepath_extraction_mock" => "檔案路徑提取模擬",
+                "settings_menu" => "設定選單",
+                "local_proxy" => "本機 Proxy：127.0.0.1：",
+                "detecting" => "正在偵測...",
+                "title" => "FreeClaudeDesktop",
+                "reset_confirm_msg" => "⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。",
+                "confirm_reset" => "確定重置",
+                "cancel" => "取消",
+                "save_launch" => "儲存並啟動 ↵",
+                "save_only" => "僅儲存",
+                "sync_from_official" => "從原版同步",
+                "reset_mirror_profile" => "重置鏡像 Profile",
+                "detected_claude" => "已偵測 Claude Desktop",
+                "not_found_claude" => "尚未找到 Claude.exe，可使用下方自訂路徑",
+                "job_cancelled" => "工作已取消",
+                "sync_success" => "已從原版 Claude 重新同步設定至鏡像目錄。",
+                "sync_failed" => "同步",
+                "reset_success" => "鏡像 Profile 目錄已重置。原版目錄完全不受影響。",
+                "theme_save_failed" => "儲存佈景主題失敗",
+                "load_settings_failed" => "載入設定失敗",
+                "fetch_models_success" => "已更新模型列表：{} 個模型",
+                "settings_written" => "設定已寫入 Claude。",
+                "saving" => "儲存",
+                "refreshing" => "抓取模型",
+                "launching" => "啟動",
+                "resyncing" => "同步",
+                "restoring" => "重置",
+                "save_failed" => "設定儲存",
+                "launch_failed" => "啟動",
+                "reset_failed" => "重置",
+                _ => key,
+            }
+        }
+    }
+}
+
+pub fn default_language() -> String {
+    "en".to_string()
 }
 
 pub fn default_true() -> bool {
@@ -141,6 +303,7 @@ impl Default for Settings {
             web_fetch_allowed_schemes: "http,https".to_string(),
             web_fetch_allow_private_networks: false,
             theme_mode: default_theme_mode(),
+            language: default_language(),
         }
     }
 }

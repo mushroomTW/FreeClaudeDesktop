@@ -1,6 +1,6 @@
 use super::components::form_row;
 use crate::app::{LauncherApp, Message, Tab};
-use crate::constants::{AUTH_SCHEMES, PROVIDERS};
+use crate::constants::AUTH_SCHEMES;
 use crate::ui::styles::{
     custom_checkbox_style, custom_menu_style, custom_pick_list_style, custom_text_input_style,
     secondary_btn_style, ColorPalette,
@@ -15,7 +15,7 @@ pub(super) fn tab_content<'a>(
     status_card: Element<'a, Message>,
 ) -> Element<'a, Message> {
     // ── 區段標題 ──
-    let section_title = text("連線設定").size(21).color(palette.text).font(Font {
+    let section_title = text(app.language.tr("connection_settings")).size(21).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
@@ -23,11 +23,15 @@ pub(super) fn tab_content<'a>(
     // ── 表單 ──
     let form = column![
         form_row(
-            "API 供應商",
-            pick_list(PROVIDERS, app.provider.as_deref(), |s| {
-                Message::ProviderSelected(s.to_string())
-            },)
-            .placeholder("選擇供應商...")
+            app.language.tr("api_provider"),
+            pick_list(
+                app.provider_options.as_slice(),
+                app.provider.as_ref(),
+                |s| {
+                    Message::ProviderSelected(s.to_string())
+                },
+            )
+            .placeholder(app.language.tr("select_provider"))
             .width(Length::Fill)
             .style(move |_theme, status| custom_pick_list_style(palette, status))
             .menu_style(move |_theme| custom_menu_style(palette))
@@ -35,7 +39,7 @@ pub(super) fn tab_content<'a>(
             palette.text,
         ),
         form_row(
-            "API URL",
+            app.language.tr("api_url"),
             text_input("https://...", &app.base_url)
                 .on_input(Message::BaseUrlChanged)
                 .padding(10)
@@ -45,7 +49,7 @@ pub(super) fn tab_content<'a>(
             palette.text,
         ),
         form_row(
-            "API Key",
+            app.language.tr("api_key"),
             text_input(&app.api_key_placeholder, &app.api_key)
                 .on_input(Message::ApiKeyChanged)
                 .secure(true)
@@ -56,7 +60,7 @@ pub(super) fn tab_content<'a>(
             palette.text,
         ),
         form_row(
-            "驗證方式",
+            app.language.tr("auth_scheme"),
             pick_list(AUTH_SCHEMES, app.auth_scheme.as_deref(), |s| {
                 Message::AuthSchemeSelected(s.to_string())
             },)
@@ -80,7 +84,7 @@ pub(super) fn tab_content<'a>(
 
     let custom_section = column![
         checkbox(app.use_custom_path)
-            .label("使用自訂 Claude.exe 路徑")
+            .label(app.language.tr("use_custom_path"))
             .on_toggle(Message::CustomPathToggled)
             .text_size(14)
             .spacing(8)
@@ -90,7 +94,7 @@ pub(super) fn tab_content<'a>(
     .spacing(8);
 
     // ── 分頁 1: 模型與思考 (Models) ──
-    let models_title = text("模型與思考").size(21).color(palette.text).font(Font {
+    let models_title = text(app.language.tr("models_thinking")).size(21).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
@@ -98,7 +102,7 @@ pub(super) fn tab_content<'a>(
     const TRANSPORT_OPTIONS: &[&str] = &["openai_chat", "anthropic_messages"];
     const MODEL_REASONING_OPTIONS: &[&str] = &["none", "low", "medium", "high", "max"];
     let model_reasoning_rows: Vec<Element<'_, Message>> = if app.discovered_models.is_empty() {
-        vec![text("尚未抓到模型；儲存設定後會列出可設定的模型。")
+        vec![text(app.language.tr("no_models_fetched"))
             .size(13)
             .color(palette.text_dim)
             .into()]
@@ -126,7 +130,7 @@ pub(super) fn tab_content<'a>(
                         .color(palette.text)
                         .width(Length::Fill),
                     checkbox(is_visible)
-                        .label("顯示")
+                        .label(app.language.tr("show"))
                         .text_size(13)
                         .spacing(6)
                         .on_toggle(move |visible| Message::ModelVisibilityToggled(
@@ -135,7 +139,7 @@ pub(super) fn tab_content<'a>(
                         ))
                         .style(move |_theme, status| custom_checkbox_style(palette, status)),
                     checkbox(is_1m_enabled)
-                        .label("1M 上下文")
+                        .label(app.language.tr("context_1m"))
                         .text_size(13)
                         .spacing(6)
                         .on_toggle(move |enabled| Message::Model1mToggled(
@@ -156,7 +160,7 @@ pub(super) fn tab_content<'a>(
             })
             .collect()
     };
-    let mut refresh_button = button(text("抓模型列表").size(13))
+    let mut refresh_button = button(text(app.language.tr("fetch_model_list")).size(13))
         .style(move |_theme, status| secondary_btn_style(palette, status))
         .padding([6, 12]);
     if !app.is_busy() {
@@ -164,14 +168,14 @@ pub(super) fn tab_content<'a>(
     }
     let model_reasoning_section = column![
         refresh_button,
-        text("模型思考上限")
+        text(app.language.tr("model_reasoning_limit"))
             .size(14)
             .color(palette.text)
             .font(Font {
                 weight: Weight::Semibold,
                 ..Default::default()
             }),
-        text("這裡的設定會覆寫本專案的 Claude Desktop 模型路由。")
+        text(app.language.tr("model_override_tip"))
             .size(12)
             .color(palette.text_dim),
         column(model_reasoning_rows).spacing(8),
@@ -181,16 +185,16 @@ pub(super) fn tab_content<'a>(
     const REASONING_OPTIONS: &[&str] = &["separate", "inline"];
     let models_form = column![
         form_row(
-            "Opus 模型",
+            app.language.tr("opus_model"),
             pick_list(
                 app.model_options.as_slice(),
                 Some(
                     app.real_model_opus
                         .clone()
-                        .unwrap_or_else(|| "(自動/動態別名)".to_string()),
+                        .unwrap_or_else(|| app.model_options[0].clone()),
                 ),
                 |selected| {
-                    if selected == "(自動/動態別名)" {
+                    if selected == app.model_options[0] {
                         Message::RealModelOpusSelected(None)
                     } else {
                         Message::RealModelOpusSelected(Some(selected))
@@ -204,16 +208,16 @@ pub(super) fn tab_content<'a>(
             palette.text,
         ),
         form_row(
-            "Sonnet 模型",
+            app.language.tr("sonnet_model"),
             pick_list(
                 app.model_options.as_slice(),
                 Some(
                     app.real_model_sonnet
                         .clone()
-                        .unwrap_or_else(|| "(自動/動態別名)".to_string()),
+                        .unwrap_or_else(|| app.model_options[0].clone()),
                 ),
                 |selected| {
-                    if selected == "(自動/動態別名)" {
+                    if selected == app.model_options[0] {
                         Message::RealModelSonnetSelected(None)
                     } else {
                         Message::RealModelSonnetSelected(Some(selected))
@@ -227,16 +231,16 @@ pub(super) fn tab_content<'a>(
             palette.text,
         ),
         form_row(
-            "Haiku 模型",
+            app.language.tr("haiku_model"),
             pick_list(
                 app.model_options.as_slice(),
                 Some(
                     app.real_model_haiku
                         .clone()
-                        .unwrap_or_else(|| "(自動/動態別名)".to_string()),
+                        .unwrap_or_else(|| app.model_options[0].clone()),
                 ),
                 |selected| {
-                    if selected == "(自動/動態別名)" {
+                    if selected == app.model_options[0] {
                         Message::RealModelHaikuSelected(None)
                     } else {
                         Message::RealModelHaikuSelected(Some(selected))
@@ -250,16 +254,16 @@ pub(super) fn tab_content<'a>(
             palette.text,
         ),
         form_row(
-            "預設保底模型",
+            app.language.tr("fallback_model"),
             pick_list(
                 app.model_options.as_slice(),
                 Some(
                     app.real_model
                         .clone()
-                        .unwrap_or_else(|| "(自動/動態別名)".to_string()),
+                        .unwrap_or_else(|| app.model_options[0].clone()),
                 ),
                 |selected| {
-                    if selected == "(自動/動態別名)" {
+                    if selected == app.model_options[0] {
                         Message::RealModelSelected(None)
                     } else {
                         Message::RealModelSelected(Some(selected))
@@ -273,7 +277,7 @@ pub(super) fn tab_content<'a>(
             palette.text,
         ),
         form_row(
-            "傳輸協定",
+            app.language.tr("transport_protocol"),
             pick_list(TRANSPORT_OPTIONS, Some(app.transport_type.as_str()), |s| {
                 Message::TransportTypeSelected(s.to_string())
             },)
@@ -284,7 +288,7 @@ pub(super) fn tab_content<'a>(
             palette.text,
         ),
         form_row(
-            "Thinking 模式",
+            app.language.tr("thinking_mode"),
             pick_list(
                 REASONING_OPTIONS,
                 Some(app.reasoning_replay_mode.as_str()),
@@ -302,13 +306,13 @@ pub(super) fn tab_content<'a>(
     .spacing(14);
 
     // ── 分頁 2: 擴充與技能 (Extensions) ──
-    let extensions_title = text("擴充與技能").size(21).color(palette.text).font(Font {
+    let extensions_title = text(app.language.tr("extensions_skills")).size(21).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
 
     let mut extensions_form = column![checkbox(app.enable_web_server_tools)
-        .label("Web 工具攔截 (本地執行 web_search / web_fetch)")
+        .label(app.language.tr("web_tool_intercept"))
         .on_toggle(Message::WebServerToolsToggled)
         .text_size(14)
         .spacing(8)
@@ -322,13 +326,13 @@ pub(super) fn tab_content<'a>(
                     .width(Length::Fixed(20.0)),
                 column![
                     checkbox(app.web_fetch_allow_private_networks)
-                        .label("允許 web_fetch 存取私有網路目標")
+                        .label(app.language.tr("allow_private_network"))
                         .on_toggle(Message::WebFetchPrivateNetworkToggled)
                         .text_size(14)
                         .spacing(8)
                         .style(move |_theme, status| custom_checkbox_style(palette, status)),
                     form_row(
-                        "允許的 URL 方案",
+                        app.language.tr("allowed_url_schemes"),
                         text_input("http,https", &app.web_fetch_allowed_schemes)
                             .on_input(Message::WebFetchAllowedSchemesChanged)
                             .padding(10)
@@ -346,38 +350,38 @@ pub(super) fn tab_content<'a>(
     }
 
     // ── 分頁 3: 效能優化 (Optimizations) ──
-    let optimizations_title = text("效能優化").size(21).color(palette.text).font(Font {
+    let optimizations_title = text(app.language.tr("optimizations")).size(21).color(palette.text).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     });
 
     let optimizations_form = column![
         checkbox(app.enable_quota_check_mock)
-            .label("配額檢查攔截")
+            .label(app.language.tr("quota_check_mock"))
             .on_toggle(Message::QuotaCheckMockToggled)
             .text_size(14)
             .spacing(8)
             .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_prefix_detection)
-            .label("命令前綴快速檢測")
+            .label(app.language.tr("prefix_detection"))
             .on_toggle(Message::PrefixDetectionToggled)
             .text_size(14)
             .spacing(8)
             .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_title_generation_skip)
-            .label("標題生成跳過")
+            .label(app.language.tr("title_generation_skip"))
             .on_toggle(Message::TitleGenerationSkipToggled)
             .text_size(14)
             .spacing(8)
             .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_suggestion_mode_skip)
-            .label("建議模式跳過")
+            .label(app.language.tr("suggestion_mode_skip"))
             .on_toggle(Message::SuggestionModeSkipToggled)
             .text_size(14)
             .spacing(8)
             .style(move |_theme, status| custom_checkbox_style(palette, status)),
         checkbox(app.enable_filepath_extraction_mock)
-            .label("檔案路徑提取模擬")
+            .label(app.language.tr("filepath_extraction_mock"))
             .on_toggle(Message::FilepathExtractionMockToggled)
             .text_size(14)
             .spacing(8)

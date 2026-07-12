@@ -126,7 +126,7 @@ fn main() -> iced::Result {
         free_claude_launcher::ui::view::view,
     )
     .subscription(LauncherApp::subscription)
-    .title("FreeClaudeLauncher")
+    .title("FreeClaudeDesktop")
     .theme(LauncherApp::theme)
     .window(window::Settings {
         size: iced::Size::new(820.0, 700.0),

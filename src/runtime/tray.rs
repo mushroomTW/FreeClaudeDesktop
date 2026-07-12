@@ -72,7 +72,7 @@ fn run_tray_icon_inner(tx: tokio::sync::mpsc::UnboundedSender<Message>) {
     // 建立系統匣圖示
     let _tray = match TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip("FreeClaudeLauncher")
+        .with_tooltip("FreeClaudeDesktop")
         .with_icon(icon)
         .build()
     {

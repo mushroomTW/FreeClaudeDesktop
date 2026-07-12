@@ -3,9 +3,10 @@ use crate::app::{LauncherApp, Message, Tab, ThemeMode};
 use crate::ui::styles::{
     custom_sidebar_btn_style, danger_btn_style, ghost_btn_style, outline_btn_style,
     primary_btn_style, secondary_btn_style, segmented_button_style, ColorPalette,
+    custom_pick_list_style, custom_menu_style,
 };
 use iced::font::Weight;
-use iced::widget::{button, column, container, image, row, svg, text};
+use iced::widget::{button, column, container, image, pick_list, row, svg, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length, Shadow};
 
 static SYSTEM_SVG: &[u8] = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\" ry=\"2\"/><line x1=\"8\" y1=\"21\" x2=\"16\" y2=\"21\"/><line x1=\"12\" y1=\"17\" x2=\"12\" y2=\"21\"/></svg>";
@@ -96,14 +97,14 @@ pub(super) fn header_and_status<'a>(
     // ── 標題區 ──
     let header = row![
         column![
-            text("Free Claude Launcher")
+            text(app.language.tr("title"))
                 .size(32)
                 .color(palette.text)
                 .font(Font {
                     weight: Weight::Bold,
                     ..Default::default()
                 }),
-            text(format!("本機 Proxy：127.0.0.1:{}", app.current_port))
+            text(format!("{}{}", app.language.tr("local_proxy"), app.current_port))
                 .size(14)
                 .color(palette.text_dim),
         ]
@@ -120,12 +121,22 @@ pub(super) fn header_and_status<'a>(
         palette.warning
     };
     let status_lines: Vec<&str> = app.status_text.lines().collect();
+    let status_first_line = status_lines.first().copied().unwrap_or("");
+    let status_title_text = if status_first_line.contains("已偵測") {
+        app.language.tr("detected_claude")
+    } else if status_first_line.contains("尚未找到") {
+        app.language.tr("not_found_claude")
+    } else if status_first_line.contains("正在偵測") {
+        app.language.tr("detecting")
+    } else {
+        status_first_line
+    };
 
     let dot = text("●").size(14).color(status_color);
 
     let status_title = row![
         dot,
-        text(status_lines.first().copied().unwrap_or("").to_string())
+        text(status_title_text.to_string())
             .size(14)
             .color(palette.text)
             .font(Font {
@@ -215,15 +226,15 @@ pub(super) fn confirm_bar<'a>(
     if app.confirming_restore {
         let confirm_bar = container(
             row![
-                text("⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。")
+                text(app.language.tr("reset_confirm_msg"))
                     .size(13)
                     .color(palette.warning)
                     .width(Length::Fill),
-                button(text("確定重置").size(13).color(iced::Color::WHITE))
+                button(text(app.language.tr("confirm_reset")).size(13).color(iced::Color::WHITE))
                     .on_press(Message::ConfirmRestore)
                     .style(move |_theme, status| danger_btn_style(palette, status))
                     .padding([6, 16]),
-                button(text("取消").size(13).color(palette.text_dim))
+                button(text(app.language.tr("cancel")).size(13).color(palette.text_dim))
                     .on_press(Message::CancelRestore)
                     .style(move |_theme, status| secondary_btn_style(palette, status))
                     .padding([6, 16]),
@@ -256,21 +267,21 @@ pub(super) fn confirm_bar<'a>(
 }
 
 pub(super) fn action_buttons<'a>(app: &LauncherApp, palette: ColorPalette) -> Element<'a, Message> {
-    let mut save_launch = button(text("儲存並啟動 ↵").size(15).font(Font {
+    let mut save_launch = button(text(app.language.tr("save_launch")).size(15).font(Font {
         weight: Weight::Semibold,
         ..Default::default()
     }))
     .style(move |_theme, status| primary_btn_style(palette, status))
-    .padding([12, 24]);
-    let mut save_only = button(text("僅儲存").size(15))
+    .padding([10, 16]);
+    let mut save_only = button(text(app.language.tr("save_only")).size(15))
         .style(move |_theme, status| secondary_btn_style(palette, status))
-        .padding([12, 20]);
-    let mut resync = button(text("從原版同步").size(15))
+        .padding([10, 12]);
+    let mut resync = button(text(app.language.tr("sync_from_official")).size(15))
         .style(move |_theme, status| secondary_btn_style(palette, status))
-        .padding([12, 20]);
-    let mut restore = button(text("重置鏡像 Profile").size(15).color(palette.text_dim))
+        .padding([10, 12]);
+    let mut restore = button(text(app.language.tr("reset_mirror_profile")).size(15).color(palette.text_dim))
         .style(move |_theme, status| outline_btn_style(palette, status))
-        .padding([12, 20]);
+        .padding([10, 12]);
     if !app.is_busy() {
         save_launch = save_launch.on_press(Message::SaveAndLaunch);
         save_only = save_only.on_press(Message::SaveOnly);
@@ -282,11 +293,28 @@ pub(super) fn action_buttons<'a>(app: &LauncherApp, palette: ColorPalette) -> El
 }
 
 pub(super) fn sidebar<'a>(app: &LauncherApp, palette: ColorPalette) -> Element<'a, Message> {
+    const LANGUAGES: &[&str] = &["English", "繁體中文"];
+    let selected_lang = match app.language {
+        crate::core::config::Language::En => "English",
+        crate::core::config::Language::ZhTw => "繁體中文",
+    };
+
+    let lang_pick_list = pick_list(LANGUAGES, Some(selected_lang), |selected| {
+        let lang = match selected {
+            "繁體中文" => crate::core::config::Language::ZhTw,
+            _ => crate::core::config::Language::En,
+        };
+        Message::LanguageSelected(lang)
+    })
+    .width(Length::Fill)
+    .style(move |_theme, status| custom_pick_list_style(palette, status))
+    .menu_style(move |_theme| custom_menu_style(palette));
+
     let menu_items = vec![
-        ("連線設定", Tab::General),
-        ("模型與思考", Tab::Models),
-        ("擴充與技能", Tab::Extensions),
-        ("效能優化", Tab::Optimizations),
+        (app.language.tr("connection_settings"), Tab::General),
+        (app.language.tr("models_thinking"), Tab::Models),
+        (app.language.tr("extensions_skills"), Tab::Extensions),
+        (app.language.tr("optimizations"), Tab::Optimizations),
     ];
 
     let sidebar_items: Vec<Element<'_, Message>> = menu_items
@@ -338,17 +366,19 @@ pub(super) fn sidebar<'a>(app: &LauncherApp, palette: ColorPalette) -> Element<'
             row![
                 icon_widget,
                 column![
-                    text("Free Claude").size(18).color(palette.text).font(Font {
+                    text("FreeClaudeDesktop").size(15).color(palette.text).font(Font {
                         weight: Weight::Bold,
                         ..Default::default()
                     }),
-                    text("設定選單").size(13).color(palette.text_dim),
+                    text(app.language.tr("settings_menu")).size(13).color(palette.text_dim),
                 ]
                 .spacing(2),
             ]
             .spacing(12)
             .align_y(Alignment::Center),
             column(sidebar_items).spacing(4),
+            Space::new().height(Length::Fill),
+            lang_pick_list,
         ]
         .spacing(20),
     )

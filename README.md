@@ -1,10 +1,10 @@
-# FreeClaudeLauncher
+# FreeClaudeDesktop
 
-**FreeClaudeLauncher** is a cross-platform desktop launcher and local API proxy for [Claude Desktop](https://claude.ai/download), built for Windows, macOS, and Linux.
+**FreeClaudeDesktop** is a cross-platform desktop launcher and local API proxy for [Claude Desktop](https://claude.ai/download), built for Windows, macOS, and Linux.
 
 It connects Claude Desktop to OpenAI-compatible or Anthropic-compatible upstream gateways such as One API, LiteLLM, DeepSeek, Ollama, and vLLM.
 
-The project was inspired by [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code), especially its provider-backed local proxy, model-tier routing, and approachable configuration experience. FreeClaudeLauncher is an independent Rust implementation focused on Claude Desktop, native desktop configuration, and isolated profile management; it is not a fork of free-claude-code.
+The project was inspired by [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code), especially its provider-backed local proxy, model-tier routing, and approachable configuration experience. FreeClaudeDesktop is an independent Rust implementation focused on Claude Desktop, native desktop configuration, and isolated profile management; it is not a fork of free-claude-code.
 
 **English** | [繁體中文](README_zh.md)
 
@@ -18,7 +18,7 @@ flowchart TD
         CD["Claude Desktop"]
     end
 
-    subgraph Launcher ["FreeClaudeLauncher (Rust)"]
+    subgraph Launcher ["FreeClaudeDesktop (Rust)"]
         GUI["Iced GUI and tray manager"]
         Config["Configuration and credential manager"]
 
@@ -119,6 +119,11 @@ sequenceDiagram
 - Supports re-syncing login/session and custom MCP data from the official profile.
 - Can reset only the mirror profile without modifying official Claude Desktop data.
 
+### Multilingual UI
+
+- Supports easy toggling between **English** and **Traditional Chinese** (`繁體中文`) via the drop-down list at the bottom of the sidebar.
+- Updates all UI text and configuration components instantly without requiring an application restart.
+
 ---
 
 ## Mirror profile lifecycle
@@ -127,7 +132,7 @@ sequenceDiagram
 2. **Re-sync from official:** refreshes the mirror from the current official profile, then reapplies managed proxy settings.
 3. **Reset mirror profile:** recreates only the Launcher-managed profile. Official Claude Desktop data is not removed or modified.
 
-FreeClaudeLauncher does not modify Claude Desktop source code, installation files, or bundled resources.
+FreeClaudeDesktop does not modify Claude Desktop source code, installation files, or bundled resources.
 
 ---
 
@@ -135,7 +140,7 @@ FreeClaudeLauncher does not modify Claude Desktop source code, installation file
 
 | Service | Default address |
 |---|---|
-| FreeClaudeLauncher proxy | `127.0.0.1:3000` |
+| FreeClaudeDesktop proxy | `127.0.0.1:3000` |
 | Typical local LiteLLM gateway | `127.0.0.1:4000` |
 
 The upstream gateway URL and authentication scheme are configurable in the GUI.
@@ -216,7 +221,7 @@ cargo run
 
 Thanks to [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) for demonstrating a practical way to connect Claude-compatible clients to cloud and local providers through one manageable local proxy. Its ideas around provider selection, Opus/Sonnet/Haiku tier routing, model discovery, and a user-friendly administration surface helped inspire this project's direction.
 
-FreeClaudeLauncher applies those broad ideas to a different product boundary and codebase: a native Rust launcher for Claude Desktop with Anthropic/OpenAI protocol conversion, `configLibrary` integration, system credential protection, and mirror-profile isolation. No source code from free-claude-code is included here.
+FreeClaudeDesktop applies those broad ideas to a different product boundary and codebase: a native Rust launcher for Claude Desktop with Anthropic/OpenAI protocol conversion, `configLibrary` integration, system credential protection, and mirror-profile isolation. No source code from free-claude-code is included here.
 
 ---
 
