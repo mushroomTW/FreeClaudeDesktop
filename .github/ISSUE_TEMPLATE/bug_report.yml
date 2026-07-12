@@ -1,61 +1,61 @@
-name: 錯誤回報
-description: 回報 FreeClaudeDesktop 的可重現問題
+name: Bug report
+description: Report a reproducible problem with FreeClaudeDesktop.
 title: "[Bug]: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        感謝協助改善專案。請勿貼上 API Key、Claude 工作階段、Cookie、完整設定檔或其他私密資料。
+        Do not include API keys, session cookies, full local configuration files, or other sensitive information.
   - type: textarea
     id: summary
     attributes:
-      label: 問題摘要
-      description: 簡潔描述實際發生的情況。
-      placeholder: 例如：儲存設定後啟動 Claude Desktop 失敗。
+      label: What happened?
+      description: Briefly describe the problem and its impact.
+      placeholder: Describe what you were doing and what went wrong.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: 重現步驟
-      description: 請提供可重現問題的最小步驟。
+      label: Steps to reproduce
+      description: Provide the smallest set of steps that consistently reproduces the problem.
       placeholder: |
-        1. 開啟…
-        2. 設定…
-        3. 點擊…
-        4. 發生…
+        1. Open ...
+        2. Configure ...
+        3. Click ...
+        4. Observe ...
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: 預期行為
-      description: 原本預期會發生什麼？
+      label: Expected behavior
+      description: What did you expect to happen?
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: 實際行為與日誌
-      description: 可附上已移除敏感資訊的錯誤訊息、截圖或日誌片段。
+      label: Actual behavior and logs
+      description: Describe the observed result. Add relevant logs or screenshots after removing sensitive data.
     validations:
       required: true
   - type: dropdown
     id: os
     attributes:
-      label: 作業系統
+      label: Operating system
       options:
         - Windows
         - macOS
         - Linux
-        - 其他
+        - Other
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: FreeClaudeDesktop 版本
-      placeholder: 例如 0.1.1 或 commit SHA
+      label: FreeClaudeDesktop version
+      placeholder: "For example: 0.1.1 or a commit SHA"
     validations:
       required: true
