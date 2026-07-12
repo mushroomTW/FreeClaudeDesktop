@@ -1,6 +1,6 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use free_claude_launcher::app::LauncherApp;
+use free_claude_desktop::app::LauncherApp;
 use iced::window;
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,12 +16,12 @@ fn load_icon() -> Option<window::Icon> {
 
 fn main() -> iced::Result {
     // 1. 初始化日誌系統
-    let _guard = free_claude_launcher::server::init_logging();
-    tracing::info!("FreeClaudeLauncher 啟動...");
+    let _guard = free_claude_desktop::server::init_logging();
+    tracing::info!("FreeClaudeDesktop 啟動...");
 
     // 2. 獲取預計埠號
-    let mut test_port = free_claude_launcher::constants::DEFAULT_PORT;
-    if let Some(settings) = free_claude_launcher::get_launcher_settings() {
+    let mut test_port = free_claude_desktop::constants::DEFAULT_PORT;
+    if let Some(settings) = free_claude_desktop::get_launcher_settings() {
         if let Some(port) = settings.active_port {
             test_port = port;
         }
@@ -56,14 +56,14 @@ fn main() -> iced::Result {
                 }
                 Err(e) => {
                     tracing::error!("分配隨機埠失敗，使用預設：{:?}", e);
-                    free_claude_launcher::constants::DEFAULT_PORT
+                    free_claude_desktop::constants::DEFAULT_PORT
                 }
             }
         }
     };
 
     // 5. 啟動背景代理伺服器
-    let server = match free_claude_launcher::server::start_server_background(final_port) {
+    let server = match free_claude_desktop::server::start_server_background(final_port) {
         Ok(server) => server,
         Err(e) => {
             tracing::error!("無法啟動背景代理伺服器: {:?}", e);
@@ -96,26 +96,26 @@ fn main() -> iced::Result {
     };
 
     // 6. 更新設定檔中的 active_port 與寫入 Claude 配置
-    if let Some(mut settings) = free_claude_launcher::get_launcher_settings() {
+    if let Some(mut settings) = free_claude_desktop::get_launcher_settings() {
         settings.active_port = Some(final_port);
-        if let Err(error) = free_claude_launcher::save_launcher_settings(&settings) {
+        if let Err(error) = free_claude_desktop::save_launcher_settings(&settings) {
             tracing::error!("儲存實際 Proxy 埠失敗: {error}");
             let _ = server.shutdown_and_join();
             return Ok(());
         }
-        if let Err(error) = free_claude_launcher::update_config_port(final_port) {
+        if let Err(error) = free_claude_desktop::update_config_port(final_port) {
             tracing::error!("更新 Claude 設定埠失敗: {error}");
             let _ = server.shutdown_and_join();
             return Ok(());
         }
     }
 
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<free_claude_launcher::app::Message>();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<free_claude_desktop::app::Message>();
 
     // 在背景 thread 啟動系統匣圖示
     let tray_tx = tx.clone();
     std::thread::spawn(move || {
-        free_claude_launcher::tray::run_tray_icon(tray_tx);
+        free_claude_desktop::tray::run_tray_icon(tray_tx);
     });
 
     let tray_rx = Arc::new(Mutex::new(rx));
@@ -123,7 +123,7 @@ fn main() -> iced::Result {
     let run_res = iced::application(
         move || LauncherApp::new(final_port, tray_rx.clone()),
         LauncherApp::update,
-        free_claude_launcher::ui::view::view,
+        free_claude_desktop::ui::view::view,
     )
     .subscription(LauncherApp::subscription)
     .title("FreeClaudeDesktop")

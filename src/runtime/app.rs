@@ -1,11 +1,11 @@
 use iced::{
-    window::{self, Id},
     Subscription, Task, Theme,
+    window::{self, Id},
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobKind {
@@ -312,11 +312,7 @@ impl LauncherApp {
             ThemeMode::Light => false,
             ThemeMode::System => crate::platform::is_system_dark_mode(),
         };
-        if is_dark {
-            Theme::Dark
-        } else {
-            Theme::Light
-        }
+        if is_dark { Theme::Dark } else { Theme::Light }
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -500,10 +496,10 @@ impl LauncherApp {
     }
 }
 
-mod update;
-mod utils;
 #[cfg(test)]
 mod i18n_tests;
+mod update;
+mod utils;
 
 pub use utils::{compact_path, json_result};
 

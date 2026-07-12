@@ -3,8 +3,8 @@ use crate::conversion::response_converter::{
     apply_model_visibility, build_inference_models, normalize_models_response_with_overrides,
 };
 use crate::models::openai::NormalizedModels;
-use axum::{http::HeaderMap, response::IntoResponse, Json};
-use serde_json::{json, Value};
+use axum::{Json, http::HeaderMap, response::IntoResponse};
+use serde_json::{Value, json};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone)]
@@ -292,38 +292,46 @@ mod tests {
             &normalized_models(),
         );
 
-        assert!(cached_models(
-            "http://localhost:4000",
-            "bearer",
-            &empty_reasoning,
-            &empty_m1,
-            &empty_visibility
-        )
-        .is_some());
-        assert!(cached_models(
-            "http://localhost:4001",
-            "bearer",
-            &empty_reasoning,
-            &empty_m1,
-            &empty_visibility
-        )
-        .is_none());
-        assert!(cached_models(
-            "http://localhost:4000",
-            "x-api-key",
-            &empty_reasoning,
-            &empty_m1,
-            &empty_visibility
-        )
-        .is_none());
+        assert!(
+            cached_models(
+                "http://localhost:4000",
+                "bearer",
+                &empty_reasoning,
+                &empty_m1,
+                &empty_visibility
+            )
+            .is_some()
+        );
+        assert!(
+            cached_models(
+                "http://localhost:4001",
+                "bearer",
+                &empty_reasoning,
+                &empty_m1,
+                &empty_visibility
+            )
+            .is_none()
+        );
+        assert!(
+            cached_models(
+                "http://localhost:4000",
+                "x-api-key",
+                &empty_reasoning,
+                &empty_m1,
+                &empty_visibility
+            )
+            .is_none()
+        );
         let hidden_visibility = HashMap::from([("glm-5.2".to_string(), false)]);
-        assert!(cached_models(
-            "http://localhost:4000",
-            "bearer",
-            &empty_reasoning,
-            &empty_m1,
-            &hidden_visibility
-        )
-        .is_none());
+        assert!(
+            cached_models(
+                "http://localhost:4000",
+                "bearer",
+                &empty_reasoning,
+                &empty_m1,
+                &hidden_visibility
+            )
+            .is_none()
+        );
     }
 }

@@ -3,7 +3,7 @@ mod components;
 mod sections;
 
 use crate::app::{LauncherApp, Message};
-use crate::ui::styles::{custom_scrollable_style, ColorPalette};
+use crate::ui::styles::{ColorPalette, custom_scrollable_style};
 use iced::widget::{column, container, row, scrollable};
 use iced::{Background, Border, Element, Length, Padding, Shadow};
 

@@ -99,7 +99,7 @@ fn run_tray_icon_inner(tx: tokio::sync::mpsc::UnboundedSender<Message>) {
     loop {
         #[cfg(target_os = "windows")]
         unsafe {
-            use winapi::um::winuser::{DispatchMessageW, GetMessageW, TranslateMessage, MSG};
+            use winapi::um::winuser::{DispatchMessageW, GetMessageW, MSG, TranslateMessage};
             let mut msg = std::mem::zeroed::<MSG>();
             // GetMessageW 會阻塞直到收到視窗或執行緒訊息 (例如滑鼠點擊、選單彈出、PostThreadMessage)
             let ret = GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0);

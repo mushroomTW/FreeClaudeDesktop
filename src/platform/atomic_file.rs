@@ -140,7 +140,7 @@ fn replace_file(source: &Path, target: &Path) -> io::Result<()> {
 #[cfg(windows)]
 fn replace_file(source: &Path, target: &Path) -> io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
-    use winapi::um::winbase::{MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH};
+    use winapi::um::winbase::{MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW};
 
     let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
     let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();

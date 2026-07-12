@@ -1,5 +1,5 @@
 use super::*;
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 
 #[tokio::test]
 async fn stream_converts_reasoning_content_to_thinking_events() {

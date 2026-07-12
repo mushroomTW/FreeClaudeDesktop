@@ -4,8 +4,8 @@ pub mod router;
 pub mod streaming;
 
 use crate::{AppError, AppResult};
-use std::sync::atomic::AtomicBool;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 pub static LAUNCHER_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -84,10 +84,10 @@ pub(crate) fn apply_gateway_auth(
 }
 
 pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
-    use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
+    use tracing_subscriber::{EnvFilter, Registry, fmt, prelude::*};
 
     let local_dir = crate::common::local_app_data()
-        .join("FreeClaudeLauncher")
+        .join("FreeClaudeDesktop")
         .join("logs");
     let _ = std::fs::create_dir_all(&local_dir);
 
@@ -181,7 +181,7 @@ async fn serve(
 ) -> Result<(), ServerError> {
     let addr = listener.local_addr()?;
     tracing::info!("==================================================");
-    tracing::info!("FreeClaudeLauncher Rust Axum Async Server 已啟動");
+    tracing::info!("FreeClaudeDesktop Rust Axum Async Server 已啟動");
     tracing::info!("本機服務: http://{}", addr);
     tracing::info!("API 代理: http://{}/v1/messages", addr);
     tracing::info!("==================================================");

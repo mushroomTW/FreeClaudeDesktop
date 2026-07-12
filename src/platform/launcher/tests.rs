@@ -68,7 +68,7 @@ fn meta_remove_only_removes_managed_entry() {
         "appliedId": CONFIG_ID,
         "entries": [
             { "id": "other-id", "name": "Other Config" },
-            { "id": CONFIG_ID, "name": "FreeClaudeLauncher" }
+            { "id": CONFIG_ID, "name": "FreeClaudeDesktop" }
         ]
     });
 
@@ -86,16 +86,15 @@ fn deployment_mode_restore_keeps_previous_value() {
 
     let applied = apply_managed_deployment_mode(original);
     assert_eq!(applied["deploymentMode"], "3p");
-    assert_eq!(
-        applied["freeClaudeLauncherPreviousDeploymentMode"],
-        "custom"
-    );
+    assert_eq!(applied["freeClaudeDesktopPreviousDeploymentMode"], "custom");
 
     let restored = restore_managed_deployment_mode(applied);
     assert_eq!(restored["deploymentMode"], "custom");
-    assert!(restored
-        .get("freeClaudeLauncherPreviousDeploymentMode")
-        .is_none());
+    assert!(
+        restored
+            .get("freeClaudeDesktopPreviousDeploymentMode")
+            .is_none()
+    );
 }
 
 #[test]
@@ -136,9 +135,11 @@ fn anthropic_base_url_env_restore_keeps_previous_values() {
     assert_eq!(restored["env"]["ANTHROPIC_BASE_URL"], "https://old.example");
     assert_eq!(restored["env"]["ENABLE_TOOL_SEARCH"], "false");
     assert_eq!(restored["env"]["KEEP_ME"], "1");
-    assert!(restored["env"]
-        .get("CLAUDE_CODE_ENABLE_AUTO_MODE")
-        .is_none());
+    assert!(
+        restored["env"]
+            .get("CLAUDE_CODE_ENABLE_AUTO_MODE")
+            .is_none()
+    );
     assert!(restored.get(PREVIOUS_CLAUDE_SETTINGS_KEY).is_none());
 
     restore_env(old_env);
@@ -317,7 +318,7 @@ fn invalid_official_mcp_config_stops_deployment_write() {
 #[test]
 fn mirror_profile_dir_returns_valid_path() {
     let mirror = mirror_profile_dir();
-    assert!(mirror.to_string_lossy().contains("FreeClaudeLauncher"));
+    assert!(mirror.to_string_lossy().contains("FreeClaudeDesktop"));
     assert!(mirror.to_string_lossy().contains("claude_profile"));
 }
 

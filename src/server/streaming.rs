@@ -1,6 +1,6 @@
 use axum::body::Bytes;
 use futures::StreamExt;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
@@ -89,7 +89,7 @@ async fn convert_stream_inner(
             "input_tokens": 0,
             "output_tokens": 0
         });
-        if let Some(ref val) = u {
+        if let Some(val) = u {
             let input = val
                 .get("prompt_tokens")
                 .and_then(Value::as_u64)

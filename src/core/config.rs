@@ -1,9 +1,9 @@
 use crate::common::local_app_data;
 use crate::crypto::unprotect_secret;
 use crate::error::{AppError, AppResult};
-use crate::platform::atomic_file::{write_transaction, PendingWrite};
+use crate::platform::atomic_file::{PendingWrite, write_transaction};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -147,7 +147,9 @@ impl Language {
                 "settings_menu" => "Settings",
                 "local_proxy" => "Local Proxy: 127.0.0.1:",
                 "detecting" => "Detecting...",
-                "reset_confirm_msg" => "Are you sure you want to reset the mirror Profile? Official profile will not be affected.",
+                "reset_confirm_msg" => {
+                    "Are you sure you want to reset the mirror Profile? Official profile will not be affected."
+                }
                 "confirm_reset" => "Confirm Reset",
                 "cancel" => "Cancel",
                 "save_launch" => "Save & Launch ↵",
@@ -159,7 +161,9 @@ impl Language {
                 "job_cancelled" => "Job cancelled",
                 "sync_success" => "Settings synced from official Claude.",
                 "sync_failed" => "Sync failed",
-                "reset_success" => "Mirror Profile directory has been reset. Official directory is unaffected.",
+                "reset_success" => {
+                    "Mirror Profile directory has been reset. Official directory is unaffected."
+                }
                 "theme_save_failed" => "Failed to save theme",
                 "load_settings_failed" => "Failed to load settings",
                 "fetch_models_success" => "Model list updated: {} models",
@@ -236,7 +240,7 @@ impl Language {
                 "launch_failed" => "啟動",
                 "reset_failed" => "重置",
                 _ => key,
-            }
+            },
         }
     }
 }
@@ -343,31 +347,11 @@ pub fn to_public_config(settings: &Settings) -> Value {
 
 pub fn settings_file() -> PathBuf {
     local_app_data()
-        .join("FreeClaudeLauncher")
+        .join("FreeClaudeDesktop")
         .join("launcher_settings.json")
-}
-
-fn legacy_settings_file() -> PathBuf {
-    local_app_data()
-        .join("Claude-3p")
-        .join("launcher_settings.json")
-}
-
-fn migrate_legacy_settings() -> AppResult<()> {
-    let legacy = legacy_settings_file();
-    let new_file = settings_file();
-    if legacy.exists() && !new_file.exists() {
-        if let Some(parent) = new_file.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        write_transaction(vec![PendingWrite::new(new_file, fs::read(&legacy)?)])?;
-        fs::remove_file(legacy)?;
-    }
-    Ok(())
 }
 
 pub fn load_launcher_settings() -> AppResult<Option<Settings>> {
-    migrate_legacy_settings()?;
     let path = settings_file();
     if !path.exists() {
         return Ok(None);
@@ -392,10 +376,6 @@ pub fn save_launcher_settings(settings: &Settings) -> AppResult<()> {
         serialized.into_bytes(),
     )])?;
 
-    let legacy = legacy_settings_file();
-    if legacy.exists() && legacy != path {
-        fs::remove_file(legacy)?;
-    }
     Ok(())
 }
 
