@@ -133,7 +133,7 @@
                     <Component Id='ApplicationShortcut' Guid='*' Win64='yes'>
                         <Shortcut
                             Id='ApplicationStartMenuShortcut'
-                            Directory='ApplicationProgramsFolder'
+                            Directory='CommonApplicationProgramsFolder'
                             Name='FreeClaudeDesktop'
                             Description='Connect Claude Desktop to compatible AI gateways'
                             Target='[#exe0]'
@@ -150,8 +150,8 @@
                     </Component>
                 </Directory>
             </Directory>
-            <Directory Id='ProgramMenuFolder'>
-                <Directory Id='ApplicationProgramsFolder' Name='FreeClaudeDesktop'/>
+            <Directory Id='CommonProgramsFolder'>
+                <Directory Id='CommonApplicationProgramsFolder' Name='FreeClaudeDesktop'/>
             </Directory>
         </Directory>
 
