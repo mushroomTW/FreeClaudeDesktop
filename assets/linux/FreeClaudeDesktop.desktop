@@ -1,13 +1,13 @@
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=FreeClaudeLauncher
+Name=FreeClaudeDesktop
 Comment=Connect Claude Desktop to OpenAI- or Anthropic-compatible gateways
 Comment[zh_TW]=將 Claude Desktop 連接至 OpenAI 或 Anthropic 相容 Gateway
-Exec=FreeClaudeLauncher
-Icon=freeclaudelauncher
+Exec=FreeClaudeDesktop
+Icon=freeclaudedesktop
 Terminal=false
 Categories=Utility;Network;
 Keywords=Claude;AI;Launcher;Proxy;
 StartupNotify=true
-StartupWMClass=FreeClaudeLauncher
+StartupWMClass=FreeClaudeDesktop

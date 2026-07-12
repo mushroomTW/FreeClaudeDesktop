@@ -100,45 +100,48 @@ sequenceDiagram
 
 ## 🌟 核心特色
 
-### 1. 🔌 高能本機 API Proxy (`/v1/messages` & `/v1/models`)
+### 1. 🔌 本機 API Proxy (Local API proxy)
 
-* **跨協議雙向轉換**：完整支援 Anthropic Messages 與 OpenAI Chat Completions 之 Request、Response 及 Streaming (SSE) 格式轉換。
-* **Thinking / Reasoning 適配**：
-  * 自動處理 DeepSeek R1 / OpenAI o1/o3 之 `reasoning_content` 與 Claude `thinking` (budget / effort clamp) 雙向事件轉換。
-* **模型路由與失效自動重試 (Stale Model Route Fallback)**：
-  * 當上游 Gateway 回報模型已下架或變更名稱時，系統會自動使用預備路由進行備用重試。
-* **動態 Model Alias Rewrite**：
-  * 自動根據 Gateway 提供的模型思考能力，將請求映射至正確的 Claude 模型別名。
-* **模型探索與可見性控制**：
-  * 從上游 `/v1/models` 建立 Claude Desktop 相容的模型清單，並可在 GUI 個別控制模型是否顯示。
-  * 1M 上下文能力透過 `supports1m` 宣告，不修改 discovery 模型 ID；隱藏模型仍保留於 Launcher 清單，可隨時重新啟用。
-* **Reasoning 能力覆寫**：
-  * 讀取 LiteLLM `model_info.reasoning_effort_levels`，並允許在 GUI 個別設定 `none`、`low`、`medium`、`high` 或 `max` 上限。
+* 支援與 Claude Desktop 相容的 `/v1/messages` 和 `/v1/models` 端點。
+* 實現 Anthropic Messages 與 OpenAI Chat Completions 協議間 Request、Response、工具呼叫及 SSE 串流的雙向轉換。
+* 同時支援 OpenAI-compatible 與 Anthropic-compatible 的上游傳輸協議。
+* 當上游 Gateway 回報模型更動時，自動重試已失效或棄用的模型路由。
 
-> **已知行為 — 1M 上下文版本：**模型設定為支援 1M 上下文後，Claude Desktop 可能同時顯示一般 200K 與 1M 兩個版本。這是 Claude Desktop 對 `supports1m` 的呈現方式；FreeClaudeLauncher 仍維持單一且穩定的 discovery 模型 ID，並另外宣告 1M 能力。
+### 2. 🗺️ 模型探索與路由 (Model discovery and routing)
 
-### 2. ⚡ 本機 Fast-Path 最佳化
+* 自動從上游 `/v1/models` 探索模型並生成獨特的 Claude 相容別名。
+* 保持 Claude Desktop 設定檔與已探索模型 ID 的同步。
+* 在 GUI 提供個別模型顯示（Show）的切換開關。隱藏的模型會自設定檔、探索輸出與路由中移除，但仍保留於 Launcher 中以便日後重新啟用。
+* 透過 `supports1m` 宣告 1M 上下文能力，不修改已探索模型 ID。
+* 支援明確的預設（Fallback）、Opus、Sonnet 與 Haiku 模型路由覆寫。
 
-* **無效請求攔截**：對 Claude Desktop 的探測請求、標題產生、語意建議、Quota 檢測與檔案路徑提取等提供本機 Fast-Path 直回，節省無效上游 Token 費用。
-* **Web Tools 安全邊界**：內建 private network 防護，預設阻擋私有網路 Web Fetch 請求。
+### 3. 🧠 思考與推理適配 (Thinking and reasoning)
 
-### 3. 🔒 跨平台安全憑證儲存
+* 將 Claude 的 `thinking.budget_tokens` 轉換為上游的 `reasoning_effort` 分級。
+* 自動讀取 LiteLLM 的 `model_info.supports_reasoning_effort` 與 `reasoning_effort_levels` 元數據。
+* 支援設定個別模型的推理上限：`none`、`low`、`medium`、`high` 或 `max`。
+* 將請求的推理預算限制在所選模型支援的最近分級。
+* 將上游的 `reasoning_content` 轉換為 Claude 思考塊與串流事件。
 
-* API Keys 使用系統原生憑證庫 (`keyring` / DPAPI) 加密保存。
-* 可隨時寫入與還原 Claude Desktop `configLibrary` 設定。
+> **已知行為 — 1M 上下文版本：**模型設定為支援 1M 上下文後，Claude Desktop 可能同時顯示一般 200K 與 1M 兩個版本。這是 Claude Desktop 對 `supports1m` 的呈現方式；FreeClaudeDesktop 仍維持單一且穩定的 discovery 模型 ID，並另外宣告 1M 能力。
 
-### 4. 🛡️ 鏡像數據隔離與 Profile 隔離 (Mirror Profile)
+### 4. ⚡ 本機最佳化 Fast-Path (Local optimization fast paths)
 
-* **官方原版數據 100% 唯讀保護**：絕不修改或破壞官方原版 `%APPDATA%\Claude` 的任何數據與登入狀態。
-* **獨立隔離 Profile 運行**：藉由 Electron 原生 `--user-data-dir` 參數，將所有 3P 代理配置、自訂 MCP、`configLibrary` 與日誌完全隔離至 `%LOCALAPPDATA%\FreeClaudeLauncher\claude_profile`。
-* **無縫無痕還原**：不經啟動器直接開啟官方原版 Claude Desktop 隨時均為 100% 純淨無修改的原生狀態。
+* 本機攔截並直回 Claude Desktop 的探測、配額檢查、標題生成、建議模式與檔案路徑提取請求，避免無效的上游 Token 消耗。
+* 本機攔截 Web 工具，預設啟用 private-network 安全防護阻擋私有網路 Web Fetch 請求。
 
-### 5. 🌐 多語言介面支援
+### 5. 🔒 憑證與隔離 Profile 運行 (Credential and profile isolation)
 
-* **即時雙語切換**：可在左側邊欄底部的下拉清單中，自由切換 **English** 或 **繁體中文**。
-* **無縫無感重新整理**：介面文字會立即刷新套用，無須重啟應用程式，並自動儲存偏好設定。
+* 使用 platform 原生憑證庫（如 `keyring` / DPAPI）加密保護 API Key。
+* 預設將 Proxy 伺服器僅綁定至本機迴路位址 `127.0.0.1`。
+* 藉由獨立的鏡像 Profile 隔離運行 Claude Desktop，官方原版設定檔與登入狀態完全不受影響。
+* 支援從官方原版 Profile 一鍵同步登入 Session 與自訂 MCP 伺服器配置。
+* 支援重置鏡像 Profile 目錄而不影響官方原版資料。
 
----
+### 6. 🌐 多語言介面支援 (Multilingual UI)
+
+* 支援透過側邊欄底部的下拉清單在 **English** 與 **繁體中文** 之間自由切換。
+* 免重新啟動應用程式即可即時更新所有介面文字與設定，並自動儲存偏好設定。
 
 ## 🔄 數據隔離與同步機制 (Mirror Profile & Sync)
 
@@ -150,6 +153,13 @@ sequenceDiagram
    * 當您在官方原版 Claude 登入新帳號或新增了其他自訂 MCP 伺服器後，可一鍵點擊介面上的 **「從原版同步」**，程式會立即拉取原版最新狀態並重新套用代理設定。
 3. **重置鏡像 Profile (Reset Mirror Profile)**：
    * 點擊 **「重置鏡像 Profile」** 僅會清空鏡像 Profile 並重新初始化，官方原版資料完全不受任何影響。
+
+---
+
+## 🔌 預設本機服務 (Default local services)
+
+| 服務 | 預設位址 |
+| FreeClaudeDesktop 本機代理 | `127.0.0.1:3000` |
 
 ---
 
@@ -225,11 +235,7 @@ cargo run
 
 ## 🙏 致謝
 
-感謝 [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) 展示如何透過單一、易於管理的本機 Proxy，將 Claude 相容客戶端連接到雲端與本機模型供應商。其供應商選擇、Opus／Sonnet／Haiku 分層路由、模型探索與管理介面的想法，啟發了本專案的發展方向。
-
-FreeClaudeDesktop 將這些廣義概念應用在不同的產品邊界與獨立程式碼庫：以 Rust 建立 Claude Desktop 原生啟動器，提供 Anthropic／OpenAI 協議轉換、`configLibrary` 整合、系統憑證保護及鏡像 Profile 隔離。本專案未包含 free-claude-code 的原始碼。
-
----
+感謝 [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code)啟發了本專案。
 
 ## 📝 文件維護
 
