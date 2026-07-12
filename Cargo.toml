@@ -6,7 +6,7 @@ description = "A cross-platform Claude Desktop launcher and local API proxy"
 readme = "README.md"
 
 [[bin]]
-name = "FreeClaudeLauncher"
+name = "FreeClaudeDesktop"
 path = "src/main.rs"
 
 [dependencies]
@@ -39,9 +39,9 @@ winres = "0.1"
 section = "utils"
 priority = "optional"
 assets = [
-    ["target/release/FreeClaudeLauncher", "usr/bin/", "755"],
-    ["assets/linux/FreeClaudeLauncher.desktop", "usr/share/applications/FreeClaudeLauncher.desktop", "644"],
-    ["assets/linux/freeclaudelauncher.png", "usr/share/icons/hicolor/256x256/apps/freeclaudelauncher.png", "644"],
+    ["target/release/FreeClaudeDesktop", "usr/bin/", "755"],
+    ["assets/linux/FreeClaudeDesktop.desktop", "usr/share/applications/FreeClaudeDesktop.desktop", "644"],
+    ["assets/linux/freeclaudedesktop.png", "usr/share/icons/hicolor/256x256/apps/freeclaudedesktop.png", "644"],
     ["README.md", "usr/share/doc/free-claude-launcher/README.md", "644"],
     ["README_zh.md", "usr/share/doc/free-claude-launcher/README_zh.md", "644"],
 ]

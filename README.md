@@ -10,43 +10,53 @@ The project was inspired by [Alishahryar1/free-claude-code](https://github.com/A
 
 ---
 
-## Architecture and data flow
+## 📊 Architecture and data flow
 
 ```mermaid
 flowchart TD
-    subgraph Client ["Client"]
-        CD["Claude Desktop"]
+    subgraph Client ["🖥️ Client Layer"]
+        CD["Claude Desktop (App)"]
     end
 
-    subgraph Launcher ["FreeClaudeDesktop (Rust)"]
-        GUI["Iced GUI and tray manager"]
-        Config["Configuration and credential manager"]
-
-        subgraph Proxy ["Axum local API proxy (127.0.0.1:3000)"]
-            Router["/v1/messages and /v1/models"]
-            Auth["Proxy authentication"]
-            FastPath["Local optimization fast paths"]
-            Converter["Protocol, model, and thinking conversion"]
-            Fallback["Stale model route fallback"]
+    subgraph Launcher ["🚀 FreeClaudeDesktop (Rust Core)"]
+        GUI["Iced GUI / Tray Manager"]
+        Config["Config & Credential Manager (Keyring / DPAPI)"]
+        
+        subgraph ProxyServer ["🌐 Axum Local API Proxy (Port 127.0.0.1)"]
+            Router["Axum HTTP Router (/v1/messages, /v1/models)"]
+            AuthValidator["Authorization & Token Validator"]
+            FastPath["Optimization Fast-Path (Title/Quota/Suggest)"]
+            ReqConv["Request Converter (Anthropic ⇄ OpenAI / Thinking Budget)"]
+            RespConv["Response Converter & SSE Streamer (Reasoning ⇄ Thinking)"]
+            Fallback["Stale Model Route Fallback Handler"]
         end
+
     end
 
-    subgraph Upstream ["Upstream gateways"]
-        OpenAI["OpenAI-compatible gateway"]
-        Anthropic["Anthropic-compatible gateway"]
+    subgraph Upstream ["☁️ Upstream Gateways"]
+        GW1["OpenAI-Compatible Gateway (One API / LiteLLM / DeepSeek)"]
+        GW2["Anthropic-Compatible Gateway"]
     end
 
+    CD -- "HTTP /v1/messages" --> Router
     GUI <--> Config
-    Config --> CD
-    CD --> Router --> Auth --> FastPath --> Converter
-    Converter --> OpenAI & Anthropic
-    OpenAI & Anthropic --> Converter
-    Converter --> Fallback
-    Fallback --> OpenAI & Anthropic
-    Converter --> CD
+    Config -- "Set Proxy Port & Keys" --> Router
+    Config -- "Write Config" --> CD
+
+    Router --> AuthValidator
+    AuthValidator --> FastPath
+    FastPath -- "Local Response (Fast-Path)" --> CD
+    FastPath -- "Pass Through" --> ReqConv
+
+    ReqConv --> GW1 & GW2
+    GW1 & GW2 -- "JSON / SSE Stream" --> RespConv
+    RespConv -- "Error (404/Stale Model)" --> Fallback
+    Fallback -- "Retry Alternate Route" --> GW1 & GW2
+    RespConv --> CD
+
 ```
 
-### Message conversion flow
+### 🔌 Message conversion flow
 
 ```mermaid
 sequenceDiagram
@@ -79,16 +89,16 @@ sequenceDiagram
 
 ---
 
-## Features
+## 🌟 Features
 
-### Local API proxy
+### 1. 🔌 Local API proxy
 
 - Serves Claude Desktop-compatible `/v1/messages` and `/v1/models` endpoints.
 - Converts requests, responses, tool calls, and SSE streams between Anthropic Messages and OpenAI Chat Completions formats.
 - Supports both OpenAI-compatible and Anthropic-compatible upstream transports.
 - Retries stale or deprecated model routes when the gateway reports a model change.
 
-### Model discovery and routing
+### 2. 🗺️ Model discovery and routing
 
 - Discovers models from the upstream `/v1/models` endpoint and generates unique Claude-compatible aliases.
 - Keeps the Claude Desktop configuration and model discovery IDs synchronized.
@@ -96,7 +106,7 @@ sequenceDiagram
 - Provides a per-model **Show** toggle in the GUI. Hidden models are removed from Claude Desktop configuration, discovery output, routes, and reasoning metadata, while remaining available in the Launcher for later re-enabling.
 - Supports explicit default, Opus, Sonnet, and Haiku route overrides.
 
-### Thinking and reasoning
+### 3. 🧠 Thinking and reasoning
 
 - Converts Claude `thinking.budget_tokens` into upstream `reasoning_effort` levels.
 - Reads LiteLLM `model_info.supports_reasoning_effort` and `reasoning_effort_levels` metadata.
@@ -106,12 +116,12 @@ sequenceDiagram
 
 > **Known behavior — 1M context variants:** when a model is configured with 1M context support, Claude Desktop may expose both a regular 200K entry and a 1M entry for that model. This is Claude Desktop's presentation of `supports1m`; FreeClaudeLauncher keeps one stable discovery model ID and declares the 1M capability separately.
 
-### Local optimization fast paths
+### 4. ⚡ Local optimization fast paths
 
 - Handles selected Claude Desktop probes, quota checks, title generation, suggestion mode, and file-path extraction locally to avoid unnecessary upstream token usage.
 - Includes optional local `web_search` and `web_fetch` handling with private-network protection enabled by default.
 
-### Credential and profile isolation
+### 5. 🔒 Credential and profile isolation
 
 - Protects API keys with platform-native credential storage (`keyring`/DPAPI where available).
 - Binds the proxy to the local loopback interface by default.
@@ -119,14 +129,14 @@ sequenceDiagram
 - Supports re-syncing login/session and custom MCP data from the official profile.
 - Can reset only the mirror profile without modifying official Claude Desktop data.
 
-### Multilingual UI
+### 6. 🌐 Multilingual UI
 
 - Supports easy toggling between **English** and **Traditional Chinese** (`繁體中文`) via the drop-down list at the bottom of the sidebar.
 - Updates all UI text and configuration components instantly without requiring an application restart.
 
 ---
 
-## Mirror profile lifecycle
+## 🔄 Mirror profile lifecycle
 
 1. **First launch:** relevant session and custom MCP data are copied from the official Claude Desktop profile into the isolated Launcher profile.
 2. **Re-sync from official:** refreshes the mirror from the current official profile, then reapplies managed proxy settings.
@@ -136,18 +146,14 @@ FreeClaudeDesktop does not modify Claude Desktop source code, installation files
 
 ---
 
-## Default local services
+## 🔌 Default local services
 
 | Service | Default address |
-|---|---|
 | FreeClaudeDesktop proxy | `127.0.0.1:3000` |
-| Typical local LiteLLM gateway | `127.0.0.1:4000` |
-
-The upstream gateway URL and authentication scheme are configurable in the GUI.
 
 ---
 
-## Project structure
+## 📂 Project structure
 
 ```text
 src/
@@ -165,7 +171,7 @@ src/
 
 ---
 
-## Build and test
+## 🛠️ Build and test
 
 Requirements:
 
@@ -208,7 +214,7 @@ cargo run
 
 ---
 
-## Security notes
+## 🛡️ Security notes
 
 - Never place real API keys in logs, error messages, tests, screenshots, or documentation.
 - Keep the proxy bound to loopback unless you have deliberately designed and secured remote access.
@@ -217,14 +223,12 @@ cargo run
 
 ---
 
-## Acknowledgements
+## 🙏 Acknowledgements
 
-Thanks to [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) for demonstrating a practical way to connect Claude-compatible clients to cloud and local providers through one manageable local proxy. Its ideas around provider selection, Opus/Sonnet/Haiku tier routing, model discovery, and a user-friendly administration surface helped inspire this project's direction.
-
-FreeClaudeDesktop applies those broad ideas to a different product boundary and codebase: a native Rust launcher for Claude Desktop with Anthropic/OpenAI protocol conversion, `configLibrary` integration, system credential protection, and mirror-profile isolation. No source code from free-claude-code is included here.
+Thanks to [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) for inspiring this project.
 
 ---
 
-## Documentation maintenance
+## 📝 Documentation maintenance
 
 When model discovery, configuration fields, ports, security boundaries, or test counts change, update both [README.md](README.md) and [README_zh.md](README_zh.md) in the same change.
