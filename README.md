@@ -6,7 +6,6 @@
 [![GUI: Iced](https://img.shields.io/badge/GUI-Iced-4b6cb7.svg?style=for-the-badge)](https://github.com/iced-rs/iced)
 [![HTTP: Axum](https://img.shields.io/badge/HTTP-Axum-6d3f8c.svg?style=for-the-badge)](https://github.com/tokio-rs/axum)
 [![Runtime: Tokio](https://img.shields.io/badge/runtime-Tokio-4c8eda.svg?style=for-the-badge)](https://tokio.rs/)
-[![CI](https://github.com/mushroomTW/FreeClaudeDesktop/actions/workflows/ci.yml/badge.svg?style=for-the-badge)](https://github.com/mushroomTW/FreeClaudeDesktop/actions/workflows/ci.yml)
 
 FreeClaudeDesktop is a cross-platform desktop launcher and local API proxy for Claude Desktop. It connects Claude Desktop to OpenAI-compatible and Anthropic-compatible AI gateways while keeping the proxy bound to the local machine.
 
@@ -55,7 +54,6 @@ Published assets include SHA-256 checksums and Sigstore provenance bundles. Curr
 - [Releases](https://github.com/mushroomTW/FreeClaudeDesktop/releases)
 - [Issue tracker](https://github.com/mushroomTW/FreeClaudeDesktop/issues)
 - [Architecture](ARCHITECTURE.md)
-- [Reference project: free-claude-code](https://github.com/Alishahryar1/free-claude-code)
 
 ## Security
 

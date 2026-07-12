@@ -6,7 +6,6 @@
 [![GUI: Iced](https://img.shields.io/badge/GUI-Iced-4b6cb7.svg?style=for-the-badge)](https://github.com/iced-rs/iced)
 [![HTTP: Axum](https://img.shields.io/badge/HTTP-Axum-6d3f8c.svg?style=for-the-badge)](https://github.com/tokio-rs/axum)
 [![Runtime: Tokio](https://img.shields.io/badge/runtime-Tokio-4c8eda.svg?style=for-the-badge)](https://tokio.rs/)
-[![CI](https://github.com/mushroomTW/FreeClaudeDesktop/actions/workflows/ci.yml/badge.svg?style=for-the-badge)](https://github.com/mushroomTW/FreeClaudeDesktop/actions/workflows/ci.yml)
 
 FreeClaudeDesktop 是跨平台的 Claude Desktop 啟動器與本機 API Proxy。它可將 Claude Desktop 連接到 OpenAI 相容或 Anthropic 相容的 AI Gateway，並預設只在本機運作。
 
@@ -46,19 +45,15 @@ cargo deb --locked
 ## 發佈
 
 Release 由 GitHub Actions 手動執行，會從所選分支或 commit 建置 Windows、Linux 與 macOS 產物。GitHub Release 必須關聯 tag，因此 workflow 會在發佈時依 `Cargo.toml` 版本建立 tag；推送 tag 不會觸發發佈。
-
 發佈資產包含 SHA-256 checksum 與 Sigstore provenance bundle。目前 Windows 與 macOS 產物未簽章，第一次開啟時可能出現作業系統安全警告。
-
 重跑既有版本時，workflow 會確認 tag 仍指向相同 commit，避免以不同建置覆蓋已發佈資產。
 
 ## Project Links
 
 - [架構文件](ARCHITECTURE.md)
-
 - [原始碼](https://github.com/mushroomTW/FreeClaudeDesktop)
 - [Releases](https://github.com/mushroomTW/FreeClaudeDesktop/releases)
 - [Issue Tracker](https://github.com/mushroomTW/FreeClaudeDesktop/issues)
-- [參考專案：free-claude-code](https://github.com/Alishahryar1/free-claude-code)
 
 ## 安全性
 
