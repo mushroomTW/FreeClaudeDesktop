@@ -228,7 +228,10 @@ pub fn write_config_to_all_paths(file_name: &str, content: &str) -> AppResult<()
 }
 
 fn config_library_dirs() -> Vec<PathBuf> {
+    #[cfg(target_os = "windows")]
     let mut dirs = vec![config_lib_dir()];
+    #[cfg(not(target_os = "windows"))]
+    let dirs = vec![config_lib_dir()];
     #[cfg(target_os = "windows")]
     {
         dirs.push(local_app_data().join("Claude-3p").join("configLibrary"));
