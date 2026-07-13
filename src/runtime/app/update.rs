@@ -210,9 +210,7 @@ impl LauncherApp {
                 return Task::perform(
                     async move {
                         tokio::task::spawn_blocking(move || {
-                            let Some(mut settings) = crate::get_launcher_settings() else {
-                                return Ok(());
-                            };
+                            let mut settings = crate::get_launcher_settings().unwrap_or_default();
                             settings.theme_mode = mode.as_str().to_string();
                             crate::save_launcher_settings(&settings)
                                 .map_err(|error| error.to_string())
@@ -235,9 +233,7 @@ impl LauncherApp {
                 return Task::perform(
                     async move {
                         tokio::task::spawn_blocking(move || {
-                            let Some(mut settings) = crate::get_launcher_settings() else {
-                                return Ok(());
-                            };
+                            let mut settings = crate::get_launcher_settings().unwrap_or_default();
                             settings.language = lang.as_str().to_string();
                             crate::save_launcher_settings(&settings)
                                 .map_err(|error| error.to_string())

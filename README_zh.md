@@ -2,7 +2,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-stable-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Edition 2024](https://img.shields.io/badge/edition-2024-3776ab.svg?style=for-the-badge)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
 [![GUI: Iced](https://img.shields.io/badge/GUI-Iced-4b6cb7.svg?style=for-the-badge)](https://github.com/iced-rs/iced)
 [![HTTP: Axum](https://img.shields.io/badge/HTTP-Axum-6d3f8c.svg?style=for-the-badge)](https://github.com/tokio-rs/axum)
 [![Runtime: Tokio](https://img.shields.io/badge/runtime-Tokio-4c8eda.svg?style=for-the-badge)](https://tokio.rs/)
@@ -51,7 +50,6 @@ Release 由 GitHub Actions 手動執行，會從所選分支或 commit 建置 Wi
 ## Project Links
 
 - [架構文件](ARCHITECTURE.md)
-- [原始碼](https://github.com/mushroomTW/FreeClaudeDesktop)
 - [Releases](https://github.com/mushroomTW/FreeClaudeDesktop/releases)
 - [Issue Tracker](https://github.com/mushroomTW/FreeClaudeDesktop/issues)
 
