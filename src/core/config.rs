@@ -210,7 +210,7 @@ impl Language {
                 "title_generation_skip" => "標題生成跳過",
                 "suggestion_mode_skip" => "建議模式跳過",
                 "filepath_extraction_mock" => "檔案路徑提取模擬",
-                "settings_menu" => "設定選單",
+                "settings_menu" => "設定",
                 "local_proxy" => "本機 Proxy：127.0.0.1：",
                 "detecting" => "正在偵測...",
                 "title" => "FreeClaudeDesktop",

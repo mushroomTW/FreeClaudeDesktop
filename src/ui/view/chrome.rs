@@ -374,8 +374,8 @@ pub(super) fn sidebar<'a>(app: &LauncherApp, palette: ColorPalette) -> Element<'
         .collect();
 
     let icon_widget = image(get_app_icon().clone())
-        .width(Length::Fixed(56.0))
-        .height(Length::Fixed(56.0));
+        .width(Length::Fixed(36.0))
+        .height(Length::Fixed(36.0));
 
     let sidebar = container(
         column![
@@ -383,19 +383,19 @@ pub(super) fn sidebar<'a>(app: &LauncherApp, palette: ColorPalette) -> Element<'
                 icon_widget,
                 column![
                     text("FreeClaudeDesktop")
-                        .size(15)
+                        .size(13)
                         .color(palette.text)
                         .font(Font {
                             weight: Weight::Bold,
                             ..Default::default()
                         }),
                     text(app.language.tr("settings_menu"))
-                        .size(13)
+                        .size(11)
                         .color(palette.text_dim),
                 ]
                 .spacing(2),
             ]
-            .spacing(12)
+            .spacing(8)
             .align_y(Alignment::Center),
             column(sidebar_items).spacing(4),
             Space::new().height(Length::Fill),
