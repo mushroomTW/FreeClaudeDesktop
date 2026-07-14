@@ -31,6 +31,13 @@ pub struct AdminSettingsUpdate {
     api_key: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "method")]
+pub enum AdminRpcRequest {
+    GetStatus,
+    DetectClaude,
+}
+
 fn validate_gateway_url(base_url: &str) -> Result<String, &'static str> {
     let base_url = base_url.trim().trim_end_matches('/');
     let parsed = Url::parse(base_url).map_err(|_| "Gateway URL 格式無效")?;
@@ -323,6 +330,27 @@ pub async fn handle_admin_status(headers: HeaderMap) -> impl IntoResponse {
     }
 }
 
+pub async fn handle_admin_rpc(
+    headers: HeaderMap,
+    Json(request): Json<AdminRpcRequest>,
+) -> impl IntoResponse {
+    let settings = match load_authorized_settings(&headers).await {
+        Ok(settings) => settings,
+        Err(response) => return response.into_response(),
+    };
+
+    let result = match request {
+        AdminRpcRequest::GetStatus => json!({
+            "proxy": { "status": "ok", "port": settings.active_port },
+            "settings": to_public_config(&settings),
+        }),
+        AdminRpcRequest::DetectClaude => json!({
+            "path": crate::detect_claude_path().map(|path| path.display().to_string()),
+        }),
+    };
+    (StatusCode::OK, Json(json!({ "result": result }))).into_response()
+}
+
 #[cfg(test)]
 mod healthz_tests {
     use super::*;
@@ -341,6 +369,14 @@ mod healthz_tests {
         assert!(validate_gateway_url("https://gateway.example/v1").is_ok());
         assert!(validate_gateway_url("http://gateway.example").is_err());
         assert!(validate_gateway_url("file:///tmp/gateway").is_err());
+    }
+
+    #[test]
+    fn rpc_request_uses_allowlist() {
+        assert!(serde_json::from_str::<AdminRpcRequest>(r#"{"method":"GetStatus"}"#).is_ok());
+        assert!(
+            serde_json::from_str::<AdminRpcRequest>(r#"{"method":"DeleteEverything"}"#).is_err()
+        );
     }
 }
 
