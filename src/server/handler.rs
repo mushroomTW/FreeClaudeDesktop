@@ -40,6 +40,14 @@ pub struct AdminSettingsUpdate {
 pub enum AdminRpcRequest {
     GetStatus,
     DetectClaude,
+    ApplySettings {
+        #[serde(rename = "baseUrl")]
+        base_url: String,
+        #[serde(rename = "authScheme")]
+        auth_scheme: String,
+        #[serde(rename = "apiKey")]
+        api_key: Option<String>,
+    },
     LaunchClaude,
     RestoreSettings,
 }
@@ -70,6 +78,41 @@ fn validate_gateway_url(base_url: &str) -> Result<String, &'static str> {
     }
 
     Ok(base_url.to_string())
+}
+
+fn apply_settings_update(
+    settings: &mut Settings,
+    input: AdminSettingsUpdate,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    let base_url = validate_gateway_url(&input.base_url)
+        .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
+    let auth_scheme = input.auth_scheme.trim().to_ascii_lowercase();
+    if !matches!(auth_scheme.as_str(), "bearer" | "x-api-key") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "authScheme 必須是 bearer 或 x-api-key" })),
+        ));
+    }
+
+    settings.real_base_url = base_url;
+    settings.real_auth_scheme = auth_scheme;
+    if let Some(api_key) = input.api_key.map(|key| key.trim().to_string())
+        && !api_key.is_empty()
+    {
+        settings.real_api_key = crate::protect_secret(&api_key).map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error.to_string() })),
+            )
+        })?;
+    }
+    crate::save_launcher_settings(settings).map_err(|error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": error.to_string() })),
+        )
+    })?;
+    Ok(to_public_config(settings))
 }
 
 async fn load_authorized_settings(
@@ -288,46 +331,9 @@ pub async fn update_admin_settings(
         Ok(settings) => settings,
         Err(response) => return response.into_response(),
     };
-    let base_url = match validate_gateway_url(&input.base_url) {
-        Ok(base_url) => base_url,
-        Err(error) => {
-            return (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))).into_response();
-        }
-    };
-
-    let auth_scheme = input.auth_scheme.trim().to_ascii_lowercase();
-    if !matches!(auth_scheme.as_str(), "bearer" | "x-api-key") {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "authScheme 必須是 bearer 或 x-api-key" })),
-        )
-            .into_response();
-    }
-
-    settings.real_base_url = base_url;
-    settings.real_auth_scheme = auth_scheme;
-    if let Some(api_key) = input.api_key.map(|key| key.trim().to_string())
-        && !api_key.is_empty()
-    {
-        settings.real_api_key = match crate::protect_secret(&api_key) {
-            Ok(secret) => secret,
-            Err(error) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": error.to_string() })),
-                )
-                    .into_response();
-            }
-        };
-    }
-
-    match crate::save_launcher_settings(&settings) {
-        Ok(()) => (StatusCode::OK, Json(to_public_config(&settings))).into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": error.to_string() })),
-        )
-            .into_response(),
+    match apply_settings_update(&mut settings, input) {
+        Ok(settings) => (StatusCode::OK, Json(settings)).into_response(),
+        Err(response) => response.into_response(),
     }
 }
 
@@ -349,7 +355,7 @@ pub async fn handle_admin_rpc(
     headers: HeaderMap,
     Json(request): Json<AdminRpcRequest>,
 ) -> impl IntoResponse {
-    let settings = match load_authorized_settings(&headers).await {
+    let mut settings = match load_authorized_settings(&headers).await {
         Ok(settings) => settings,
         Err(response) => return response.into_response(),
     };
@@ -362,6 +368,23 @@ pub async fn handle_admin_rpc(
         AdminRpcRequest::DetectClaude => json!({
             "path": crate::detect_claude_path().map(|path| path.display().to_string()),
         }),
+        AdminRpcRequest::ApplySettings {
+            base_url,
+            auth_scheme,
+            api_key,
+        } => {
+            match apply_settings_update(
+                &mut settings,
+                AdminSettingsUpdate {
+                    base_url,
+                    auth_scheme,
+                    api_key,
+                },
+            ) {
+                Ok(settings) => settings,
+                Err(response) => return response.into_response(),
+            }
+        }
         AdminRpcRequest::LaunchClaude => match crate::launch_claude(None) {
             Ok(path) => json!({ "path": path.display().to_string() }),
             Err(error) => {
@@ -407,7 +430,7 @@ async fn handle_companion_session(mut socket: WebSocket) {
             return;
         }
     };
-    let settings = match load_runtime_settings().await {
+    let mut settings = match load_runtime_settings().await {
         Ok(Some(settings)) if settings.proxy_auth_token == request.token => settings,
         _ => {
             let _ = socket
@@ -428,6 +451,23 @@ async fn handle_companion_session(mut socket: WebSocket) {
         AdminRpcRequest::DetectClaude => json!({
             "path": crate::detect_claude_path().map(|path| path.display().to_string()),
         }),
+        AdminRpcRequest::ApplySettings {
+            base_url,
+            auth_scheme,
+            api_key,
+        } => {
+            match apply_settings_update(
+                &mut settings,
+                AdminSettingsUpdate {
+                    base_url,
+                    auth_scheme,
+                    api_key,
+                },
+            ) {
+                Ok(settings) => settings,
+                Err((_, error)) => error.0,
+            }
+        }
         AdminRpcRequest::LaunchClaude => match crate::launch_claude(None) {
             Ok(path) => json!({ "path": path.display().to_string() }),
             Err(error) => json!({ "error": error.to_string() }),
@@ -470,6 +510,10 @@ mod healthz_tests {
     fn rpc_request_uses_allowlist() {
         assert!(serde_json::from_str::<AdminRpcRequest>(r#"{"method":"GetStatus"}"#).is_ok());
         assert!(serde_json::from_str::<AdminRpcRequest>(r#"{"method":"LaunchClaude"}"#).is_ok());
+        assert!(serde_json::from_str::<AdminRpcRequest>(
+            r#"{"method":"ApplySettings","baseUrl":"https://gateway.example/v1","authScheme":"bearer"}"#
+        )
+        .is_ok());
         assert!(
             serde_json::from_str::<AdminRpcRequest>(r#"{"method":"DeleteEverything"}"#).is_err()
         );
