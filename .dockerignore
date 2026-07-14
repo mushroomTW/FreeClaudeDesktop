@@ -1,0 +1,10 @@
+.git
+.codebase-memory
+.agents
+.codex-target
+assets
+docs
+target
+*.log
+Dockerfile
+docker-compose.yml
