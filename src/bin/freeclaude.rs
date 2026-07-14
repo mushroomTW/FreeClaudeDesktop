@@ -68,9 +68,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Start => start_proxy(),
+        Command::Stop => stop_proxy(),
         Command::Status => print_proxy_status().await,
         command => Err(format!("命令尚未實作：{}", command_name(&command)).into()),
     }
+}
+
+fn proxy_port() -> Result<u16, Box<dyn std::error::Error>> {
+    Ok(std::env::var("FREECLAUDE_PROXY_PORT")
+        .unwrap_or_else(|_| "3000".to_string())
+        .parse()?)
+}
+
+fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
+    let port = proxy_port()?;
+    let pid = free_claude_desktop::runtime::native::start_proxy(port)?;
+    println!("Proxy 已啟動：PID {pid}，連接埠 {port}");
+    Ok(())
+}
+
+fn stop_proxy() -> Result<(), Box<dyn std::error::Error>> {
+    free_claude_desktop::runtime::native::stop_proxy()?;
+    println!("Proxy 已停止");
+    Ok(())
 }
 
 async fn print_proxy_status() -> Result<(), Box<dyn std::error::Error>> {
