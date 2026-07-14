@@ -168,6 +168,20 @@ pub async fn handle_launcher_show() -> impl IntoResponse {
     "ok"
 }
 
+pub async fn handle_healthz() -> Json<Value> {
+    Json(json!({ "status": "ok" }))
+}
+
+#[cfg(test)]
+mod healthz_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn healthz_returns_ok_status() {
+        assert_eq!(handle_healthz().await.0, json!({ "status": "ok" }));
+    }
+}
+
 pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
     // Debug: log request headers without leaking local/upstream credentials.
     for (name, value) in &headers {
