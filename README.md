@@ -97,6 +97,23 @@ docker compose up --build
 
 The service is available at `http://127.0.0.1:3000`. The image contains no API key or proxy token.
 
+Run the same lifecycle through the CLI from the repository directory (or set `FREECLAUDE_COMPOSE_FILE` to the compose-file path):
+
+```bash
+freeclaude install --runtime docker
+freeclaude status --runtime docker
+freeclaude stop --runtime docker
+freeclaude start --runtime docker
+freeclaude update --runtime docker
+freeclaude uninstall --runtime docker --yes --purge-image
+```
+
+Check for a newer GitHub Release without changing the local installation:
+
+```bash
+freeclaude update --check
+```
+
 ## Project Links
 
 - [Architecture](ARCHITECTURE.md)

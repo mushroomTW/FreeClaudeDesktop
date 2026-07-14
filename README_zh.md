@@ -102,6 +102,23 @@ docker compose up --build
 
 產生的服務為 `http://127.0.0.1:3000`。image 不包含 API key 或 proxy token；請在宿主機設定流程中提供它們。
 
+Docker CLI 可在專案目錄中執行；若 Compose 檔位於其他位置，請設定 `FREECLAUDE_COMPOSE_FILE`：
+
+```bash
+freeclaude install --runtime docker
+freeclaude status --runtime docker
+freeclaude stop --runtime docker
+freeclaude start --runtime docker
+freeclaude update --runtime docker
+freeclaude uninstall --runtime docker --yes --purge-image
+```
+
+只檢查 GitHub Release 是否有新版、不變更本機安裝：
+
+```bash
+freeclaude update --check
+```
+
 ## Project Links
 
 - [架構文件](ARCHITECTURE.md)
