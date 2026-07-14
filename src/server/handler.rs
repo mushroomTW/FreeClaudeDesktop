@@ -11,6 +11,10 @@ use crate::{Settings, to_public_config};
 use axum::{
     Json,
     body::Bytes,
+    extract::{
+        WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
     http::{HeaderMap, StatusCode},
     response::Html,
     response::IntoResponse,
@@ -36,6 +40,15 @@ pub struct AdminSettingsUpdate {
 pub enum AdminRpcRequest {
     GetStatus,
     DetectClaude,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompanionRequest {
+    request_id: String,
+    token: String,
+    #[serde(flatten)]
+    request: AdminRpcRequest,
 }
 
 fn validate_gateway_url(base_url: &str) -> Result<String, &'static str> {
@@ -351,6 +364,58 @@ pub async fn handle_admin_rpc(
     (StatusCode::OK, Json(json!({ "result": result }))).into_response()
 }
 
+pub async fn handle_companion_websocket(websocket: WebSocketUpgrade) -> impl IntoResponse {
+    websocket.on_upgrade(handle_companion_session)
+}
+
+async fn handle_companion_session(mut socket: WebSocket) {
+    let Some(Ok(Message::Text(message))) = socket.recv().await else {
+        return;
+    };
+    let request = match serde_json::from_str::<CompanionRequest>(&message) {
+        Ok(request) => request,
+        Err(error) => {
+            let _ = socket
+                .send(Message::Text(
+                    json!({ "error": "invalid_request", "message": error.to_string() })
+                        .to_string()
+                        .into(),
+                ))
+                .await;
+            return;
+        }
+    };
+    let settings = match load_runtime_settings().await {
+        Ok(Some(settings)) if settings.proxy_auth_token == request.token => settings,
+        _ => {
+            let _ = socket
+                .send(Message::Text(
+                    json!({ "requestId": request.request_id, "error": "unauthorized" })
+                        .to_string()
+                        .into(),
+                ))
+                .await;
+            return;
+        }
+    };
+    let result = match request.request {
+        AdminRpcRequest::GetStatus => json!({
+            "proxy": { "status": "ok", "port": settings.active_port },
+            "settings": to_public_config(&settings),
+        }),
+        AdminRpcRequest::DetectClaude => json!({
+            "path": crate::detect_claude_path().map(|path| path.display().to_string()),
+        }),
+    };
+    let _ = socket
+        .send(Message::Text(
+            json!({ "requestId": request.request_id, "result": result })
+                .to_string()
+                .into(),
+        ))
+        .await;
+}
+
 #[cfg(test)]
 mod healthz_tests {
     use super::*;
@@ -376,6 +441,20 @@ mod healthz_tests {
         assert!(serde_json::from_str::<AdminRpcRequest>(r#"{"method":"GetStatus"}"#).is_ok());
         assert!(
             serde_json::from_str::<AdminRpcRequest>(r#"{"method":"DeleteEverything"}"#).is_err()
+        );
+    }
+
+    #[test]
+    fn companion_request_requires_token_and_request_id() {
+        assert!(
+            serde_json::from_str::<CompanionRequest>(
+                r#"{"requestId":"1","token":"secret","method":"GetStatus"}"#
+            )
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_str::<CompanionRequest>(r#"{"token":"secret","method":"GetStatus"}"#)
+                .is_err()
         );
     }
 }
