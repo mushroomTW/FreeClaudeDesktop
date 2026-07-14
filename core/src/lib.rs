@@ -1,11 +1,11 @@
 pub mod config_service;
 pub mod conversion;
 pub mod core;
+pub mod gateway_client;
 pub mod models;
+pub mod models_cache;
 pub mod optimization;
 pub mod platform;
-pub mod gateway_client;
-pub mod models_cache;
 
 pub use core::{config, constants, error};
 pub use error::{AppError, AppResult};
@@ -26,8 +26,8 @@ pub use conversion::response_converter::{
 };
 pub use crypto::{protect_secret, unprotect_secret};
 pub use launcher::{
-    detect_claude_path, launch_claude, restore_official_config, update_config_port,
-    resync_from_official, reset_mirror_profile,
+    detect_claude_path, launch_claude, reset_mirror_profile, restore_official_config,
+    resync_from_official, update_config_port,
 };
 pub use models::openai::InferenceModel;
 

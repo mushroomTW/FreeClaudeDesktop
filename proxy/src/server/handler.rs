@@ -28,9 +28,9 @@ use url::Url;
 const MAX_UPSTREAM_ERROR_BYTES: usize = 64 * 1024;
 
 use futures::{SinkExt, StreamExt};
-use tokio::sync::{mpsc, oneshot};
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::{mpsc, oneshot};
 
 struct ActiveCompanion {
     tx: mpsc::UnboundedSender<ProxyToCompanionMessage>,
@@ -42,8 +42,8 @@ struct ProxyToCompanionMessage {
     response_tx: oneshot::Sender<Result<Value, String>>,
 }
 
-static ACTIVE_COMPANION: tokio::sync::Mutex<Option<ActiveCompanion>> = tokio::sync::Mutex::const_new(None);
-
+static ACTIVE_COMPANION: tokio::sync::Mutex<Option<ActiveCompanion>> =
+    tokio::sync::Mutex::const_new(None);
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -2003,12 +2003,16 @@ pub async fn handle_admin_rpc(
     };
 
     if matches!(request, AdminRpcRequest::GetStatus) {
-        return (StatusCode::OK, Json(json!({
-            "result": {
-                "proxy": { "status": "ok", "port": settings.active_port },
-                "settings": to_public_config(&settings),
-            }
-        }))).into_response();
+        return (
+            StatusCode::OK,
+            Json(json!({
+                "result": {
+                    "proxy": { "status": "ok", "port": settings.active_port },
+                    "settings": to_public_config(&settings),
+                }
+            })),
+        )
+            .into_response();
     }
 
     // Check active companion connection
@@ -2020,7 +2024,11 @@ pub async fn handle_admin_rpc(
     let companion_tx = match tx_opt {
         Some(tx) => tx,
         None => {
-            return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Companion offline" }))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Companion offline" })),
+            )
+                .into_response();
         }
     };
 
@@ -2033,7 +2041,10 @@ pub async fn handle_admin_rpc(
     let mut payload_val = serde_json::to_value(&request).unwrap_or(Value::Null);
     if let Some(obj) = payload_val.as_object_mut() {
         obj.insert("requestId".to_string(), Value::String(request_id.clone()));
-        obj.insert("token".to_string(), Value::String(settings.proxy_auth_token.clone()));
+        obj.insert(
+            "token".to_string(),
+            Value::String(settings.proxy_auth_token.clone()),
+        );
     }
 
     let (response_tx, response_rx) = oneshot::channel();
@@ -2044,16 +2055,27 @@ pub async fn handle_admin_rpc(
     };
 
     if companion_tx.send(msg).is_err() {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Companion offline" }))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Companion offline" })),
+        )
+            .into_response();
     }
 
     match response_rx.await {
         Ok(Ok(res)) => (StatusCode::OK, Json(json!({ "result": res }))).into_response(),
-        Ok(Err(err)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": err }))).into_response(),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Companion disconnected" }))).into_response(),
+        Ok(Err(err)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": err })),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Companion disconnected" })),
+        )
+            .into_response(),
     }
 }
-
 
 pub async fn handle_companion_websocket(websocket: WebSocketUpgrade) -> impl IntoResponse {
     websocket.on_upgrade(handle_companion_session)
@@ -2067,7 +2089,9 @@ async fn handle_companion_session(socket: WebSocket) {
     }
 
     #[allow(clippy::type_complexity)]
-    let pending_requests: Arc<tokio::sync::Mutex<HashMap<String, oneshot::Sender<Result<Value, String>>>>> = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let pending_requests: Arc<
+        tokio::sync::Mutex<HashMap<String, oneshot::Sender<Result<Value, String>>>>,
+    > = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     let (mut ws_sink, mut ws_stream) = socket.split();
 
     loop {
@@ -2126,7 +2150,6 @@ async fn handle_companion_session(socket: WebSocket) {
     }
 }
 
-
 #[cfg(test)]
 mod healthz_tests {
     use super::*;
@@ -2140,7 +2163,6 @@ mod healthz_tests {
         #[serde(flatten)]
         request: AdminRpcRequest,
     }
-
 
     #[tokio::test]
     async fn healthz_returns_ok_status() {

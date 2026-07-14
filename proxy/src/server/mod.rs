@@ -10,7 +10,9 @@ pub static LAUNCHER_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub static TRAY_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 pub static TRAY_THREAD: std::sync::OnceLock<std::thread::Thread> = std::sync::OnceLock::new();
 
-pub use free_claude_core::{is_authorized_proxy_request, is_valid_proxy_authorization, is_valid_proxy_bearer};
+pub use free_claude_core::{
+    is_authorized_proxy_request, is_valid_proxy_authorization, is_valid_proxy_bearer,
+};
 
 pub fn app_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
