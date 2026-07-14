@@ -24,6 +24,7 @@ pub fn create_router(port: u16) -> Router {
             get(super::handler::handle_admin_settings).post(super::handler::update_admin_settings),
         )
         .route("/admin/status", get(super::handler::handle_admin_status))
+        .route("/admin/rpc", post(super::handler::handle_admin_rpc))
         .route("/v1/messages", post(super::handler::handle_proxy))
         .route("/v1/models", get(super::models_endpoint::handle_models))
         .route(
