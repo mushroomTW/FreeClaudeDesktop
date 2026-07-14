@@ -40,6 +40,8 @@ pub struct AdminSettingsUpdate {
 pub enum AdminRpcRequest {
     GetStatus,
     DetectClaude,
+    LaunchClaude,
+    RestoreSettings,
 }
 
 #[derive(Debug, Deserialize)]
@@ -360,6 +362,26 @@ pub async fn handle_admin_rpc(
         AdminRpcRequest::DetectClaude => json!({
             "path": crate::detect_claude_path().map(|path| path.display().to_string()),
         }),
+        AdminRpcRequest::LaunchClaude => match crate::launch_claude(None) {
+            Ok(path) => json!({ "path": path.display().to_string() }),
+            Err(error) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": error.to_string() })),
+                )
+                    .into_response();
+            }
+        },
+        AdminRpcRequest::RestoreSettings => match crate::restore_official_config() {
+            Ok(()) => json!({ "restored": true }),
+            Err(error) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": error.to_string() })),
+                )
+                    .into_response();
+            }
+        },
     };
     (StatusCode::OK, Json(json!({ "result": result }))).into_response()
 }
@@ -406,6 +428,14 @@ async fn handle_companion_session(mut socket: WebSocket) {
         AdminRpcRequest::DetectClaude => json!({
             "path": crate::detect_claude_path().map(|path| path.display().to_string()),
         }),
+        AdminRpcRequest::LaunchClaude => match crate::launch_claude(None) {
+            Ok(path) => json!({ "path": path.display().to_string() }),
+            Err(error) => json!({ "error": error.to_string() }),
+        },
+        AdminRpcRequest::RestoreSettings => match crate::restore_official_config() {
+            Ok(()) => json!({ "restored": true }),
+            Err(error) => json!({ "error": error.to_string() }),
+        },
     };
     let _ = socket
         .send(Message::Text(
@@ -439,6 +469,7 @@ mod healthz_tests {
     #[test]
     fn rpc_request_uses_allowlist() {
         assert!(serde_json::from_str::<AdminRpcRequest>(r#"{"method":"GetStatus"}"#).is_ok());
+        assert!(serde_json::from_str::<AdminRpcRequest>(r#"{"method":"LaunchClaude"}"#).is_ok());
         assert!(
             serde_json::from_str::<AdminRpcRequest>(r#"{"method":"DeleteEverything"}"#).is_err()
         );
