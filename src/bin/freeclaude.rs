@@ -69,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Install(args) => install(args).await,
         Command::Start => start_proxy().await,
         Command::Stop => stop_proxy(),
         Command::Status => print_proxy_status().await,
@@ -78,6 +79,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Uninstall(args) => uninstall(args),
         Command::Autostart { command } => manage_autostart(command),
         command => Err(format!("命令尚未實作：{}", command_name(&command)).into()),
+    }
+}
+
+async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
+    match args.runtime {
+        Runtime::Native => {
+            start_proxy().await?;
+            let port = proxy_port()?;
+            free_claude_desktop::update_config_port(port)?;
+            if !args.no_autostart {
+                free_claude_desktop::runtime::autostart::enable()?;
+            }
+            println!("Native runtime 安裝完成");
+            Ok(())
+        }
+        Runtime::Docker => Err("Docker install 尚需 Docker Compose v2 與 container 設定掛載；請使用 docker compose up --build".into()),
     }
 }
 
@@ -274,5 +291,14 @@ mod tests {
             yes: false,
         };
         assert!(!args.yes);
+    }
+
+    #[test]
+    fn install_defaults_to_native_runtime() {
+        let args = InstallArgs {
+            runtime: Runtime::Native,
+            no_autostart: false,
+        };
+        assert!(matches!(args.runtime, Runtime::Native));
     }
 }
