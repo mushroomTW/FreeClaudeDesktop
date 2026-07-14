@@ -19,28 +19,36 @@ fn set_test_app_dirs(root: &Path) -> (PathBuf, PathBuf, Vec<(&'static str, Optio
 
     #[cfg(target_os = "windows")]
     {
-        std::env::set_var("APPDATA", root.join("appdata"));
-        std::env::set_var("LOCALAPPDATA", root.join("local"));
-        std::env::set_var("USERPROFILE", root.join("profile"));
+        // 測試以程序層級環境變數模擬官方與鏡像設定目錄。
+        unsafe {
+            std::env::set_var("APPDATA", root.join("appdata"));
+            std::env::set_var("LOCALAPPDATA", root.join("local"));
+            std::env::set_var("USERPROFILE", root.join("profile"));
+        }
     }
     #[cfg(target_os = "macos")]
     {
-        std::env::set_var("HOME", root.join("home"));
+        unsafe { std::env::set_var("HOME", root.join("home")) };
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        std::env::set_var("XDG_CONFIG_HOME", root.join("xdg"));
-        std::env::set_var("HOME", root.join("home"));
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", root.join("xdg"));
+            std::env::set_var("HOME", root.join("home"));
+        }
     }
 
     (official_app_data_dir(), mirror_profile_dir(), old)
 }
 
 fn restore_env(old: Vec<(&'static str, Option<OsString>)>) {
-    for (key, value) in old {
-        match value {
-            Some(value) => std::env::set_var(key, value),
-            None => std::env::remove_var(key),
+    // 與 set_test_app_dirs 成對使用，僅在測試完成後還原先前快照。
+    unsafe {
+        for (key, value) in old {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
         }
     }
 }

@@ -11,6 +11,10 @@ license = "MIT"
 name = "FreeClaudeDesktop"
 path = "src/main.rs"
 
+[[bin]]
+name = "freeclaude-proxy"
+path = "src/bin/freeclaude-proxy.rs"
+
 [dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
 serde = { version = "1", features = ["derive"] }
