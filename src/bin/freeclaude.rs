@@ -75,8 +75,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Configure => open_admin(),
         Command::LaunchClaude => launch_claude(),
         Command::Restore => restore_settings(),
+        Command::Autostart { command } => manage_autostart(command),
         command => Err(format!("命令尚未實作：{}", command_name(&command)).into()),
     }
+}
+
+fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error::Error>> {
+    match command {
+        AutostartCommand::Enable => {
+            free_claude_desktop::runtime::autostart::enable()?;
+            println!("自動啟動已啟用");
+        }
+        AutostartCommand::Disable => {
+            free_claude_desktop::runtime::autostart::disable()?;
+            println!("自動啟動已停用");
+        }
+        AutostartCommand::Status => println!(
+            "自動啟動：{}",
+            if free_claude_desktop::runtime::autostart::is_enabled()? {
+                "已啟用"
+            } else {
+                "未啟用"
+            }
+        ),
+    }
+    Ok(())
 }
 
 fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
