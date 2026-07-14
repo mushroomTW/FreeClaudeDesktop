@@ -18,6 +18,42 @@ FreeClaudeDesktop 是跨平台的命令列啟動器與 Claude Desktop 本機 API
 - 提供繁體中文與英文的瀏覽器 Web Admin。
 - 支援 Windows、macOS 與 Linux。
 
+## 快速開始
+
+只需先安裝 Claude Desktop。以下指令會下載符合平台的預編譯 release 並安裝本機 `freeclaude` CLI；不需要 Rust、Cargo、Git 或原始碼工作區。
+
+### macOS / Linux
+
+```bash
+curl -fsSL "https://github.com/mushroomTW/FreeClaudeDesktop/releases/latest/download/install.sh" | sh
+```
+
+### Windows（PowerShell）
+
+```powershell
+irm "https://github.com/mushroomTW/FreeClaudeDesktop/main/scripts/install.ps1" | iex
+```
+
+穩定安裝器 URL 會解析至最新 GitHub Release。安裝程式會下載符合平台的預編譯 binary、依 release 的 `checksums.txt` 驗證 SHA-256，並將 `freeclaude` 加入使用者 PATH；它**不會**修改 Claude Desktop 設定。請在確認安裝內容後，再執行：
+
+```text
+freeclaude install
+freeclaude configure
+```
+
+### 手動安裝
+
+只有需要從原始碼建置時才使用此方式；它需要穩定版 [Rust toolchain](https://www.rust-lang.org/tools/install)。
+
+```bash
+git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
+cd FreeClaudeDesktop
+cargo install --path cli
+cargo build --release -p freeclaude-proxy
+```
+
+`freeclaude install` 預設使用原生 proxy；只有明確需要 Docker runtime 時才使用 `freeclaude install --runtime docker`。
+
 ## 建置與執行
 
 需求：
@@ -37,8 +73,6 @@ cargo run
 ```bash
 cargo install --path cli
 ```
-
-專案刻意不包含 CI/CD workflow；請使用上述命令在本機建置與測試發行版本。
 
 ## CLI 與本機管理
 
@@ -96,6 +130,8 @@ docker compose up --build
 
 服務與 Web Admin 位於 `http://127.0.0.1:3000`。image 不包含 API key 或 proxy token。
 
+Docker 預設限制 Proxy 最多使用 **4 GB** 記憶體。若要調整，請將 `.env.example` 複製為 `.env`，並設定 `FREECLAUDE_DOCKER_MEMORY_LIMIT`（例如 `512m` 或 `2g`）。
+
 在專案目錄中透過 CLI 管理 Docker runtime；若 Compose 檔位於其他位置，請設定 `FREECLAUDE_COMPOSE_FILE`：
 
 ```bash
@@ -116,7 +152,6 @@ freeclaude update --check
 ## 專案連結
 
 - [架構](ARCHITECTURE.md)
-- [Releases](https://github.com/mushroomTW/FreeClaudeDesktop/releases)
 - [Issue tracker](https://github.com/mushroomTW/FreeClaudeDesktop/issues)
 
 ## 安全性
@@ -124,6 +159,8 @@ freeclaude update --check
 - 請勿在 Issue 或日誌中包含 API key、session cookie 或完整本機設定檔。
 - Proxy 預設僅繫結於 loopback。除非已規劃適當的驗證與網路控管，否則不要公開對外。
 - 散布前請檢視產生的 Claude Desktop 設定。
+
+> **免責聲明：**與 Anthropic 無任何關聯，亦未獲得其認可或支持。「Claude」和「Claude Desktop」均為其各自所有者的商標。此程式負責協調第三方模型；您需自行承擔 API／雲端服務的費用、憑證以及資料共享選擇。
 
 ## 授權
 

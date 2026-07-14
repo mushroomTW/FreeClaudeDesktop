@@ -18,6 +18,42 @@ FreeClaudeDesktop is a cross-platform command-line launcher and local API proxy 
 - Provides a browser-based Web Admin interface in English and Traditional Chinese.
 - Supports Windows, macOS, and Linux.
 
+## Quick start
+
+Prerequisite: Claude Desktop. The commands below download the matching prebuilt release and install the local `freeclaude` CLI; they do not require Rust, Cargo, Git, or a source checkout.
+
+### macOS / Linux
+
+```bash
+curl -fsSL "https://github.com/mushroomTW/FreeClaudeDesktop/releases/latest/download/install.sh" | sh
+```
+
+### Windows (PowerShell)
+
+```powershell
+irm "https://github.com/mushroomTW/FreeClaudeDesktop/releases/latest/download/install.ps1" | iex
+```
+
+The stable installer URL resolves to the latest GitHub Release. It downloads the matching prebuilt binaries, validates their SHA-256 hash against the release `checksums.txt`, and adds `freeclaude` to your user PATH. It does **not** change Claude Desktop settings; run the following after reviewing the installation:
+
+```text
+freeclaude install
+freeclaude configure
+```
+
+### Manual installation
+
+Only use this route when building from source; it requires the stable [Rust toolchain](https://www.rust-lang.org/tools/install).
+
+```bash
+git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
+cd FreeClaudeDesktop
+cargo install --path cli
+cargo build --release -p freeclaude-proxy
+```
+
+`freeclaude install` uses the native proxy by default. Use `freeclaude install --runtime docker` if you explicitly want the Docker runtime.
+
 ## Build and Run
 
 Requirements:
@@ -37,8 +73,6 @@ Install the CLI from a source checkout:
 ```bash
 cargo install --path cli
 ```
-
-CI/CD workflows are intentionally not included. Build and test releases locally with the commands above.
 
 ## CLI and local administration
 
@@ -94,7 +128,7 @@ Docker Compose maps the proxy only to localhost:
 docker compose up --build
 ```
 
-The service is available at `http://127.0.0.1:3000`, including its Web Admin page. The image contains no API key or proxy token.
+The service is available at `http://127.0.0.1:3000`, including its Web Admin page. The image contains no API key or proxy token. Docker memory usage is capped at **4 GB** by default. To change it, copy `.env.example` to `.env` and set `FREECLAUDE_DOCKER_MEMORY_LIMIT` (for example, `512m` or `2g`).
 
 Run the same lifecycle through the CLI from the repository directory (or set `FREECLAUDE_COMPOSE_FILE` to the compose-file path):
 
@@ -116,7 +150,6 @@ freeclaude update --check
 ## Project Links
 
 - [Architecture](ARCHITECTURE.md)
-- [Releases](https://github.com/mushroomTW/FreeClaudeDesktop/releases)
 - [Issue tracker](https://github.com/mushroomTW/FreeClaudeDesktop/issues)
 
 ## Security
@@ -124,6 +157,8 @@ freeclaude update --check
 - Never include API keys, session cookies, or full local configuration files in issues or logs.
 - The proxy is bound to loopback by default. Do not expose it publicly without designing appropriate authentication and network controls.
 - Review generated Claude Desktop configuration before distributing it.
+
+> **Disclaimer:** This project is not affiliated with, endorsed by, or supported by Anthropic. “Claude” and “Claude Desktop” are trademarks of their respective owners. This program coordinates third-party models; you are responsible for API/cloud-service costs, credentials, and data-sharing choices.
 
 ## License
 

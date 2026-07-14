@@ -28,6 +28,7 @@ use url::Url;
 const MAX_UPSTREAM_ERROR_BYTES: usize = 64 * 1024;
 
 use futures::{SinkExt, StreamExt};
+use free_claude_core::{AsyncOpenAiGatewayFactory, GatewayClientFactory};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
@@ -2477,6 +2478,62 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
     tracing::info!("-> 轉發請求至: {}", target_url);
     tracing::debug!("-> 轉發 Body 長度: {} bytes", proxy_body.len());
+
+    // OpenAI 相容的非串流請求以 async-openai 的 BYOT API 送出，保留
+    // LiteLLM 等 gateway 的 reasoning、影像與自訂欄位，不經型別轉換遺失。
+    // 原生 Anthropic transport 與串流仍使用其專用路徑，因為前者不是 OpenAI
+    // SSE、後者需要保留原始事件供既有 Anthropic SSE adapter 逐段轉換。
+    if is_openai_format && !is_stream && !is_anthropic_native {
+        let request: Value = match serde_json::from_str(&proxy_body) {
+            Ok(value) => value,
+            Err(error) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": error.to_string() })),
+                )
+                    .into_response();
+            }
+        };
+        let client = match AsyncOpenAiGatewayFactory.gateway_client(&settings) {
+            Ok(client) => client,
+            Err(error) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": error.to_string() })),
+                )
+                    .into_response();
+            }
+        };
+        let response: Value = match client.chat().create_byot(request).await {
+            Ok(response) => response,
+            Err(error) => {
+                tracing::error!("<- async-openai 上游請求失敗: {error}");
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({ "error": error.to_string() })),
+                )
+                    .into_response();
+            }
+        };
+        let response_text = match serde_json::to_string(&response) {
+            Ok(text) => text,
+            Err(error) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": error.to_string() })),
+                )
+                    .into_response();
+            }
+        };
+        return match openai_to_anthropic_response(&response_text, &req_model) {
+            Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+            Err(error) => (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "error": error.to_string() })),
+            )
+                .into_response(),
+        };
+    }
 
     // 5. Build Upstream request
     let upstream_req = match build_upstream_request(
