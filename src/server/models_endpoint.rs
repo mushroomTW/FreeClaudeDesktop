@@ -135,13 +135,20 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
     tracing::info!("-> 正在獲取模型列表，Gateway: {}", settings.real_base_url);
 
     // 4. Fetch and normalize models
-    match fetch_models_list_async(
-        &settings.real_base_url,
-        &api_key,
-        &settings.real_auth_scheme,
-    )
-    .await
+    let models_result = if settings.transport_type != "anthropic_messages"
+        && settings.real_auth_scheme.eq_ignore_ascii_case("bearer")
     {
+        fetch_models_list_typed(&settings, &api_key).await
+    } else {
+        fetch_models_list_async(
+            &settings.real_base_url,
+            &api_key,
+            &settings.real_auth_scheme,
+        )
+        .await
+    };
+
+    match models_result {
         Ok(raw_models) => match normalize_models_response_with_overrides(
             raw_models,
             &settings.model_reasoning_overrides,
@@ -212,6 +219,35 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
                 .into_response()
         }
     }
+}
+
+async fn fetch_models_list_typed(
+    settings: &crate::Settings,
+    api_key: &str,
+) -> Result<Value, String> {
+    let model_info_url =
+        crate::conversion::response_converter::normalize_model_info_url(&settings.real_base_url)?;
+    if let Ok(value) = fetch_json(
+        crate::server::http_client(),
+        &model_info_url,
+        api_key,
+        &settings.real_auth_scheme,
+    )
+    .await
+    {
+        return Ok(value);
+    }
+
+    use crate::server::gateway_client::GatewayClientFactory;
+    let client = crate::server::gateway_client::AsyncOpenAiGatewayFactory
+        .gateway_client(settings)
+        .map_err(|error| error.to_string())?;
+    let models = client
+        .models()
+        .list()
+        .await
+        .map_err(|error| error.to_string())?;
+    serde_json::to_value(models).map_err(|error| error.to_string())
 }
 
 pub async fn fetch_models_list_async(
