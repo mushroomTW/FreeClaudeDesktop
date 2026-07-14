@@ -110,7 +110,13 @@ fn test_build_upstream_request_native_vs_openai() {
 #[tokio::test]
 async fn test_companion_offline_fails() {
     let _guard = TEST_LOCK.lock().await;
-    let temp_dir = std::env::temp_dir().join(format!("fc_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let temp_dir = std::env::temp_dir().join(format!(
+        "fc_test_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     std::fs::create_dir_all(&temp_dir).unwrap();
 
     let old_local = std::env::var_os("LOCALAPPDATA");
@@ -124,7 +130,7 @@ async fn test_companion_offline_fails() {
     let settings_dir = temp_dir.join("FreeClaudeDesktop");
     std::fs::create_dir_all(&settings_dir).unwrap();
     let settings_file = settings_dir.join("launcher_settings.json");
-    
+
     let settings = Settings {
         real_base_url: "https://api.anthropic.com".to_string(),
         real_api_key: "protected_key".to_string(),
@@ -144,7 +150,9 @@ async fn test_companion_offline_fails() {
     let mut headers = HeaderMap::new();
     headers.insert("Authorization", "Bearer test_token".parse().unwrap());
 
-    let response = handle_admin_rpc(headers, Json(AdminRpcRequest::DetectClaude)).await.into_response();
+    let response = handle_admin_rpc(headers, Json(AdminRpcRequest::DetectClaude))
+        .await
+        .into_response();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -165,7 +173,13 @@ async fn test_companion_offline_fails() {
 #[tokio::test]
 async fn test_companion_forwarding_success() {
     let _guard = TEST_LOCK.lock().await;
-    let temp_dir = std::env::temp_dir().join(format!("fc_test_fwd_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let temp_dir = std::env::temp_dir().join(format!(
+        "fc_test_fwd_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     std::fs::create_dir_all(&temp_dir).unwrap();
 
     let old_local = std::env::var_os("LOCALAPPDATA");
@@ -179,7 +193,7 @@ async fn test_companion_forwarding_success() {
     let settings_dir = temp_dir.join("FreeClaudeDesktop");
     std::fs::create_dir_all(&settings_dir).unwrap();
     let settings_file = settings_dir.join("launcher_settings.json");
-    
+
     let settings = Settings {
         real_base_url: "https://api.anthropic.com".to_string(),
         real_api_key: "protected_key".to_string(),
@@ -202,7 +216,7 @@ async fn test_companion_forwarding_success() {
             let payload: Value = serde_json::from_str(&msg.payload).unwrap();
             assert_eq!(payload["method"], "DetectClaude");
             assert_eq!(payload["token"], "test_token");
-            
+
             let _ = msg.response_tx.send(Ok(serde_json::json!({
                 "path": "mock_host_path"
             })));
@@ -212,10 +226,14 @@ async fn test_companion_forwarding_success() {
     let mut headers = HeaderMap::new();
     headers.insert("Authorization", "Bearer test_token".parse().unwrap());
 
-    let response = handle_admin_rpc(headers, Json(AdminRpcRequest::DetectClaude)).await.into_response();
+    let response = handle_admin_rpc(headers, Json(AdminRpcRequest::DetectClaude))
+        .await
+        .into_response();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), 1024)
+        .await
+        .unwrap();
     let body_val: Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(body_val["result"]["path"], "mock_host_path");
 
@@ -238,5 +256,3 @@ async fn test_companion_forwarding_success() {
         }
     }
 }
-
-

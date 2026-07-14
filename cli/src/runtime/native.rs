@@ -68,7 +68,9 @@ pub fn stop_proxy() -> io::Result<()> {
 }
 
 pub fn companion_pid_file() -> PathBuf {
-    local_app_data().join("FreeClaudeDesktop").join("companion.pid")
+    local_app_data()
+        .join("FreeClaudeDesktop")
+        .join("companion.pid")
 }
 
 pub fn start_companion(port: u16) -> io::Result<u32> {
@@ -107,12 +109,13 @@ pub fn stop_companion() -> io::Result<()> {
         .status()?;
 
     if !status.success() {
-        return Err(io::Error::other(format!("停止 companion process 失敗：{pid}")));
+        return Err(io::Error::other(format!(
+            "停止 companion process 失敗：{pid}"
+        )));
     }
     fs::remove_file(path)?;
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {

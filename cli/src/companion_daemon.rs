@@ -1,6 +1,6 @@
 use free_claude_core::AdminRpcRequest;
 use futures::{SinkExt, StreamExt};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::Duration;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -20,9 +20,9 @@ pub async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
                 tracing::info!("Companion daemon connected successfully.");
                 backoff = Duration::from_millis(100);
                 let (ws_sink, mut ws_stream) = ws_stream.split();
-                
+
                 let ws_sink = std::sync::Arc::new(tokio::sync::Mutex::new(ws_sink));
-                
+
                 while let Some(msg) = ws_stream.next().await {
                     match msg {
                         Ok(Message::Text(text)) => {
@@ -86,14 +86,14 @@ async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
         .get("token")
         .and_then(|v| v.as_str())
         .ok_or("Missing token")?;
-    
-    let settings = free_claude_core::get_launcher_settings()
-        .ok_or("Launcher not configured")?;
+
+    let settings = free_claude_core::get_launcher_settings().ok_or("Launcher not configured")?;
     if settings.proxy_auth_token != token {
         return Err("unauthorized".to_string());
     }
 
-    let rpc_req: AdminRpcRequest = serde_json::from_value(req_val.clone()).map_err(|e| e.to_string())?;
+    let rpc_req: AdminRpcRequest =
+        serde_json::from_value(req_val.clone()).map_err(|e| e.to_string())?;
     let result = match rpc_req {
         AdminRpcRequest::GetStatus => {
             json!({
@@ -121,13 +121,18 @@ async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
             free_claude_core::reset_mirror_profile().map_err(|e| e.to_string())?;
             json!({ "reset": true })
         }
-        AdminRpcRequest::ApplySettings { base_url, auth_scheme, api_key } => {
+        AdminRpcRequest::ApplySettings {
+            base_url,
+            auth_scheme,
+            api_key,
+        } => {
             let mut settings = free_claude_core::get_launcher_settings().unwrap_or_default();
             settings.real_base_url = base_url;
             settings.real_auth_scheme = auth_scheme;
             if let Some(key) = api_key {
                 if !key.is_empty() {
-                    settings.real_api_key = free_claude_core::protect_secret(&key).map_err(|e| e.to_string())?;
+                    settings.real_api_key =
+                        free_claude_core::protect_secret(&key).map_err(|e| e.to_string())?;
                 }
             }
             free_claude_core::save_launcher_settings(&settings).map_err(|e| e.to_string())?;
@@ -149,7 +154,8 @@ mod tests {
             "requestId": "test-req-123",
             "token": "some-token",
             "method": "GetStatus"
-        }).to_string();
+        })
+        .to_string();
 
         let res = handle_message(&input).await.unwrap();
         assert_eq!(res["requestId"], "test-req-123");
@@ -170,7 +176,8 @@ mod tests {
         let input = json!({
             "token": "some-token",
             "method": "GetStatus"
-        }).to_string();
+        })
+        .to_string();
         let res = handle_message(&input).await;
         assert!(res.is_err());
     }

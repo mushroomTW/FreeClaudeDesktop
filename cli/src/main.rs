@@ -34,7 +34,6 @@ enum Command {
     CompanionDaemon,
 }
 
-
 #[derive(Debug, Args)]
 struct InstallArgs {
     #[arg(long, value_enum, default_value_t = Runtime::Native)]
@@ -103,7 +102,6 @@ async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
     crate::companion_daemon::companion_daemon().await
 }
 
-
 async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     let port = proxy_port()?;
     if matches!(args.runtime, Runtime::Docker) {
@@ -156,7 +154,6 @@ fn stop(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 }
-
 
 async fn update(args: UpdateArgs) -> Result<(), Box<dyn std::error::Error>> {
     let check = check_for_update().await?;
@@ -229,7 +226,6 @@ fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
     let _ = crate::runtime::native::stop_companion();
     match args.runtime {
-
         Runtime::Native => {
             if let Err(error) = crate::runtime::native::stop_proxy() {
                 if error.kind() != io::ErrorKind::NotFound {
