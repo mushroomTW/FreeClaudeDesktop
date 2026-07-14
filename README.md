@@ -47,6 +47,56 @@ Releases are created manually from GitHub Actions. The workflow builds Windows, 
 
 Published assets include SHA-256 checksums and Sigstore provenance bundles. Current Windows and macOS builds are unsigned, so their operating systems may show a first-run security warning.
 
+## CLI and local administration
+
+Build both binaries in a development checkout:
+
+```bash
+cargo build --bin freeclaude --bin freeclaude-proxy
+```
+
+Manage the native proxy:
+
+```bash
+freeclaude start
+freeclaude status
+freeclaude stop
+```
+
+The default port is `3000`. Set `FREECLAUDE_PROXY_PORT` to use another local port; `start` waits for `/healthz` before reporting success.
+
+`freeclaude configure` opens the same-origin Web Admin page at `/admin`. Enter the local proxy token to inspect status and update gateway settings. API keys are stored in the operating-system keyring and are never returned by the Admin API.
+
+```text
+GET  /healthz
+GET  /admin/settings      (Bearer proxy token required)
+POST /admin/settings      (Bearer proxy token required)
+GET  /admin/status        (Bearer proxy token required)
+POST /admin/rpc           (Bearer proxy token required)
+WS   /companion           (first message requires token and requestId)
+```
+
+Manage startup and removal:
+
+```bash
+freeclaude autostart enable
+freeclaude autostart status
+freeclaude autostart disable
+freeclaude uninstall --yes
+```
+
+Windows uses Task Scheduler, macOS uses a LaunchAgent, and Linux uses a systemd user service.
+
+## Docker
+
+Docker Compose maps the proxy only to localhost:
+
+```bash
+docker compose up --build
+```
+
+The service is available at `http://127.0.0.1:3000`. The image contains no API key or proxy token.
+
 ## Project Links
 
 - [Architecture](ARCHITECTURE.md)
