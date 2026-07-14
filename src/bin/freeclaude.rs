@@ -146,8 +146,10 @@ fn stop_proxy() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn print_proxy_status() -> Result<(), Box<dyn std::error::Error>> {
-    let proxy_url = std::env::var("FREECLAUDE_PROXY_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+    let proxy_url = std::env::var("FREECLAUDE_PROXY_URL").unwrap_or_else(|_| {
+        let port = proxy_port().unwrap_or(3000);
+        format!("http://127.0.0.1:{port}")
+    });
     let healthz_url = format!("{}/healthz", proxy_url.trim_end_matches('/'));
     let response = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
