@@ -104,7 +104,7 @@ fn hex_decode(text: &str) -> AppResult<Vec<u8>> {
     }
 
     let bytes = text.as_bytes();
-    if !bytes.len().is_multiple_of(2) {
+    if bytes.len() % 2 != 0 {
         return Err(AppError::Crypto("Invalid encrypted API key".to_string()));
     }
     let mut out = Vec::with_capacity(bytes.len() / 2);
