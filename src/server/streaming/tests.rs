@@ -89,3 +89,43 @@ async fn stream_handles_reasoning_after_text_content() {
     assert!(out.contains("{\"delta\":{\"text\":\" world\",\"type\":\"text_delta\"},\"index\":2,\"type\":\"content_block_delta\"}"));
     assert!(out.contains("{\"type\":\"content_block_stop\",\"index\":2}"));
 }
+
+#[tokio::test]
+async fn stream_does_not_break_early_on_finish_reason_and_includes_usage() {
+    let app = Router::new().route(
+        "/",
+        get(|| async {
+            axum::response::Response::builder()
+                .header("Content-Type", "text/event-stream")
+                .body(axum::body::Body::from(concat!(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n",
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+                    "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":42,\"completion_tokens\":100}}\n\n",
+                    "data: [DONE]\n\n"
+                )))
+                .unwrap()
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let response = reqwest::get(format!("http://{addr}/")).await.unwrap();
+    let mut rx = start_sse_stream_conversion(
+        response,
+        "claude-test".to_string(),
+        Some(ReasoningReplayMode::Separate),
+    );
+    let mut out = String::new();
+    while let Some(Ok(bytes)) = rx.recv().await {
+        out.push_str(&String::from_utf8_lossy(&bytes));
+    }
+
+    assert!(out.contains("\"text\":\"Hello\""));
+    assert!(out.contains("\"input_tokens\":42"));
+    assert!(out.contains("\"output_tokens\":100"));
+    assert!(out.contains("\"stop_reason\":\"end_turn\""));
+    assert!(out.contains("event: message_stop"));
+}

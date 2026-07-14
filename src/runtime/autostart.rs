@@ -135,8 +135,54 @@ fn systemd_unit_path() -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct AutostartTestGuard {
+        was_enabled: bool,
+    }
+
+    impl Drop for AutostartTestGuard {
+        fn drop(&mut self) {
+            if self.was_enabled {
+                let _ = enable();
+            } else {
+                let _ = disable();
+            }
+        }
+    }
+
     #[test]
     fn service_name_is_stable() {
         assert_eq!(SERVICE_NAME, "FreeClaudeDesktop");
+    }
+
+    #[test]
+    fn test_autostart_integration() {
+        let was_enabled = is_enabled().unwrap_or(false);
+        let _guard = AutostartTestGuard { was_enabled };
+
+        match enable() {
+            Ok(_) => {
+                assert!(
+                    is_enabled().expect("is_enabled() 應該要成功"),
+                    "enable() 之後 is_enabled() 應為 true"
+                );
+
+                disable().expect("disable() 應該要成功");
+                assert!(
+                    !is_enabled().expect("is_enabled() 應該要成功"),
+                    "disable() 之後 is_enabled() 應為 false"
+                );
+            }
+            Err(e) => {
+                let err_msg = e.to_string();
+                if cfg!(target_os = "windows") && err_msg.contains("exit code: 1") {
+                    println!(
+                        "警告：當前 Windows 環境可能缺乏管理員權限（Access is denied），已跳過自動啟動整合測試。"
+                    );
+                    return;
+                }
+                panic!("enable() 失敗：{:?}", e);
+            }
+        }
     }
 }

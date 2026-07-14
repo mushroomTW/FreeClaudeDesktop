@@ -312,14 +312,6 @@ impl Default for Settings {
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PublicConfig {
-    base_url: String,
-    auth_scheme: String,
-    has_api_key: bool,
-}
-
 pub fn default_auth_scheme() -> String {
     "bearer".to_string()
 }
@@ -334,15 +326,26 @@ pub fn to_public_config(settings: &Settings) -> Value {
         .map(|key| !key.is_empty())
         .unwrap_or(!settings.real_api_key.is_empty());
 
-    json!(PublicConfig {
-        base_url: settings.real_base_url.clone(),
-        auth_scheme: if settings.real_auth_scheme.is_empty() {
+    let mut map = match serde_json::to_value(settings) {
+        Ok(Value::Object(m)) => m,
+        _ => serde_json::Map::new(),
+    };
+
+    map.remove("realApiKey");
+    map.remove("proxyAuthToken");
+    map.insert("hasApiKey".to_string(), json!(has_key));
+
+    map.insert("baseUrl".to_string(), json!(settings.real_base_url));
+    map.insert(
+        "authScheme".to_string(),
+        json!(if settings.real_auth_scheme.is_empty() {
             default_auth_scheme()
         } else {
             settings.real_auth_scheme.clone()
-        },
-        has_api_key: has_key,
-    })
+        }),
+    );
+
+    Value::Object(map)
 }
 
 pub fn settings_file() -> PathBuf {

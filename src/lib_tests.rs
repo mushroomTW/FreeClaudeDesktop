@@ -124,14 +124,15 @@ fn public_config_hides_api_key() {
         ..Settings::default()
     };
 
-    assert_eq!(
-        to_public_config(&settings),
-        json!({
-            "baseUrl": "https://openrouter.ai/api",
-            "authScheme": "bearer",
-            "hasApiKey": true
-        })
-    );
+    let public_cfg = to_public_config(&settings);
+    assert_eq!(public_cfg["baseUrl"], "https://openrouter.ai/api");
+    assert_eq!(public_cfg["authScheme"], "bearer");
+    assert_eq!(public_cfg["hasApiKey"], true);
+    assert!(public_cfg.get("realApiKey").is_none());
+    assert!(public_cfg.get("apiKey").is_none());
+    assert!(public_cfg.get("proxyAuthToken").is_none());
+    assert!(public_cfg.get("discoveredModels").is_some());
+    assert!(public_cfg.get("transportType").is_some());
 }
 
 #[test]

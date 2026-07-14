@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Companion RPC Request",
+  "description": "Full WebSocket request schema including all RPC methods and parameters",
+  "type": "object",
+  "properties": {
+    "requestId": {
+      "type": "string"
+    },
+    "token": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string",
+      "enum": ["GetStatus", "DetectClaude", "ApplySettings", "LaunchClaude", "RestoreSettings"]
+    }
+  },
+  "required": ["requestId", "token", "method"],
+  "dependencies": {
+    "method": {
+      "oneOf": [
+        {
+          "properties": {
+            "method": { "const": "GetStatus" }
+          }
+        },
+        {
+          "properties": {
+            "method": { "const": "DetectClaude" }
+          }
+        },
+        {
+          "properties": {
+            "method": { "const": "ApplySettings" },
+            "baseUrl": { "type": "string" },
+            "authScheme": { "type": "string", "enum": ["bearer", "x-api-key"] },
+            "apiKey": { "type": ["string", "null"] }
+          },
+          "required": ["baseUrl", "authScheme"]
+        },
+        {
+          "properties": {
+            "method": { "const": "LaunchClaude" }
+          }
+        },
+        {
+          "properties": {
+            "method": { "const": "RestoreSettings" }
+          }
+        }
+      ]
+    }
+  }
+}

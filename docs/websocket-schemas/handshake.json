@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Companion Handshake Request",
+  "description": "The initial or general request from the companion client containing authentication and request ID",
+  "type": "object",
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "description": "Unique identifier for the request to match the response"
+    },
+    "token": {
+      "type": "string",
+      "description": "Authorization token to authenticate the client"
+    },
+    "method": {
+      "type": "string",
+      "enum": ["GetStatus", "DetectClaude", "ApplySettings", "LaunchClaude", "RestoreSettings"],
+      "description": "The RPC method to call"
+    }
+  },
+  "required": ["requestId", "token", "method"]
+}
