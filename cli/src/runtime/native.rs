@@ -3,7 +3,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use crate::platform::common::local_app_data;
+use free_claude_core::platform::common::local_app_data;
 
 pub fn pid_file() -> PathBuf {
     local_app_data().join("FreeClaudeDesktop").join("proxy.pid")
@@ -66,6 +66,53 @@ pub fn stop_proxy() -> io::Result<()> {
     fs::remove_file(path)?;
     Ok(())
 }
+
+pub fn companion_pid_file() -> PathBuf {
+    local_app_data().join("FreeClaudeDesktop").join("companion.pid")
+}
+
+pub fn start_companion(port: u16) -> io::Result<u32> {
+    if let Some(parent) = companion_pid_file().parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let binary = std::env::current_exe()?;
+    let child = Command::new(binary)
+        .arg("companion-daemon")
+        .env("FREECLAUDE_PROXY_PORT", port.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    fs::write(companion_pid_file(), child.id().to_string())?;
+    Ok(child.id())
+}
+
+pub fn stop_companion() -> io::Result<()> {
+    let path = companion_pid_file();
+    if !path.is_file() {
+        return Ok(());
+    }
+    let pid = fs::read_to_string(&path)?
+        .trim()
+        .parse::<u32>()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Companion PID 檔內容無效"))?;
+
+    #[cfg(target_os = "windows")]
+    let status = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .status()?;
+    #[cfg(not(target_os = "windows"))]
+    let status = Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .status()?;
+
+    if !status.success() {
+        return Err(io::Error::other(format!("停止 companion process 失敗：{pid}")));
+    }
+    fs::remove_file(path)?;
+    Ok(())
+}
+
 
 #[cfg(test)]
 mod tests {

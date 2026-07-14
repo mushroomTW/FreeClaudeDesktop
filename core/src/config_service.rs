@@ -38,7 +38,7 @@ pub struct SaveConfigOutput {
     pub discovered_models: Vec<String>,
 }
 
-pub(crate) async fn run_config_io<T, F>(operation: F) -> AppResult<T>
+pub async fn run_config_io<T, F>(operation: F) -> AppResult<T>
 where
     T: Send + 'static,
     F: FnOnce() -> AppResult<T> + Send + 'static,
@@ -48,11 +48,11 @@ where
         .map_err(|error| AppError::Launcher(error.to_string()))?
 }
 
-pub(crate) async fn load_runtime_settings() -> AppResult<Option<Settings>> {
+pub async fn load_runtime_settings() -> AppResult<Option<Settings>> {
     run_config_io(crate::config::load_launcher_settings).await
 }
 
-pub(crate) async fn unprotect_runtime_api_key(stored: String) -> AppResult<String> {
+pub async fn unprotect_runtime_api_key(stored: String) -> AppResult<String> {
     run_config_io(move || unprotect_secret(&stored)).await
 }
 
@@ -92,8 +92,8 @@ async fn save_or_refresh(
         return Err(AppError::InvalidConfig("缺少 Gateway Base URL".to_string()));
     }
     normalize_messages_url(&base_url).map_err(AppError::InvalidConfig)?;
-    let _ = crate::server::apply_gateway_auth(
-        crate::server::http_client().get(&base_url),
+    let _ = crate::apply_gateway_auth(
+        crate::http_client().get(&base_url),
         &input.auth_scheme,
         "",
         &base_url,
@@ -105,7 +105,7 @@ async fn save_or_refresh(
     let real_api_key =
         run_config_io(move || resolve_api_key(&api_key_input, key_existing.as_ref())).await?;
 
-    let mut normalized = match crate::server::models_endpoint::fetch_models_list_async(
+    let mut normalized = match crate::models_cache::fetch_models_list_async(
         &base_url,
         &real_api_key,
         &input.auth_scheme,
@@ -222,7 +222,7 @@ async fn save_or_refresh(
             theme_mode: input.theme_mode,
             language: input.language,
         };
-        crate::server::models_endpoint::clear_models_cache();
+        crate::models_cache::clear_models_cache();
         crate::config::save_launcher_settings(&settings)?;
         let content = serde_json::to_string_pretty(&crate::launcher::claude_config(
             input.port,
@@ -241,7 +241,7 @@ async fn save_or_refresh(
     .await?;
 
     if let Some(models) = cache_models {
-        crate::server::models_endpoint::store_models_cache(
+        crate::models_cache::store_models_cache(
             &cache_base_url,
             &cache_auth_scheme,
             &cache_reasoning,

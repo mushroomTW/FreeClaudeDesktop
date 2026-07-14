@@ -1,94 +1,27 @@
-pub mod companion_client;
-pub mod gateway_client;
+pub use free_claude_core::gateway_client;
 pub mod handler;
 pub mod models_endpoint;
 pub mod router;
 pub mod streaming;
 
-use crate::{AppError, AppResult};
-use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
 
 pub static LAUNCHER_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub static TRAY_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 pub static TRAY_THREAD: std::sync::OnceLock<std::thread::Thread> = std::sync::OnceLock::new();
 
-pub fn is_valid_proxy_bearer(header: Option<&str>, token: &str) -> bool {
-    header
-        .and_then(|value| value.trim().strip_prefix("Bearer "))
-        .map(str::trim)
-        == Some(token)
-}
-
-pub fn is_valid_proxy_authorization(header: Option<&str>) -> bool {
-    is_valid_proxy_bearer(header, crate::constants::PROXY_AUTH_TOKEN)
-}
-
-pub fn is_authorized_proxy_request(
-    authorization: Option<&str>,
-    x_api_key: Option<&str>,
-    token: &str,
-) -> bool {
-    let token = token.trim();
-    if token.is_empty() {
-        return false;
-    }
-    is_valid_proxy_bearer(authorization, token)
-        || x_api_key.map(str::trim).is_some_and(|value| value == token)
-}
+pub use free_claude_core::{is_authorized_proxy_request, is_valid_proxy_authorization, is_valid_proxy_bearer};
 
 pub fn app_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
 
-static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-
-pub(crate) fn http_client() -> &'static reqwest::Client {
-    HTTP_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
-            .timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new())
-    })
-}
-
-pub(crate) fn apply_gateway_auth(
-    request: reqwest::RequestBuilder,
-    scheme: &str,
-    key: &str,
-    url: &str,
-) -> AppResult<reqwest::RequestBuilder> {
-    let scheme = match scheme {
-        "auto" => {
-            if url::Url::parse(url)
-                .map_err(|error| AppError::InvalidConfig(error.to_string()))?
-                .host_str()
-                == Some("api.anthropic.com")
-            {
-                "x-api-key"
-            } else {
-                "bearer"
-            }
-        }
-        "x-api-key" | "bearer" | "sso" => scheme,
-        _ => return Err(AppError::InvalidConfig("不支援的 Auth Scheme".to_string())),
-    };
-
-    if key.is_empty() {
-        Ok(request)
-    } else if scheme == "x-api-key" {
-        Ok(request.header("x-api-key", key))
-    } else {
-        Ok(request.bearer_auth(key))
-    }
-}
+pub(crate) use free_claude_core::{apply_gateway_auth, http_client};
 
 pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::{EnvFilter, Registry, fmt, prelude::*};
 
-    let local_dir = crate::common::local_app_data()
+    let local_dir = free_claude_core::common::local_app_data()
         .join("FreeClaudeDesktop")
         .join("logs");
     let _ = std::fs::create_dir_all(&local_dir);
@@ -197,7 +130,7 @@ async fn serve(
 #[cfg(test)]
 mod gateway_auth_tests {
     use super::*;
-    use crate::AppError;
+    use free_claude_core::AppError;
 
     fn headers(scheme: &str, url: &str) -> reqwest::header::HeaderMap {
         apply_gateway_auth(reqwest::Client::new().get(url), scheme, "secret", url)

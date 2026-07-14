@@ -1,3 +1,6 @@
+mod companion_daemon;
+mod runtime;
+
 use std::time::Duration;
 use std::{io, process::Command as ProcessCommand};
 
@@ -27,7 +30,10 @@ enum Command {
         #[command(subcommand)]
         command: AutostartCommand,
     },
+    #[command(hide = true)]
+    CompanionDaemon,
 }
+
 
 #[derive(Debug, Args)]
 struct InstallArgs {
@@ -89,23 +95,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Update(args) => update(args).await,
         Command::Uninstall(args) => uninstall(args),
         Command::Autostart { command } => manage_autostart(command),
+        Command::CompanionDaemon => companion_daemon().await,
     }
 }
 
+async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
+    crate::companion_daemon::companion_daemon().await
+}
+
+
 async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let port = proxy_port()?;
     if matches!(args.runtime, Runtime::Docker) {
-        free_claude_desktop::runtime::docker::install()?;
-        free_claude_desktop::update_config_port(proxy_port()?)?;
+        crate::runtime::docker::install()?;
+        free_claude_core::update_config_port(port)?;
+        let _ = crate::runtime::native::start_companion(port);
         println!("Docker runtime 已安裝並啟動。");
         return Ok(());
     }
     match args.runtime {
         Runtime::Native => {
             start_proxy().await?;
-            let port = proxy_port()?;
-            free_claude_desktop::update_config_port(port)?;
+            free_claude_core::update_config_port(port)?;
+            let _ = crate::runtime::native::start_companion(port);
             if !args.no_autostart {
-                free_claude_desktop::runtime::autostart::enable()?;
+                crate::runtime::autostart::enable()?;
             }
             println!("Native runtime 安裝完成");
             Ok(())
@@ -115,10 +129,16 @@ async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn start(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
+    let port = proxy_port()?;
     match runtime {
-        Runtime::Native => start_proxy().await,
+        Runtime::Native => {
+            start_proxy().await?;
+            let _ = crate::runtime::native::start_companion(port);
+            Ok(())
+        }
         Runtime::Docker => {
-            free_claude_desktop::runtime::docker::start()?;
+            crate::runtime::docker::start()?;
+            let _ = crate::runtime::native::start_companion(port);
             println!("Docker proxy 已啟動。");
             Ok(())
         }
@@ -126,15 +146,17 @@ async fn start(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn stop(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
+    let _ = crate::runtime::native::stop_companion();
     match runtime {
         Runtime::Native => stop_proxy(),
         Runtime::Docker => {
-            free_claude_desktop::runtime::docker::stop()?;
+            crate::runtime::docker::stop()?;
             println!("Docker proxy 已停止。");
             Ok(())
         }
     }
 }
+
 
 async fn update(args: UpdateArgs) -> Result<(), Box<dyn std::error::Error>> {
     let check = check_for_update().await?;
@@ -144,7 +166,7 @@ async fn update(args: UpdateArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
     match args.runtime {
         Runtime::Docker => {
-            free_claude_desktop::runtime::docker::update()?;
+            crate::runtime::docker::update()?;
             println!("Docker proxy 已使用目前本機來源重新建置。");
             Ok(())
         }
@@ -205,20 +227,22 @@ fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     if !args.yes {
         return Err("uninstall 會停止服務並還原 Claude 設定；請加入 --yes 確認".into());
     }
+    let _ = crate::runtime::native::stop_companion();
     match args.runtime {
+
         Runtime::Native => {
-            if let Err(error) = free_claude_desktop::runtime::native::stop_proxy() {
+            if let Err(error) = crate::runtime::native::stop_proxy() {
                 if error.kind() != io::ErrorKind::NotFound {
                     return Err(error.into());
                 }
             }
-            let _ = free_claude_desktop::runtime::autostart::disable();
+            let _ = crate::runtime::autostart::disable();
         }
         Runtime::Docker => {
-            free_claude_desktop::runtime::docker::uninstall(args.purge_image)?;
+            crate::runtime::docker::uninstall(args.purge_image)?;
         }
     }
-    free_claude_desktop::restore_official_config()?;
+    free_claude_core::restore_official_config()?;
 
     if args.purge_image && matches!(args.runtime, Runtime::Native) {
         let status = ProcessCommand::new("docker")
@@ -235,16 +259,16 @@ fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
 fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         AutostartCommand::Enable => {
-            free_claude_desktop::runtime::autostart::enable()?;
+            crate::runtime::autostart::enable()?;
             println!("自動啟動已啟用");
         }
         AutostartCommand::Disable => {
-            free_claude_desktop::runtime::autostart::disable()?;
+            crate::runtime::autostart::disable()?;
             println!("自動啟動已停用");
         }
         AutostartCommand::Status => println!(
             "自動啟動：{}",
-            if free_claude_desktop::runtime::autostart::is_enabled()? {
+            if crate::runtime::autostart::is_enabled()? {
                 "已啟用"
             } else {
                 "未啟用"
@@ -255,7 +279,7 @@ fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error:
 }
 
 fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
-    let port = free_claude_desktop::get_launcher_settings()
+    let port = free_claude_core::get_launcher_settings()
         .and_then(|settings| settings.active_port)
         .unwrap_or(3000);
     let url = format!("http://127.0.0.1:{port}/admin");
@@ -277,13 +301,13 @@ fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn launch_claude() -> Result<(), Box<dyn std::error::Error>> {
-    let path = free_claude_desktop::launch_claude(None)?;
+    let path = free_claude_core::launch_claude(None)?;
     println!("Claude 已啟動：{}", path.display());
     Ok(())
 }
 
 fn restore_settings() -> Result<(), Box<dyn std::error::Error>> {
-    free_claude_desktop::restore_official_config()?;
+    free_claude_core::restore_official_config()?;
     println!("Claude 官方設定已還原");
     Ok(())
 }
@@ -301,7 +325,7 @@ async fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
         println!("Proxy 已在運作：{healthz_url}");
         return Ok(());
     }
-    let pid = free_claude_desktop::runtime::native::start_proxy(port)?;
+    let pid = crate::runtime::native::start_proxy(port)?;
     for _ in 0..20 {
         tokio::time::sleep(Duration::from_millis(250)).await;
         if proxy_is_healthy(&healthz_url).await {
@@ -310,12 +334,12 @@ async fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let _ = free_claude_desktop::runtime::native::stop_proxy();
+    let _ = crate::runtime::native::stop_proxy();
     Err("Proxy 未在 5 秒內通過健康檢查".into())
 }
 
 fn stop_proxy() -> Result<(), Box<dyn std::error::Error>> {
-    free_claude_desktop::runtime::native::stop_proxy()?;
+    crate::runtime::native::stop_proxy()?;
     println!("Proxy 已停止");
     Ok(())
 }
@@ -324,7 +348,7 @@ async fn print_status(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>
     match runtime {
         Runtime::Native => print_proxy_status().await,
         Runtime::Docker => {
-            let containers = free_claude_desktop::runtime::docker::status()?;
+            let containers = crate::runtime::docker::status()?;
             println!(
                 "{}",
                 serde_json::json!({ "runtime": "docker", "containers": containers })
@@ -353,10 +377,10 @@ async fn print_proxy_status() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("Proxy 健康檢查失敗：HTTP {status}，回應：{body}").into());
     }
 
-    let pid = std::fs::read_to_string(free_claude_desktop::runtime::native::pid_file())
+    let pid = std::fs::read_to_string(crate::runtime::native::pid_file())
         .ok()
         .and_then(|pid| pid.trim().parse::<u32>().ok());
-    let autostart = free_claude_desktop::runtime::autostart::is_enabled().unwrap_or(false);
+    let autostart = crate::runtime::autostart::is_enabled().unwrap_or(false);
     println!(
         "{}",
         serde_json::json!({

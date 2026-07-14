@@ -7,7 +7,7 @@
 ///
 /// # Examples
 /// ```
-/// # use free_claude_desktop::optimization::command_utils::parse_shell_command_prefix;
+/// # use free_claude_core::optimization::command_utils::parse_shell_command_prefix;
 /// assert_eq!(parse_shell_command_prefix("git commit -m 'hello'"), "git commit");
 /// ```
 pub fn parse_shell_command_prefix(command: &str) -> String {

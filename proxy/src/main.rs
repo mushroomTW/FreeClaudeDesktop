@@ -1,4 +1,4 @@
-use free_claude_desktop::{constants::DEFAULT_PORT, server};
+use freeclaude_proxy::{constants::DEFAULT_PORT, server};
 
 #[tokio::main]
 async fn main() {
