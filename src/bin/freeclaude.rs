@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Start => start_proxy(),
+        Command::Start => start_proxy().await,
         Command::Stop => stop_proxy(),
         Command::Status => print_proxy_status().await,
         Command::Configure => open_admin(),
@@ -119,11 +119,24 @@ fn proxy_port() -> Result<u16, Box<dyn std::error::Error>> {
         .parse()?)
 }
 
-fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
+async fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
     let port = proxy_port()?;
+    let healthz_url = format!("http://127.0.0.1:{port}/healthz");
+    if proxy_is_healthy(&healthz_url).await {
+        println!("Proxy 已在運作：{healthz_url}");
+        return Ok(());
+    }
     let pid = free_claude_desktop::runtime::native::start_proxy(port)?;
-    println!("Proxy 已啟動：PID {pid}，連接埠 {port}");
-    Ok(())
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        if proxy_is_healthy(&healthz_url).await {
+            println!("Proxy 已啟動：PID {pid}，連接埠 {port}");
+            return Ok(());
+        }
+    }
+
+    let _ = free_claude_desktop::runtime::native::stop_proxy();
+    Err("Proxy 未在 5 秒內通過健康檢查".into())
 }
 
 fn stop_proxy() -> Result<(), Box<dyn std::error::Error>> {
@@ -151,6 +164,19 @@ async fn print_proxy_status() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Proxy 正常運作：{healthz_url}");
     Ok(())
+}
+
+async fn proxy_is_healthy(healthz_url: &str) -> bool {
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(Duration::from_millis(500))
+        .build()
+    else {
+        return false;
+    };
+    let Ok(response) = client.get(healthz_url).send().await else {
+        return false;
+    };
+    response.status().is_success()
 }
 
 fn command_name(command: &Command) -> &'static str {
