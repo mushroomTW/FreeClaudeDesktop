@@ -4,14 +4,12 @@ pub mod core;
 pub mod models;
 pub mod optimization;
 pub mod platform;
-pub mod runtime;
-pub mod server;
-pub mod ui;
+pub mod gateway_client;
+pub mod models_cache;
 
 pub use core::{config, constants, error};
 pub use error::{AppError, AppResult};
 pub use platform::{common, crypto, launcher};
-pub use runtime::{app, tray};
 
 use std::collections::HashMap;
 
@@ -29,12 +27,9 @@ pub use conversion::response_converter::{
 pub use crypto::{protect_secret, unprotect_secret};
 pub use launcher::{
     detect_claude_path, launch_claude, restore_official_config, update_config_port,
+    resync_from_official, reset_mirror_profile,
 };
 pub use models::openai::InferenceModel;
-pub use server::{
-    LAUNCHER_SHOW_REQUESTED, is_authorized_proxy_request, is_valid_proxy_authorization, run_server,
-    start_server_background,
-};
 
 /// 儲存配置，獲取模型列表，並生成 Claude Desktop 配置
 #[allow(clippy::too_many_arguments)]
@@ -100,3 +95,92 @@ pub fn save_config(
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
+#[serde(tag = "method")]
+pub enum AdminRpcRequest {
+    GetStatus,
+    DetectClaude,
+    ApplySettings {
+        #[serde(rename = "baseUrl")]
+        base_url: String,
+        #[serde(rename = "authScheme")]
+        auth_scheme: String,
+        #[serde(rename = "apiKey")]
+        api_key: Option<String>,
+    },
+    LaunchClaude,
+    RestoreSettings,
+    SyncFromOfficial,
+    ResetMirrorProfile,
+}
+
+use std::sync::OnceLock;
+use std::time::Duration;
+
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+pub fn http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(constants::HTTP_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(constants::HTTP_TIMEOUT_SECS))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
+pub fn apply_gateway_auth(
+    request: reqwest::RequestBuilder,
+    scheme: &str,
+    key: &str,
+    url: &str,
+) -> AppResult<reqwest::RequestBuilder> {
+    let scheme = match scheme {
+        "auto" => {
+            if url::Url::parse(url)
+                .map_err(|error| AppError::InvalidConfig(error.to_string()))?
+                .host_str()
+                == Some("api.anthropic.com")
+            {
+                "x-api-key"
+            } else {
+                "bearer"
+            }
+        }
+        "x-api-key" | "bearer" | "sso" => scheme,
+        _ => return Err(AppError::InvalidConfig("不支援的 Auth Scheme".to_string())),
+    };
+
+    if key.is_empty() {
+        Ok(request)
+    } else if scheme == "x-api-key" {
+        Ok(request.header("x-api-key", key))
+    } else {
+        Ok(request.bearer_auth(key))
+    }
+}
+
+pub fn is_valid_proxy_bearer(header: Option<&str>, token: &str) -> bool {
+    header
+        .and_then(|value| value.trim().strip_prefix("Bearer "))
+        .map(str::trim)
+        == Some(token)
+}
+
+pub fn is_valid_proxy_authorization(header: Option<&str>) -> bool {
+    is_valid_proxy_bearer(header, constants::PROXY_AUTH_TOKEN)
+}
+
+pub fn is_authorized_proxy_request(
+    authorization: Option<&str>,
+    x_api_key: Option<&str>,
+    token: &str,
+) -> bool {
+    let token = token.trim();
+    if token.is_empty() {
+        return false;
+    }
+    is_valid_proxy_bearer(authorization, token)
+        || x_api_key.map(str::trim).is_some_and(|value| value == token)
+}

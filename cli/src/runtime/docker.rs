@@ -373,7 +373,7 @@ mod tests {
         unsafe {
             std::env::set_var("FREECLAUDE_DOCKER_MOCK", "daemon_unavailable");
         }
-        let dummy_path = std::env::current_dir().unwrap().join("docker-compose.yml");
+        let dummy_path = std::env::current_dir().unwrap().join("Cargo.toml");
         unsafe {
             std::env::set_var(COMPOSE_FILE_ENV, &dummy_path);
         }
