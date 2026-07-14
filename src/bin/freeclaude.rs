@@ -14,9 +14,9 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     Install(InstallArgs),
-    Start,
-    Stop,
-    Status,
+    Start(RuntimeArgs),
+    Stop(RuntimeArgs),
+    Status(RuntimeArgs),
     Configure,
     #[command(name = "launch-claude")]
     LaunchClaude,
@@ -37,6 +37,12 @@ struct InstallArgs {
     no_autostart: bool,
 }
 
+#[derive(Debug, Args)]
+struct RuntimeArgs {
+    #[arg(long, value_enum, default_value_t = Runtime::Native)]
+    runtime: Runtime,
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum Runtime {
     Native,
@@ -47,10 +53,14 @@ enum Runtime {
 struct UpdateArgs {
     #[arg(long)]
     check: bool,
+    #[arg(long, value_enum, default_value_t = Runtime::Native)]
+    runtime: Runtime,
 }
 
 #[derive(Debug, Args)]
 struct UninstallArgs {
+    #[arg(long, value_enum, default_value_t = Runtime::Native)]
+    runtime: Runtime,
     #[arg(long)]
     purge_image: bool,
     #[arg(long)]
@@ -70,19 +80,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Command::Install(args) => install(args).await,
-        Command::Start => start_proxy().await,
-        Command::Stop => stop_proxy(),
-        Command::Status => print_proxy_status().await,
+        Command::Start(args) => start(args.runtime).await,
+        Command::Stop(args) => stop(args.runtime),
+        Command::Status(args) => print_status(args.runtime).await,
         Command::Configure => open_admin(),
         Command::LaunchClaude => launch_claude(),
         Command::Restore => restore_settings(),
+        Command::Update(args) => update(args).await,
         Command::Uninstall(args) => uninstall(args),
         Command::Autostart { command } => manage_autostart(command),
-        command => Err(format!("命令尚未實作：{}", command_name(&command)).into()),
     }
 }
 
 async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
+    if matches!(args.runtime, Runtime::Docker) {
+        free_claude_desktop::runtime::docker::install()?;
+        free_claude_desktop::update_config_port(proxy_port()?)?;
+        println!("Docker runtime 已安裝並啟動。");
+        return Ok(());
+    }
     match args.runtime {
         Runtime::Native => {
             start_proxy().await?;
@@ -98,19 +114,113 @@ async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+async fn start(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
+    match runtime {
+        Runtime::Native => start_proxy().await,
+        Runtime::Docker => {
+            free_claude_desktop::runtime::docker::start()?;
+            println!("Docker proxy 已啟動。");
+            Ok(())
+        }
+    }
+}
+
+fn stop(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
+    match runtime {
+        Runtime::Native => stop_proxy(),
+        Runtime::Docker => {
+            free_claude_desktop::runtime::docker::stop()?;
+            println!("Docker proxy 已停止。");
+            Ok(())
+        }
+    }
+}
+
+async fn update(args: UpdateArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let check = check_for_update().await?;
+    println!("{}", serde_json::to_string_pretty(&check)?);
+    if args.check || !check.update_available {
+        return Ok(());
+    }
+    match args.runtime {
+        Runtime::Docker => {
+            free_claude_desktop::runtime::docker::update()?;
+            println!("Docker proxy 已使用目前本機來源重新建置。");
+            Ok(())
+        }
+        Runtime::Native => Err("為避免覆蓋執行中的原生執行檔，請下載對應 release 資產後重新執行 `freeclaude update --check` 驗證版本。".into()),
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+struct UpdateCheck {
+    current_version: &'static str,
+    latest_version: String,
+    update_available: bool,
+    release_url: String,
+}
+
+async fn check_for_update() -> Result<UpdateCheck, Box<dyn std::error::Error>> {
+    #[derive(serde::Deserialize)]
+    struct Release {
+        tag_name: String,
+        html_url: String,
+    }
+
+    let release = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .user_agent("freeclaude-cli")
+        .build()?
+        .get("https://api.github.com/repos/mushroomTW/FreeClaudeDesktop/releases/latest")
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<Release>()
+        .await?;
+    let latest_version = release.tag_name.trim_start_matches('v').to_string();
+    Ok(UpdateCheck {
+        current_version: env!("CARGO_PKG_VERSION"),
+        update_available: version_is_newer(&latest_version, env!("CARGO_PKG_VERSION")),
+        latest_version,
+        release_url: release.html_url,
+    })
+}
+
+fn version_is_newer(candidate: &str, current: &str) -> bool {
+    fn parts(value: &str) -> Option<[u64; 3]> {
+        let mut parts = value.split('.').map(str::parse::<u64>);
+        Some([
+            parts.next()?.ok()?,
+            parts.next()?.ok()?,
+            parts.next()?.ok()?,
+        ])
+    }
+    match (parts(candidate), parts(current)) {
+        (Some(candidate), Some(current)) => candidate > current,
+        _ => false,
+    }
+}
+
 fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     if !args.yes {
         return Err("uninstall 會停止服務並還原 Claude 設定；請加入 --yes 確認".into());
     }
-    if let Err(error) = free_claude_desktop::runtime::native::stop_proxy() {
-        if error.kind() != io::ErrorKind::NotFound {
-            return Err(error.into());
+    match args.runtime {
+        Runtime::Native => {
+            if let Err(error) = free_claude_desktop::runtime::native::stop_proxy() {
+                if error.kind() != io::ErrorKind::NotFound {
+                    return Err(error.into());
+                }
+            }
+            let _ = free_claude_desktop::runtime::autostart::disable();
+        }
+        Runtime::Docker => {
+            free_claude_desktop::runtime::docker::uninstall(args.purge_image)?;
         }
     }
-    let _ = free_claude_desktop::runtime::autostart::disable();
     free_claude_desktop::restore_official_config()?;
 
-    if args.purge_image {
+    if args.purge_image && matches!(args.runtime, Runtime::Native) {
         let status = ProcessCommand::new("docker")
             .args(["image", "rm", "freeclaude-proxy:local"])
             .status()?;
@@ -210,6 +320,20 @@ fn stop_proxy() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+async fn print_status(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
+    match runtime {
+        Runtime::Native => print_proxy_status().await,
+        Runtime::Docker => {
+            let containers = free_claude_desktop::runtime::docker::status()?;
+            println!(
+                "{}",
+                serde_json::json!({ "runtime": "docker", "containers": containers })
+            );
+            Ok(())
+        }
+    }
+}
+
 async fn print_proxy_status() -> Result<(), Box<dyn std::error::Error>> {
     let proxy_url = std::env::var("FREECLAUDE_PROXY_URL").unwrap_or_else(|_| {
         let port = proxy_port().unwrap_or(3000);
@@ -257,21 +381,6 @@ async fn proxy_is_healthy(healthz_url: &str) -> bool {
     response.status().is_success()
 }
 
-fn command_name(command: &Command) -> &'static str {
-    match command {
-        Command::Install(_) => "install",
-        Command::Start => "start",
-        Command::Stop => "stop",
-        Command::Status => "status",
-        Command::Configure => "configure",
-        Command::LaunchClaude => "launch-claude",
-        Command::Restore => "restore",
-        Command::Update(_) => "update",
-        Command::Uninstall(_) => "uninstall",
-        Command::Autostart { .. } => "autostart",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,6 +407,7 @@ mod tests {
     #[test]
     fn uninstall_requires_explicit_confirmation() {
         let args = UninstallArgs {
+            runtime: Runtime::Native,
             purge_image: false,
             yes: false,
         };
@@ -311,5 +421,12 @@ mod tests {
             no_autostart: false,
         };
         assert!(matches!(args.runtime, Runtime::Native));
+    }
+
+    #[test]
+    fn detects_newer_three_part_versions() {
+        assert!(version_is_newer("0.2.0", "0.1.9"));
+        assert!(!version_is_newer("0.1.1", "0.1.1"));
+        assert!(!version_is_newer("invalid", "0.1.1"));
     }
 }
