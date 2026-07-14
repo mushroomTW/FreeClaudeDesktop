@@ -89,13 +89,13 @@ fn compose_file() -> io::Result<PathBuf> {
             ));
         }
     }
-    let candidate = std::env::current_dir()?.join("docker-compose.yml");
+    let candidate = std::env::current_dir()?.join("compose.yaml");
     if candidate.is_file() {
         Ok(candidate)
     } else {
         Err(io::Error::new(
             io::ErrorKind::NotFound,
-            "找不到 docker-compose.yml；請在專案目錄執行，或設定 FREECLAUDE_COMPOSE_FILE。",
+            "找不到 compose.yaml；請在專案目錄執行，或設定 FREECLAUDE_COMPOSE_FILE。",
         ))
     }
 }

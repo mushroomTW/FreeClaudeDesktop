@@ -2,21 +2,15 @@ FROM rust:1.85-bookworm AS builder
 
 WORKDIR /src
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        libfontconfig1-dev \
-        libgl1-mesa-dev \
-        libwayland-dev \
-        libx11-dev \
-        libxkbcommon-dev \
-        pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-COPY build.rs ./
+COPY core/Cargo.toml core/Cargo.toml
+COPY proxy/Cargo.toml proxy/Cargo.toml
+COPY cli/Cargo.toml cli/Cargo.toml
+COPY core/src core/src
+COPY proxy/src proxy/src
+COPY cli/src cli/src
 
-RUN cargo build --release --bin freeclaude-proxy
+RUN cargo build --release --package freeclaude-proxy
 
 FROM debian:bookworm-slim AS runtime
 

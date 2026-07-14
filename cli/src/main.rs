@@ -108,6 +108,9 @@ async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
         crate::runtime::docker::install()?;
         free_claude_core::update_config_port(port)?;
         let _ = crate::runtime::native::start_companion(port);
+        if !args.no_autostart {
+            crate::runtime::autostart::enable()?;
+        }
         println!("Docker runtime 已安裝並啟動。");
         return Ok(());
     }

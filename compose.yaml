@@ -4,11 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: freeclaude-proxy:local
+    mem_limit: ${FREECLAUDE_DOCKER_MEMORY_LIMIT:-4g}
     ports:
       - "127.0.0.1:3000:3000"
     restart: unless-stopped
-    volumes:
-      - freeclaude-settings:/home/freeclaude/.config/FreeClaudeDesktop
-
-volumes:
-  freeclaude-settings:
