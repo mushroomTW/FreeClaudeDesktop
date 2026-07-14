@@ -112,6 +112,7 @@ fn apply_settings_update(
             Json(json!({ "error": error.to_string() })),
         )
     })?;
+    crate::server::models_endpoint::clear_models_cache();
     Ok(to_public_config(settings))
 }
 
