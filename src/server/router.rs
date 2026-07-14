@@ -20,7 +20,7 @@ pub fn create_router(port: u16) -> Router {
         .route("/healthz", get(super::handler::handle_healthz))
         .route(
             "/admin/settings",
-            get(super::handler::handle_admin_settings),
+            get(super::handler::handle_admin_settings).post(super::handler::update_admin_settings),
         )
         .route("/admin/status", get(super::handler::handle_admin_status))
         .route("/v1/messages", post(super::handler::handle_proxy))
