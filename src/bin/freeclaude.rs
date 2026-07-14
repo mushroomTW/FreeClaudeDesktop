@@ -75,9 +75,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Configure => open_admin(),
         Command::LaunchClaude => launch_claude(),
         Command::Restore => restore_settings(),
+        Command::Uninstall(args) => uninstall(args),
         Command::Autostart { command } => manage_autostart(command),
         command => Err(format!("命令尚未實作：{}", command_name(&command)).into()),
     }
+}
+
+fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
+    if !args.yes {
+        return Err("uninstall 會停止服務並還原 Claude 設定；請加入 --yes 確認".into());
+    }
+    if let Err(error) = free_claude_desktop::runtime::native::stop_proxy() {
+        if error.kind() != io::ErrorKind::NotFound {
+            return Err(error.into());
+        }
+    }
+    let _ = free_claude_desktop::runtime::autostart::disable();
+    free_claude_desktop::restore_official_config()?;
+
+    if args.purge_image {
+        let status = ProcessCommand::new("docker")
+            .args(["image", "rm", "freeclaude-proxy:local"])
+            .status()?;
+        if !status.success() {
+            return Err("無法移除 Docker image".into());
+        }
+    }
+    println!("FreeClaudeDesktop 已解除安裝並還原 Claude 設定");
+    Ok(())
 }
 
 fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error::Error>> {
@@ -240,5 +265,14 @@ mod tests {
             .expect("uninstall 選項應可解析");
         Cli::try_parse_from(["freeclaude", "autostart", "enable"])
             .expect("autostart 子命令應可解析");
+    }
+
+    #[test]
+    fn uninstall_requires_explicit_confirmation() {
+        let args = UninstallArgs {
+            purge_image: false,
+            yes: false,
+        };
+        assert!(!args.yes);
     }
 }
