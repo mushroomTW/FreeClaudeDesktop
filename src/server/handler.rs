@@ -415,76 +415,94 @@ pub async fn handle_companion_websocket(websocket: WebSocketUpgrade) -> impl Int
 }
 
 async fn handle_companion_session(mut socket: WebSocket) {
-    let Some(Ok(Message::Text(message))) = socket.recv().await else {
-        return;
-    };
-    let request = match serde_json::from_str::<CompanionRequest>(&message) {
-        Ok(request) => request,
-        Err(error) => {
-            let _ = socket
-                .send(Message::Text(
-                    json!({ "error": "invalid_request", "message": error.to_string() })
-                        .to_string()
-                        .into(),
-                ))
-                .await;
+    while let Some(message) = socket.recv().await {
+        let Ok(message) = message else {
             return;
-        }
-    };
-    let mut settings = match load_runtime_settings().await {
-        Ok(Some(settings)) if settings.proxy_auth_token == request.token => settings,
-        _ => {
-            let _ = socket
-                .send(Message::Text(
-                    json!({ "requestId": request.request_id, "error": "unauthorized" })
-                        .to_string()
-                        .into(),
-                ))
-                .await;
-            return;
-        }
-    };
-    let result = match request.request {
-        AdminRpcRequest::GetStatus => json!({
-            "proxy": { "status": "ok", "port": settings.active_port },
-            "settings": to_public_config(&settings),
-        }),
-        AdminRpcRequest::DetectClaude => json!({
-            "path": crate::detect_claude_path().map(|path| path.display().to_string()),
-        }),
-        AdminRpcRequest::ApplySettings {
-            base_url,
-            auth_scheme,
-            api_key,
-        } => {
-            match apply_settings_update(
-                &mut settings,
-                AdminSettingsUpdate {
-                    base_url,
-                    auth_scheme,
-                    api_key,
-                },
-            ) {
-                Ok(settings) => settings,
-                Err((_, error)) => error.0,
+        };
+        let Message::Text(message) = message else {
+            continue;
+        };
+        let request = match serde_json::from_str::<CompanionRequest>(&message) {
+            Ok(request) => request,
+            Err(error) => {
+                if send_companion_json(
+                    &mut socket,
+                    json!({ "error": "invalid_request", "message": error.to_string() }),
+                )
+                .await
+                .is_err()
+                {
+                    return;
+                }
+                continue;
             }
+        };
+        let mut settings = match load_runtime_settings().await {
+            Ok(Some(settings)) if settings.proxy_auth_token == request.token => settings,
+            _ => {
+                if send_companion_json(
+                    &mut socket,
+                    json!({ "requestId": request.request_id, "error": "unauthorized" }),
+                )
+                .await
+                .is_err()
+                {
+                    return;
+                }
+                continue;
+            }
+        };
+        let result = match request.request {
+            AdminRpcRequest::GetStatus => json!({
+                "proxy": { "status": "ok", "port": settings.active_port },
+                "settings": to_public_config(&settings),
+            }),
+            AdminRpcRequest::DetectClaude => json!({
+                "path": crate::detect_claude_path().map(|path| path.display().to_string()),
+            }),
+            AdminRpcRequest::ApplySettings {
+                base_url,
+                auth_scheme,
+                api_key,
+            } => {
+                match apply_settings_update(
+                    &mut settings,
+                    AdminSettingsUpdate {
+                        base_url,
+                        auth_scheme,
+                        api_key,
+                    },
+                ) {
+                    Ok(settings) => settings,
+                    Err((_, error)) => error.0,
+                }
+            }
+            AdminRpcRequest::LaunchClaude => match crate::launch_claude(None) {
+                Ok(path) => json!({ "path": path.display().to_string() }),
+                Err(error) => json!({ "error": error.to_string() }),
+            },
+            AdminRpcRequest::RestoreSettings => match crate::restore_official_config() {
+                Ok(()) => json!({ "restored": true }),
+                Err(error) => json!({ "error": error.to_string() }),
+            },
+        };
+        if send_companion_json(
+            &mut socket,
+            json!({ "requestId": request.request_id, "result": result }),
+        )
+        .await
+        .is_err()
+        {
+            return;
         }
-        AdminRpcRequest::LaunchClaude => match crate::launch_claude(None) {
-            Ok(path) => json!({ "path": path.display().to_string() }),
-            Err(error) => json!({ "error": error.to_string() }),
-        },
-        AdminRpcRequest::RestoreSettings => match crate::restore_official_config() {
-            Ok(()) => json!({ "restored": true }),
-            Err(error) => json!({ "error": error.to_string() }),
-        },
-    };
-    let _ = socket
-        .send(Message::Text(
-            json!({ "requestId": request.request_id, "result": result })
-                .to_string()
-                .into(),
-        ))
-        .await;
+    }
+}
+
+async fn send_companion_json(socket: &mut WebSocket, payload: serde_json::Value) -> Result<(), ()> {
+    socket
+        .send(Message::Text(payload.to_string().into()))
+        .await
+        .map_err(|_| ())
 }
 
 #[cfg(test)]
