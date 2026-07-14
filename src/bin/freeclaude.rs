@@ -229,7 +229,18 @@ async fn print_proxy_status() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("Proxy 健康檢查失敗：HTTP {status}，回應：{body}").into());
     }
 
-    println!("Proxy 正常運作：{healthz_url}");
+    let pid = std::fs::read_to_string(free_claude_desktop::runtime::native::pid_file())
+        .ok()
+        .and_then(|pid| pid.trim().parse::<u32>().ok());
+    let autostart = free_claude_desktop::runtime::autostart::is_enabled().unwrap_or(false);
+    println!(
+        "{}",
+        serde_json::json!({
+            "proxy": { "status": "ok", "healthz": healthz_url, "pid": pid },
+            "autostart": autostart,
+            "companion": { "endpoint": "/companion" },
+        })
+    );
     Ok(())
 }
 
