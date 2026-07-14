@@ -15,10 +15,39 @@ use axum::{
     response::IntoResponse,
 };
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime};
+use url::Url;
 
 const MAX_UPSTREAM_ERROR_BYTES: usize = 64 * 1024;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminSettingsUpdate {
+    base_url: String,
+    auth_scheme: String,
+    api_key: Option<String>,
+}
+
+fn validate_gateway_url(base_url: &str) -> Result<String, &'static str> {
+    let base_url = base_url.trim().trim_end_matches('/');
+    let parsed = Url::parse(base_url).map_err(|_| "Gateway URL 格式無效")?;
+    if !matches!(parsed.scheme(), "https" | "http") || parsed.host_str().is_none() {
+        return Err("Gateway URL 必須使用 HTTP 或 HTTPS");
+    }
+
+    if parsed.scheme() == "http"
+        && !matches!(
+            parsed.host_str(),
+            Some("localhost") | Some("127.0.0.1") | Some("::1")
+        )
+    {
+        return Err("非本機 Gateway 必須使用 HTTPS");
+    }
+
+    Ok(base_url.to_string())
+}
 
 async fn load_authorized_settings(
     headers: &HeaderMap,
@@ -215,6 +244,57 @@ pub async fn handle_admin_settings(headers: HeaderMap) -> impl IntoResponse {
     }
 }
 
+pub async fn update_admin_settings(
+    headers: HeaderMap,
+    Json(input): Json<AdminSettingsUpdate>,
+) -> impl IntoResponse {
+    let mut settings = match load_authorized_settings(&headers).await {
+        Ok(settings) => settings,
+        Err(response) => return response.into_response(),
+    };
+    let base_url = match validate_gateway_url(&input.base_url) {
+        Ok(base_url) => base_url,
+        Err(error) => {
+            return (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))).into_response();
+        }
+    };
+
+    let auth_scheme = input.auth_scheme.trim().to_ascii_lowercase();
+    if !matches!(auth_scheme.as_str(), "bearer" | "x-api-key") {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "authScheme 必須是 bearer 或 x-api-key" })),
+        )
+            .into_response();
+    }
+
+    settings.real_base_url = base_url;
+    settings.real_auth_scheme = auth_scheme;
+    if let Some(api_key) = input.api_key.map(|key| key.trim().to_string())
+        && !api_key.is_empty()
+    {
+        settings.real_api_key = match crate::protect_secret(&api_key) {
+            Ok(secret) => secret,
+            Err(error) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": error.to_string() })),
+                )
+                    .into_response();
+            }
+        };
+    }
+
+    match crate::save_launcher_settings(&settings) {
+        Ok(()) => (StatusCode::OK, Json(to_public_config(&settings))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 pub async fn handle_admin_status(headers: HeaderMap) -> impl IntoResponse {
     match load_authorized_settings(&headers).await {
         Ok(settings) => (
@@ -236,6 +316,17 @@ mod healthz_tests {
     #[tokio::test]
     async fn healthz_returns_ok_status() {
         assert_eq!(handle_healthz().await.0, json!({ "status": "ok" }));
+    }
+
+    #[test]
+    fn gateway_url_requires_https_except_for_loopback() {
+        assert_eq!(
+            validate_gateway_url("http://127.0.0.1:4000/").unwrap(),
+            "http://127.0.0.1:4000"
+        );
+        assert!(validate_gateway_url("https://gateway.example/v1").is_ok());
+        assert!(validate_gateway_url("http://gateway.example").is_err());
+        assert!(validate_gateway_url("file:///tmp/gateway").is_err());
     }
 }
 
