@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Companion RPC Response",
+  "description": "Successful WebSocket response schema",
+  "type": "object",
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "description": "The matching request ID"
+    },
+    "result": {
+      "type": "object",
+      "description": "The RPC result value, structure depends on the method called"
+    }
+  },
+  "required": ["requestId", "result"]
+}

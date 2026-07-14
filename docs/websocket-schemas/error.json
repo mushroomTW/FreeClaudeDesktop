@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Companion Error Response",
+  "description": "Error response schema from the server",
+  "type": "object",
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "description": "The matching request ID, if the request could be parsed"
+    },
+    "error": {
+      "type": "string",
+      "description": "The error code/type (e.g., 'unauthorized', 'invalid_request')"
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable description of the error"
+    }
+  },
+  "required": ["error"]
+}

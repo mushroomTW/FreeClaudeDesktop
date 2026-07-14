@@ -20,22 +20,68 @@ use axum::{
     response::IntoResponse,
 };
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime};
 use url::Url;
 
 const MAX_UPSTREAM_ERROR_BYTES: usize = 64 * 1024;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminSettingsUpdate {
-    base_url: String,
-    auth_scheme: String,
-    api_key: Option<String>,
+    pub base_url: String,
+    pub auth_scheme: String,
+    pub api_key: Option<String>,
+
+    #[serde(default)]
+    pub real_model: Option<Option<String>>,
+    #[serde(default)]
+    pub real_model_sonnet: Option<Option<String>>,
+    #[serde(default)]
+    pub real_model_opus: Option<Option<String>>,
+    #[serde(default)]
+    pub real_model_haiku: Option<Option<String>>,
+    #[serde(default)]
+    pub real_model_routes: Option<std::collections::HashMap<String, String>>,
+    #[serde(default)]
+    pub real_model_reasoning_efforts: Option<std::collections::HashMap<String, Vec<String>>>,
+    #[serde(default)]
+    pub discovered_models: Option<Vec<String>>,
+    #[serde(default)]
+    pub model_reasoning_overrides: Option<std::collections::HashMap<String, String>>,
+    #[serde(default)]
+    pub model_1m_overrides: Option<std::collections::HashMap<String, bool>>,
+    #[serde(default)]
+    pub model_visibility_overrides: Option<std::collections::HashMap<String, bool>>,
+
+    #[serde(default)]
+    pub transport_type: Option<String>,
+    #[serde(default)]
+    pub reasoning_replay_mode: Option<String>,
+    #[serde(default)]
+    pub enable_quota_check_mock: Option<bool>,
+    #[serde(default)]
+    pub enable_prefix_detection: Option<bool>,
+    #[serde(default)]
+    pub enable_title_generation_skip: Option<bool>,
+    #[serde(default)]
+    pub enable_suggestion_mode_skip: Option<bool>,
+    #[serde(default)]
+    pub enable_filepath_extraction_mock: Option<bool>,
+    #[serde(default)]
+    pub enable_web_server_tools: Option<bool>,
+    #[serde(default)]
+    pub web_fetch_allowed_schemes: Option<String>,
+    #[serde(default)]
+    pub web_fetch_allow_private_networks: Option<bool>,
+    #[serde(default)]
+    pub theme_mode: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "method")]
 pub enum AdminRpcRequest {
     GetStatus,
@@ -105,6 +151,74 @@ fn apply_settings_update(
                 Json(json!({ "error": error.to_string() })),
             )
         })?;
+    }
+
+    if let Some(val) = input.real_model {
+        settings.real_model = val;
+    }
+    if let Some(val) = input.real_model_sonnet {
+        settings.real_model_sonnet = val;
+    }
+    if let Some(val) = input.real_model_opus {
+        settings.real_model_opus = val;
+    }
+    if let Some(val) = input.real_model_haiku {
+        settings.real_model_haiku = val;
+    }
+    if let Some(val) = input.real_model_routes {
+        settings.real_model_routes = val;
+    }
+    if let Some(val) = input.real_model_reasoning_efforts {
+        settings.real_model_reasoning_efforts = val;
+    }
+    if let Some(val) = input.discovered_models {
+        settings.discovered_models = val;
+    }
+    if let Some(val) = input.model_reasoning_overrides {
+        settings.model_reasoning_overrides = val;
+    }
+    if let Some(val) = input.model_1m_overrides {
+        settings.model_1m_overrides = val;
+    }
+    if let Some(val) = input.model_visibility_overrides {
+        settings.model_visibility_overrides = val;
+    }
+
+    if let Some(val) = input.transport_type {
+        settings.transport_type = val;
+    }
+    if let Some(val) = input.reasoning_replay_mode {
+        settings.reasoning_replay_mode = val;
+    }
+    if let Some(val) = input.enable_quota_check_mock {
+        settings.enable_quota_check_mock = val;
+    }
+    if let Some(val) = input.enable_prefix_detection {
+        settings.enable_prefix_detection = val;
+    }
+    if let Some(val) = input.enable_title_generation_skip {
+        settings.enable_title_generation_skip = val;
+    }
+    if let Some(val) = input.enable_suggestion_mode_skip {
+        settings.enable_suggestion_mode_skip = val;
+    }
+    if let Some(val) = input.enable_filepath_extraction_mock {
+        settings.enable_filepath_extraction_mock = val;
+    }
+    if let Some(val) = input.enable_web_server_tools {
+        settings.enable_web_server_tools = val;
+    }
+    if let Some(val) = input.web_fetch_allowed_schemes {
+        settings.web_fetch_allowed_schemes = val;
+    }
+    if let Some(val) = input.web_fetch_allow_private_networks {
+        settings.web_fetch_allow_private_networks = val;
+    }
+    if let Some(val) = input.theme_mode {
+        settings.theme_mode = val;
+    }
+    if let Some(val) = input.language {
+        settings.language = val;
     }
     crate::save_launcher_settings(settings).map_err(|error| {
         (
@@ -198,16 +312,59 @@ fn build_upstream_request(
     headers: &HeaderMap,
     api_key: &str,
     auth_scheme: &str,
+    is_anthropic_native: bool,
 ) -> crate::AppResult<reqwest::RequestBuilder> {
     let mut request = client.post(target_url).body(body);
+
+    let skip_header = if !api_key.is_empty() {
+        let scheme = match auth_scheme {
+            "auto" => {
+                if url::Url::parse(target_url)
+                    .map_err(|error| crate::AppError::InvalidConfig(error.to_string()))?
+                    .host_str()
+                    == Some("api.anthropic.com")
+                {
+                    "x-api-key"
+                } else {
+                    "bearer"
+                }
+            }
+            "x-api-key" | "bearer" | "sso" => auth_scheme,
+            _ => {
+                return Err(crate::AppError::InvalidConfig(
+                    "不支援的 Auth Scheme".to_string(),
+                ));
+            }
+        };
+        if scheme == "x-api-key" {
+            Some("x-api-key")
+        } else {
+            Some("authorization")
+        }
+    } else {
+        None
+    };
+
     for (name, value) in headers {
         let lower = name.as_str().to_ascii_lowercase();
-        if matches!(
-            lower.as_str(),
-            "content-type" | "accept" | "user-agent" | "accept-encoding" | "connection"
-        ) || lower.starts_with("anthropic-")
-        {
-            request = request.header(name.clone(), value.clone());
+        if let Some(skip) = skip_header {
+            if lower == skip {
+                continue;
+            }
+        }
+
+        if is_anthropic_native {
+            if !matches!(lower.as_str(), "host" | "content-length" | "connection") {
+                request = request.header(name.clone(), value.clone());
+            }
+        } else {
+            if matches!(
+                lower.as_str(),
+                "content-type" | "accept" | "user-agent" | "accept-encoding" | "connection"
+            ) || lower.starts_with("anthropic-")
+            {
+                request = request.header(name.clone(), value.clone());
+            }
         }
     }
 
@@ -307,13 +464,968 @@ pub async fn handle_healthz() -> Json<Value> {
 pub async fn handle_admin_page() -> Html<&'static str> {
     Html(
         r#"<!doctype html>
-<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FreeClaude Admin</title><style>body{max-width:44rem;margin:2rem auto;padding:0 1rem;font:16px system-ui;color:#172033}label{display:block;margin-top:1rem;font-weight:600}input,select,button{box-sizing:border-box;width:100%;padding:.6rem;margin-top:.35rem}button{background:#2155d6;color:white;border:0;border-radius:.3rem;font-weight:700;cursor:pointer}pre{padding:1rem;background:#f3f5f9;white-space:pre-wrap}#message{min-height:1.4em}</style></head>
-<body><h1>FreeClaude Admin</h1><p>Token 只保留在此頁面記憶體中，不會寫入設定檔或瀏覽器儲存空間。</p>
-<label>Proxy token<input id="token" type="password" autocomplete="off"></label><button id="load">載入設定</button>
-<form id="settings"><label>Gateway URL<input id="baseUrl" required type="url"></label><label>驗證方式<select id="authScheme"><option value="bearer">Bearer</option><option value="x-api-key">X-API-Key</option></select></label><label>API key（留空保留原值）<input id="apiKey" type="password" autocomplete="new-password"></label><button>儲存設定</button></form>
-<h2>Runtime 狀態</h2><pre id="status">尚未載入</pre><p id="message" role="status"></p>
-<script>const $=id=>document.getElementById(id),message=$('message');const headers=()=>({Authorization:'Bearer '+$('token').value});async function request(path,options={}){const r=await fetch(path,{...options,headers:{...headers(),...(options.headers||{})}});const b=await r.json();if(!r.ok)throw new Error(b.error||r.statusText);return b}async function load(){try{const [settings,status]=await Promise.all([request('/admin/settings'),request('/admin/status')]);$('baseUrl').value=settings.baseUrl||'';$('authScheme').value=settings.authScheme||'bearer';$('status').textContent=JSON.stringify(status,null,2);message.textContent='設定已載入'}catch(e){message.textContent='錯誤：'+e.message}}$('load').onclick=load;$('settings').onsubmit=async e=>{e.preventDefault();try{await request('/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({baseUrl:$('baseUrl').value,authScheme:$('authScheme').value,apiKey:$('apiKey').value})});$('apiKey').value='';message.textContent='設定已儲存';await load()}catch(e){message.textContent='錯誤：'+e.message}}</script></body></html>"#,
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FreeClaude Admin Dashboard</title>
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      --card-bg: rgba(30, 41, 59, 0.75);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --success: #10b981;
+      --danger: #ef4444;
+      --focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.4);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      background: var(--bg-gradient);
+      color: var(--text-main);
+      font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .container {
+      width: 100%;
+      max-width: 52rem;
+    }
+    
+    header {
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+    
+    header h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: linear-gradient(to right, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+    
+    header p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+    
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.75rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 0.75rem;
+    }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+    
+    @media (max-width: 640px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .form-group {
+      margin-bottom: 1.25rem;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .form-group.full-width {
+      grid-column: span 2;
+    }
+    
+    @media (max-width: 640px) {
+      .form-group.full-width {
+        grid-column: span 1;
+      }
+    }
+    
+    label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 0.5rem;
+    }
+    
+    input[type="text"],
+    input[type="password"],
+    input[type="url"],
+    select {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 0.75rem;
+      color: var(--text-main);
+      font-size: 0.95rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      width: 100%;
+    }
+    
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: var(--focus-ring);
+    }
+    
+    /* Toggle switch design */
+    .switch-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem;
+      background: rgba(15, 23, 42, 0.3);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      margin-bottom: 0.75rem;
+    }
+    
+    .switch-label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      cursor: pointer;
+    }
+    
+    .switch-desc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 2.75rem;
+      height: 1.5rem;
+    }
+    
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #475569;
+      transition: .3s;
+      border-radius: 34px;
+    }
+    
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 1.15rem;
+      width: 1.15rem;
+      left: 0.18rem;
+      bottom: 0.18rem;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .slider {
+      background-color: var(--primary);
+    }
+    
+    input:checked + .slider:before {
+      transform: translateX(1.25rem);
+    }
+    
+    input:focus + .slider {
+      box-shadow: var(--focus-ring);
+    }
+    
+    /* Buttons */
+    .btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.5rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    
+    .btn:hover {
+      background: var(--primary-hover);
+    }
+    
+    .btn:active {
+      transform: scale(0.98);
+    }
+    
+    .btn:focus {
+      outline: none;
+      box-shadow: var(--focus-ring);
+    }
+    
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f1f5f9;
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    
+    .btn-danger {
+      background: var(--danger);
+    }
+    
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+    
+    /* Status area */
+    .status-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .status-badge.online {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    
+    /* Table for Models */
+    .table-container {
+      overflow-x: auto;
+      margin-top: 1rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.875rem;
+    }
+    
+    th, td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    th {
+      background: rgba(15, 23, 42, 0.4);
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+    
+    tr:last-child td {
+      border-bottom: none;
+    }
+    
+    /* Loading overlay */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      backdrop-filter: blur(4px);
+    }
+    
+    .spinner {
+      width: 3rem;
+      height: 3rem;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    
+    .toast {
+      background: #1e293b;
+      color: var(--text-main);
+      border-left: 4px solid var(--primary);
+      border-radius: 6px;
+      padding: 1rem 1.5rem;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      transform: translateX(120%);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      min-width: 18rem;
+    }
+    
+    .toast.show {
+      transform: translateX(0);
+    }
+    
+    .toast.success {
+      border-left-color: var(--success);
+    }
+    
+    .toast.error {
+      border-left-color: var(--danger);
+    }
+    
+    /* Utility */
+    .hidden {
+      display: none !important;
+    }
+    
+    .actions-bar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    
+    .rpc-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>FreeClaude Admin</h1>
+      <p>管理您的本機代理伺服器、模型路由與優化開關</p>
+    </header>
+
+    <!-- Token Entry Card -->
+    <div class="card" id="tokenCard">
+      <div class="card-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        授權驗證
+      </div>
+      <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
+        請輸入本機 Proxy Token。此 Token 僅保留在頁面記憶體中，絕不寫入外部儲存空間。
+      </p>
+      <div class="form-group">
+        <label for="token">Proxy Token</label>
+        <input id="token" type="password" placeholder="請輸入 fcl_..." autocomplete="off">
+      </div>
+      <button class="btn" id="loadBtn">載入設定</button>
+    </div>
+
+    <!-- Settings Forms (Hidden until token verified) -->
+    <div id="mainContent" class="hidden">
+      <!-- Status Card -->
+      <div class="card">
+        <div class="card-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
+          執行期狀態
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <span style="color: var(--text-muted); margin-right: 0.5rem;">狀態:</span>
+            <span class="status-badge online">運行中</span>
+          </div>
+          <div>
+            <span style="color: var(--text-muted); margin-right: 0.5rem;">本機連接埠:</span>
+            <span id="activePort" style="font-weight: 700; color: var(--primary);">--</span>
+          </div>
+        </div>
+        <div class="rpc-group" style="margin-top: 1.5rem;">
+          <button class="btn btn-secondary" id="launchClaudeBtn">啟動 Claude Desktop</button>
+          <button class="btn btn-secondary btn-danger" id="resetMirrorBtn">重置鏡像 Profile</button>
+        </div>
+      </div>
+
+      <form id="settingsForm">
+        <!-- Card 1: Basic Connection -->
+        <div class="card">
+          <div class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            基本連線設定
+          </div>
+          <div class="grid">
+            <div class="form-group full-width">
+              <label for="baseUrl">Gateway URL</label>
+              <input id="baseUrl" type="url" required placeholder="https://api.anthropic.com">
+            </div>
+            
+            <div class="form-group">
+              <label for="authScheme">驗證方式 (Auth Scheme)</label>
+              <select id="authScheme">
+                <option value="bearer">Bearer Token</option>
+                <option value="x-api-key">X-API-Key</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="apiKey">API Key <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(留空代表保留原金鑰)</span></label>
+              <input id="apiKey" type="password" placeholder="••••••••••••••••" autocomplete="new-password">
+              <span id="keyStatus" style="font-size: 0.75rem; margin-top: 0.25rem;"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Model Routing -->
+        <div class="card">
+          <div class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8M13 19h8m-3-3l3 3-3 3"/></svg>
+            模型別名與路由
+          </div>
+          
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+            配置 Claude Desktop 對應的核心別名模型，可手動輸入或從偵測到的上游模型中選擇。
+          </p>
+          
+          <div class="grid">
+            <div class="form-group">
+              <label for="realModelSonnet">Sonnet Model 別名</label>
+              <input id="realModelSonnet" type="text" placeholder="例如: claude-3-5-sonnet-latest" list="modelSuggestions">
+            </div>
+            <div class="form-group">
+              <label for="realModelOpus">Opus Model 別名</label>
+              <input id="realModelOpus" type="text" placeholder="例如: claude-3-opus-latest" list="modelSuggestions">
+            </div>
+            <div class="form-group">
+              <label for="realModelHaiku">Haiku Model 別名</label>
+              <input id="realModelHaiku" type="text" placeholder="例如: claude-3-5-haiku-latest" list="modelSuggestions">
+            </div>
+            <div class="form-group">
+              <label for="realModel">預設保底 Model</label>
+              <input id="realModel" type="text" placeholder="當找不到路由時使用" list="modelSuggestions">
+            </div>
+          </div>
+          
+          <datalist id="modelSuggestions"></datalist>
+
+          <h3 style="font-size: 1rem; margin: 1.5rem 0 0.5rem 0; color: #e2e8f0;">已偵測上游模型清單 (Discovered Models)</h3>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+            勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬 Context 上下文支援。
+          </p>
+          
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>模型名稱</th>
+                  <th style="width: 4.5rem; text-align: center;">顯示</th>
+                  <th style="width: 4.5rem; text-align: center;">1M</th>
+                  <th style="width: 9rem;">Reasoning Effort (思考上限)</th>
+                </tr>
+              </thead>
+              <tbody id="modelsTableBody">
+                <tr>
+                  <td colspan="4" style="text-align: center; color: var(--text-muted);">尚未載入任何模型</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Card 3: Optimizations & Flags -->
+        <div class="card">
+          <div class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            效能優化與擴充開關
+          </div>
+          
+          <div class="grid">
+            <div class="form-group">
+              <label for="transportType">傳輸協定 (Transport Protocol)</label>
+              <select id="transportType">
+                <option value="openai_chat">OpenAI Chat 格式轉換</option>
+                <option value="anthropic_messages">原生 Anthropic passthrough</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="reasoningReplayMode">Thinking 模式 (Reasoning Replay)</label>
+              <select id="reasoningReplayMode">
+                <option value="disabled">不啟用 (丟棄思考內容)</option>
+                <option value="think_tags">Think Tags (包裝在 &lt;thinking&gt; 標籤)</option>
+                <option value="reasoning_content">Reasoning Content 欄位 (Provider 原生支援)</option>
+              </select>
+            </div>
+          </div>
+          
+          <div style="margin-top: 1.25rem;">
+            <div class="switch-container">
+              <div class="switch-label" onclick="document.getElementById('enableQuotaCheckMock').click()">
+                <span>配額檢查攔截 (Quota Mock)</span>
+                <span class="switch-desc">攔截 max_tokens=1 且含有 "quota" 的測試請求</span>
+              </div>
+              <label class="switch" aria-label="配額檢查攔截">
+                <input type="checkbox" id="enableQuotaCheckMock">
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <div class="switch-container">
+              <div class="switch-label" onclick="document.getElementById('enablePrefixDetection').click()">
+                <span>命令前綴快速檢測 (Prefix Detection)</span>
+                <span class="switch-desc">本地解析 shell 命令，避免不必要地呼叫 LLM</span>
+              </div>
+              <label class="switch" aria-label="命令前綴快速檢測">
+                <input type="checkbox" id="enablePrefixDetection">
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <div class="switch-container">
+              <div class="switch-label" onclick="document.getElementById('enableTitleGenerationSkip').click()">
+                <span>跳過對話標題生成</span>
+                <span class="switch-desc">直接回傳固定標題 "Conversation"，加速對話開啟</span>
+              </div>
+              <label class="switch" aria-label="跳過對話標題生成">
+                <input type="checkbox" id="enableTitleGenerationSkip">
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <div class="switch-container">
+              <div class="switch-label" onclick="document.getElementById('enableSuggestionModeSkip').click()">
+                <span>跳過建議提問模式</span>
+                <span class="switch-desc">直接回傳空建議，減少無用 API 請求</span>
+              </div>
+              <label class="switch" aria-label="跳過建議提問模式">
+                <input type="checkbox" id="enableSuggestionModeSkip">
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <div class="switch-container">
+              <div class="switch-label" onclick="document.getElementById('enableFilepathExtractionMock').click()">
+                <span>本機檔案路徑提取</span>
+                <span class="switch-desc">由命令輸出中進行本地路徑分析</span>
+              </div>
+              <label class="switch" aria-label="本機檔案路徑提取">
+                <input type="checkbox" id="enableFilepathExtractionMock">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="switch-container">
+              <div class="switch-label" onclick="document.getElementById('enableWebServerTools').click()">
+                <span>Web 網頁存取工具</span>
+                <span class="switch-desc">允許本地執行 web_search 與 web_fetch 抓取工具</span>
+              </div>
+              <label class="switch" aria-label="Web 網頁存取工具">
+                <input type="checkbox" id="enableWebServerTools">
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <div id="webToolsSettings" class="hidden" style="margin-left: 1.5rem; padding-left: 1rem; border-left: 2px solid rgba(255,255,255,0.1); margin-bottom: 0.75rem;">
+              <div class="form-group">
+                <label for="webFetchAllowedSchemes">Web Fetch 允許 URL Schemes (以逗號分隔)</label>
+                <input id="webFetchAllowedSchemes" type="text" placeholder="http,https">
+              </div>
+              <div class="switch-container" style="background: none; border: none; padding: 0.5rem 0;">
+                <div class="switch-label" onclick="document.getElementById('webFetchAllowPrivateNetworks').click()">
+                  <span>允許 web_fetch 存取私有網路 (Private Networks)</span>
+                </div>
+                <label class="switch" aria-label="允許 web_fetch 存取私有網路">
+                  <input type="checkbox" id="webFetchAllowPrivateNetworks">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="grid" style="margin-top: 1.25rem;">
+              <div class="form-group">
+                <label for="themeMode">介面主題 (Theme Mode)</label>
+                <select id="themeMode">
+                  <option value="light">明亮 (Light)</option>
+                  <option value="dark">深色 (Dark)</option>
+                  <option value="system">系統 (System)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="language">語系設定 (Language)</label>
+                <select id="language">
+                  <option value="en">English</option>
+                  <option value="zh-tw">繁體中文</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-bar">
+          <button type="submit" class="btn" id="saveBtn" style="padding-left: 2.5rem; padding-right: 2.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            儲存所有設定
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Global Loading Spinner -->
+  <div class="overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Toast system -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    let loadedSettings = null;
+
+    // Helper functions for Toast
+    function showToast(message, type = 'success') {
+      const container = $('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      
+      let icon = '';
+      if (type === 'success') {
+        icon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+      } else {
+        icon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+      }
+      
+      toast.innerHTML = `${icon}<span>${message}</span>`;
+      container.appendChild(toast);
+      
+      // trigger reflow then show
+      setTimeout(() => toast.classList.add('show'), 10);
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    function showLoading(show) {
+      $('loadingOverlay').style.display = show ? 'flex' : 'none';
+    }
+
+    const headers = () => ({
+      'Authorization': 'Bearer ' + $('token').value.trim()
+    });
+
+    async function request(path, options = {}) {
+      const r = await fetch(path, {
+        ...options,
+        headers: {
+          ...headers(),
+          ...(options.headers || {})
+        }
+      });
+      const b = await r.json();
+      if (!r.ok) throw new Error(b.error || r.statusText);
+      return b;
+    }
+
+    // Toggle Web Fetch options when Web Tools Intercept checked
+    $('enableWebServerTools').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        $('webToolsSettings').classList.remove('hidden');
+      } else {
+        $('webToolsSettings').classList.add('hidden');
+      }
+    });
+
+    // Load Settings
+    async function load() {
+      const token = $('token').value.trim();
+      if (!token) {
+        showToast('請輸入 Proxy Token', 'error');
+        return;
+      }
+      
+      showLoading(true);
+      try {
+        const [settings, status] = await Promise.all([
+          request('/admin/settings'),
+          request('/admin/status')
+        ]);
+        
+        loadedSettings = settings;
+        
+        // Hide token card and show settings
+        $('tokenCard').classList.add('hidden');
+        $('mainContent').classList.remove('hidden');
+        
+        // Fill Status
+        $('activePort').textContent = status.proxy.port || '未啟用';
+        
+        // Fill Card 1
+        $('baseUrl').value = settings.baseUrl || '';
+        $('authScheme').value = settings.authScheme || 'bearer';
+        $('apiKey').placeholder = settings.hasApiKey ? '•••••••••••••••• (已儲存)' : '尚未設定 API Key';
+        $('keyStatus').textContent = settings.hasApiKey ? '✅ 已儲存金鑰' : '❌ 未儲存金鑰';
+        $('keyStatus').style.color = settings.hasApiKey ? '#10b981' : '#f59e0b';
+        
+        // Fill Card 2 (Model Overrides)
+        $('realModelSonnet').value = settings.realModelSonnet || '';
+        $('realModelOpus').value = settings.realModelOpus || '';
+        $('realModelHaiku').value = settings.realModelHaiku || '';
+        $('realModel').value = settings.realModel || '';
+        
+        // Sugggestions datalist
+        const dl = $('modelSuggestions');
+        dl.innerHTML = '';
+        if (settings.discoveredModels) {
+          settings.discoveredModels.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            dl.appendChild(opt);
+          });
+        }
+        
+        // Render Discovered Models Table
+        renderModelsTable(settings);
+        
+        // Fill Card 3 (Optimizations)
+        $('transportType').value = settings.transportType || 'openai_chat';
+        $('reasoningReplayMode').value = settings.reasoningReplayMode || 'think_tags';
+        
+        $('enableQuotaCheckMock').checked = settings.enableQuotaCheckMock !== false;
+        $('enablePrefixDetection').checked = settings.enablePrefixDetection !== false;
+        $('enableTitleGenerationSkip').checked = settings.enableTitleGenerationSkip !== false;
+        $('enableSuggestionModeSkip').checked = settings.enableSuggestionModeSkip !== false;
+        $('enableFilepathExtractionMock').checked = settings.enableFilepathExtractionMock !== false;
+        
+        $('enableWebServerTools').checked = settings.enableWebServerTools === true;
+        if (settings.enableWebServerTools) {
+          $('webToolsSettings').classList.remove('hidden');
+        } else {
+          $('webToolsSettings').classList.add('hidden');
+        }
+        
+        $('webFetchAllowedSchemes').value = settings.webFetchAllowedSchemes || 'http,https';
+        $('webFetchAllowPrivateNetworks').checked = settings.webFetchAllowPrivateNetworks === true;
+        
+        $('themeMode').value = settings.themeMode || 'light';
+        $('language').value = settings.language || 'en';
+        
+        showToast('設定載入成功！');
+      } catch (e) {
+        showToast('載入失敗: ' + e.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    function renderModelsTable(settings) {
+      const tbody = $('modelsTableBody');
+      tbody.innerHTML = '';
+      
+      const models = settings.discoveredModels || [];
+      if (models.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">尚未偵測到任何上游模型</td></tr>`;
+        return;
+      }
+      
+      models.forEach(model => {
+        const tr = document.createElement('tr');
+        
+        // Visibility Checkbox
+        const isVisible = settings.modelVisibilityOverrides && settings.modelVisibilityOverrides[model] !== false;
+        // 1M Checkbox
+        const is1m = settings.model1mOverrides && settings.model1mOverrides[model] === true;
+        // Reasoning Effort Selection
+        const effort = (settings.modelReasoningOverrides && settings.modelReasoningOverrides[model]) || '';
+        
+        tr.innerHTML = `
+          <td style="font-family: monospace; word-break: break-all;">${model}</td>
+          <td style="text-align: center;">
+            <input type="checkbox" class="model-visibility" data-model="${model}" ${isVisible ? 'checked' : ''} aria-label="${model} 顯示狀態">
+          </td>
+          <td style="text-align: center;">
+            <input type="checkbox" class="model-1m" data-model="${model}" ${is1m ? 'checked' : ''} aria-label="${model} 1M Context 支援">
+          </td>
+          <td>
+            <select class="model-effort" data-model="${model}" aria-label="${model} 思考上限設定">
+              <option value="" ${effort === '' ? 'selected' : ''}>預設 (Default)</option>
+              <option value="low" ${effort === 'low' ? 'selected' : ''}>低 (Low)</option>
+              <option value="medium" ${effort === 'medium' ? 'selected' : ''}>中 (Medium)</option>
+              <option value="high" ${effort === 'high' ? 'selected' : ''}>高 (High)</option>
+            </select>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    $('loadBtn').onclick = load;
+    $('token').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') load();
+    });
+
+    // Save Settings
+    $('settingsForm').onsubmit = async (e) => {
+      e.preventDefault();
+      
+      showLoading(true);
+      try {
+        // Collect model visibility & 1m & reasoning overrides
+        const modelVisibilityOverrides = {};
+        document.querySelectorAll('.model-visibility').forEach(el => {
+          modelVisibilityOverrides[el.dataset.model] = el.checked;
+        });
+        
+        const model1mOverrides = {};
+        document.querySelectorAll('.model-1m').forEach(el => {
+          model1mOverrides[el.dataset.model] = el.checked;
+        });
+        
+        const modelReasoningOverrides = {};
+        document.querySelectorAll('.model-effort').forEach(el => {
+          modelReasoningOverrides[el.dataset.model] = el.value;
+        });
+
+        const payload = {
+          baseUrl: $('baseUrl').value.trim(),
+          authScheme: $('authScheme').value,
+          apiKey: $('apiKey').value.trim() || null,
+          
+          realModelSonnet: $('realModelSonnet').value.trim() || null,
+          realModelOpus: $('realModelOpus').value.trim() || null,
+          realModelHaiku: $('realModelHaiku').value.trim() || null,
+          realModel: $('realModel').value.trim() || null,
+          
+          modelVisibilityOverrides,
+          model1mOverrides,
+          modelReasoningOverrides,
+          
+          transportType: $('transportType').value,
+          reasoningReplayMode: $('reasoningReplayMode').value,
+          
+          enableQuotaCheckMock: $('enableQuotaCheckMock').checked,
+          enablePrefixDetection: $('enablePrefixDetection').checked,
+          enableTitleGenerationSkip: $('enableTitleGenerationSkip').checked,
+          enableSuggestionModeSkip: $('enableSuggestionModeSkip').checked,
+          enableFilepathExtractionMock: $('enableFilepathExtractionMock').checked,
+          
+          enableWebServerTools: $('enableWebServerTools').checked,
+          webFetchAllowedSchemes: $('webFetchAllowedSchemes').value.trim(),
+          webFetchAllowPrivateNetworks: $('webFetchAllowPrivateNetworks').checked,
+          
+          themeMode: $('themeMode').value,
+          language: $('language').value
+        };
+
+        await request('/admin/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        $('apiKey').value = '';
+        showToast('設定已成功儲存！');
+        await load(); // Reload to refresh hasApiKey, etc.
+      } catch (e) {
+        showToast('儲存失敗: ' + e.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    };
+
+    // RPC Actions
+    $('launchClaudeBtn').onclick = async () => {
+      showLoading(true);
+      try {
+        const res = await request('/admin/rpc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'LaunchClaude' })
+        });
+        showToast('Claude Desktop 啟動成功，路徑: ' + res.result.path);
+      } catch(e) {
+        showToast('啟動失敗: ' + e.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    };
+
+    $('resetMirrorBtn').onclick = async () => {
+      if (!confirm('⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。')) return;
+      showLoading(true);
+      try {
+        await request('/admin/rpc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'RestoreSettings' })
+        });
+        showToast('已成功重置鏡像目錄！');
+        await load();
+      } catch(e) {
+        showToast('重置失敗: ' + e.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    };
+  </script>
+</body>
+</html>"#,
     )
 }
 
@@ -380,6 +1492,7 @@ pub async fn handle_admin_rpc(
                     base_url,
                     auth_scheme,
                     api_key,
+                    ..Default::default()
                 },
             ) {
                 Ok(settings) => settings,
@@ -471,6 +1584,7 @@ async fn handle_companion_session(mut socket: WebSocket) {
                         base_url,
                         auth_scheme,
                         api_key,
+                        ..Default::default()
                     },
                 ) {
                     Ok(settings) => settings,
@@ -557,7 +1671,12 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     // Debug: log request headers without leaking local/upstream credentials.
     for (name, value) in &headers {
         let lower = name.as_str().to_ascii_lowercase();
-        if matches!(lower.as_str(), "authorization" | "x-api-key" | "cookie") {
+        if matches!(lower.as_str(), "authorization" | "x-api-key" | "cookie")
+            || lower.contains("key")
+            || lower.contains("token")
+            || lower.contains("secret")
+            || lower.contains("auth")
+        {
             tracing::debug!("[req header] {}: <redacted>", name);
         } else {
             tracing::debug!("[req header] {}: {:?}", name, value);
@@ -778,7 +1897,11 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
             }
         }
     } else {
-        (prepare_proxy_body(&body_str, &settings), false)
+        let is_stream = serde_json::from_str::<Value>(&body_str)
+            .ok()
+            .and_then(|v| v.get("stream").and_then(Value::as_bool))
+            .unwrap_or(false);
+        (prepare_proxy_body(&body_str, &settings), is_stream)
     };
 
     let target_url = if is_openai_format {
@@ -822,6 +1945,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         &headers,
         &api_key,
         &settings.real_auth_scheme,
+        is_anthropic_native,
     ) {
         Ok(request) => request,
         Err(error) => {
@@ -864,6 +1988,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 &headers,
                                 &api_key,
                                 &retry_settings.real_auth_scheme,
+                                false,
                             ) {
                                 if let Ok(retry) = request.send().await {
                                     if retry.status().is_success() {
@@ -958,6 +2083,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 &headers,
                                 &api_key,
                                 &retry_settings.real_auth_scheme,
+                                false,
                             );
 
                             if let Ok(retry_req) = retry_req {
@@ -1011,6 +2137,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 &headers,
                                 &api_key,
                                 &retry_settings.real_auth_scheme,
+                                false,
                             );
 
                             if let Ok(retry_req) = retry_req {

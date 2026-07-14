@@ -1,3 +1,4 @@
+pub mod companion_client;
 pub mod gateway_client;
 pub mod handler;
 pub mod models_endpoint;

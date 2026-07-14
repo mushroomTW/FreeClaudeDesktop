@@ -83,6 +83,7 @@ async fn convert_stream_inner(
     let mut text_block_open = false;
     let mut thinking_block_open = false;
     let mut content_block_index: u64 = 0;
+    let mut detected_finish_reason: Option<String> = None;
 
     let get_usage_str = |u: &Option<Value>| -> String {
         let mut usage_json = json!({
@@ -148,7 +149,9 @@ async fn convert_stream_inner(
 
                         finish_active_tools(&active_tools, content_block_index, &tx).await;
 
-                        let has_tools = !active_tools.is_empty();
+                        let has_tools = !active_tools.is_empty()
+                            || detected_finish_reason.as_deref() == Some("tool_calls")
+                            || detected_finish_reason.as_deref() == Some("function_call");
                         let stop_rs = if has_tools { "tool_use" } else { "end_turn" };
                         let delta_payload = format!(
                             "event: message_delta\ndata: {{\"type\":\"message_delta\",\"delta\":{{\"stop_reason\":\"{}\",\"stop_sequence\":null}},\"usage\":{}}}\n\n",
@@ -469,47 +472,8 @@ async fn convert_stream_inner(
                     }
                 }
 
-                if finish_reason.is_some() {
-                    let is_tool_finish = finish_reason == Some("tool_calls")
-                        || finish_reason == Some("function_call")
-                        || !active_tools.is_empty();
-                    let stop_rs = if is_tool_finish {
-                        "tool_use"
-                    } else {
-                        "end_turn"
-                    };
-
-                    if sent_start && !sent_stop {
-                        if thinking_block_open {
-                            finish_thinking_block(content_block_index, &tx).await;
-                            thinking_block_open = false;
-                            content_block_index += 1;
-                        }
-                        if text_block_open {
-                            let _ = tx.send(Ok(Bytes::from(format!(
-                                "event: content_block_stop\ndata: {{\"type\":\"content_block_stop\",\"index\":{}}}\n\n",
-                                content_block_index
-                            )))).await;
-                            text_block_open = false;
-                            content_block_index += 1;
-                        }
-
-                        finish_active_tools(&active_tools, content_block_index, &tx).await;
-
-                        let delta_payload = format!(
-                            "event: message_delta\ndata: {{\"type\":\"message_delta\",\"delta\":{{\"stop_reason\":\"{}\",\"stop_sequence\":null}},\"usage\":{}}}\n\n",
-                            stop_rs,
-                            get_usage_str(&final_usage)
-                        );
-                        let _ = tx.send(Ok(Bytes::from(delta_payload))).await;
-                        let _ = tx
-                            .send(Ok(Bytes::from(
-                                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
-                            )))
-                            .await;
-                        sent_stop = true;
-                    }
-                    break;
+                if let Some(fr) = finish_reason {
+                    detected_finish_reason = Some(fr.to_string());
                 }
             }
         }
@@ -529,7 +493,9 @@ async fn convert_stream_inner(
 
         finish_active_tools(&active_tools, content_block_index, &tx).await;
 
-        let has_tools = !active_tools.is_empty();
+        let has_tools = !active_tools.is_empty()
+            || detected_finish_reason.as_deref() == Some("tool_calls")
+            || detected_finish_reason.as_deref() == Some("function_call");
         let stop_rs = if has_tools { "tool_use" } else { "end_turn" };
         let delta_payload = format!(
             "event: message_delta\ndata: {{\"type\":\"message_delta\",\"delta\":{{\"stop_reason\":\"{}\",\"stop_sequence\":null}},\"usage\":{}}}\n\n",
