@@ -1,4 +1,5 @@
 use std::time::Duration;
+use std::{io, process::Command as ProcessCommand};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde_json::Value;
@@ -71,8 +72,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Start => start_proxy(),
         Command::Stop => stop_proxy(),
         Command::Status => print_proxy_status().await,
+        Command::Configure => open_admin(),
+        Command::LaunchClaude => launch_claude(),
+        Command::Restore => restore_settings(),
         command => Err(format!("命令尚未實作：{}", command_name(&command)).into()),
     }
+}
+
+fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
+    let port = free_claude_desktop::get_launcher_settings()
+        .and_then(|settings| settings.active_port)
+        .unwrap_or(3000);
+    let url = format!("http://127.0.0.1:{port}/admin");
+
+    #[cfg(target_os = "windows")]
+    let status = ProcessCommand::new("cmd")
+        .args(["/C", "start", "", &url])
+        .status()?;
+    #[cfg(target_os = "macos")]
+    let status = ProcessCommand::new("open").arg(&url).status()?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let status = ProcessCommand::new("xdg-open").arg(&url).status()?;
+
+    if !status.success() {
+        return Err(io::Error::other("無法開啟 Web Admin").into());
+    }
+    println!("已開啟 Web Admin：{url}");
+    Ok(())
+}
+
+fn launch_claude() -> Result<(), Box<dyn std::error::Error>> {
+    let path = free_claude_desktop::launch_claude(None)?;
+    println!("Claude 已啟動：{}", path.display());
+    Ok(())
+}
+
+fn restore_settings() -> Result<(), Box<dyn std::error::Error>> {
+    free_claude_desktop::restore_official_config()?;
+    println!("Claude 官方設定已還原");
+    Ok(())
 }
 
 fn proxy_port() -> Result<u16, Box<dyn std::error::Error>> {
