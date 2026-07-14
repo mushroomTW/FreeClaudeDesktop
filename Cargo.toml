@@ -15,6 +15,10 @@ path = "src/main.rs"
 name = "freeclaude-proxy"
 path = "src/bin/freeclaude-proxy.rs"
 
+[[bin]]
+name = "freeclaude"
+path = "src/bin/freeclaude.rs"
+
 [dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
 serde = { version = "1", features = ["derive"] }
@@ -27,6 +31,7 @@ futures = "0.3"
 getrandom = "0.4"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync"] }
 axum = "0.8"
+clap = { version = "4", features = ["derive"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tower-http = { version = "0.7", features = ["cors"] }
 thiserror = "2"
