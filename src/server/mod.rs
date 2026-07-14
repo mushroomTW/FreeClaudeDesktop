@@ -1,3 +1,4 @@
+pub mod gateway_client;
 pub mod handler;
 pub mod models_endpoint;
 pub mod router;
