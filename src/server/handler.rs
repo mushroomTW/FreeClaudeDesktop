@@ -12,6 +12,7 @@ use axum::{
     Json,
     body::Bytes,
     http::{HeaderMap, StatusCode},
+    response::Html,
     response::IntoResponse,
 };
 use reqwest::Client;
@@ -235,6 +236,19 @@ pub async fn handle_launcher_show() -> impl IntoResponse {
 
 pub async fn handle_healthz() -> Json<Value> {
     Json(json!({ "status": "ok" }))
+}
+
+pub async fn handle_admin_page() -> Html<&'static str> {
+    Html(
+        r#"<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreeClaude Admin</title><style>body{max-width:44rem;margin:2rem auto;padding:0 1rem;font:16px system-ui;color:#172033}label{display:block;margin-top:1rem;font-weight:600}input,select,button{box-sizing:border-box;width:100%;padding:.6rem;margin-top:.35rem}button{background:#2155d6;color:white;border:0;border-radius:.3rem;font-weight:700;cursor:pointer}pre{padding:1rem;background:#f3f5f9;white-space:pre-wrap}#message{min-height:1.4em}</style></head>
+<body><h1>FreeClaude Admin</h1><p>Token 只保留在此頁面記憶體中，不會寫入設定檔或瀏覽器儲存空間。</p>
+<label>Proxy token<input id="token" type="password" autocomplete="off"></label><button id="load">載入設定</button>
+<form id="settings"><label>Gateway URL<input id="baseUrl" required type="url"></label><label>驗證方式<select id="authScheme"><option value="bearer">Bearer</option><option value="x-api-key">X-API-Key</option></select></label><label>API key（留空保留原值）<input id="apiKey" type="password" autocomplete="new-password"></label><button>儲存設定</button></form>
+<h2>Runtime 狀態</h2><pre id="status">尚未載入</pre><p id="message" role="status"></p>
+<script>const $=id=>document.getElementById(id),message=$('message');const headers=()=>({Authorization:'Bearer '+$('token').value});async function request(path,options={}){const r=await fetch(path,{...options,headers:{...headers(),...(options.headers||{})}});const b=await r.json();if(!r.ok)throw new Error(b.error||r.statusText);return b}async function load(){try{const [settings,status]=await Promise.all([request('/admin/settings'),request('/admin/status')]);$('baseUrl').value=settings.baseUrl||'';$('authScheme').value=settings.authScheme||'bearer';$('status').textContent=JSON.stringify(status,null,2);message.textContent='設定已載入'}catch(e){message.textContent='錯誤：'+e.message}}$('load').onclick=load;$('settings').onsubmit=async e=>{e.preventDefault();try{await request('/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({baseUrl:$('baseUrl').value,authScheme:$('authScheme').value,apiKey:$('apiKey').value})});$('apiKey').value='';message.textContent='設定已儲存';await load()}catch(e){message.textContent='錯誤：'+e.message}}</script></body></html>"#,
+    )
 }
 
 pub async fn handle_admin_settings(headers: HeaderMap) -> impl IntoResponse {
