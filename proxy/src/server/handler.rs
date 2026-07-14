@@ -457,7 +457,7 @@ pub async fn handle_healthz() -> Json<Value> {
 
 pub async fn handle_admin_page() -> Html<&'static str> {
     Html(
-        r#"<!doctype html>
+        r##"<!doctype html>
 <html lang="zh-TW">
 <head>
   <meta charset="utf-8">
@@ -1954,7 +1954,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     })();
   </script>
 </body>
-</html>"#,
+</html>"##,
     )
 }
 
