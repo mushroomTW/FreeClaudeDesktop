@@ -18,6 +18,11 @@ pub fn create_router(port: u16) -> Router {
     Router::new()
         .route("/", get(super::handler::handle_root))
         .route("/healthz", get(super::handler::handle_healthz))
+        .route(
+            "/admin/settings",
+            get(super::handler::handle_admin_settings),
+        )
+        .route("/admin/status", get(super::handler::handle_admin_status))
         .route("/v1/messages", post(super::handler::handle_proxy))
         .route("/v1/models", get(super::models_endpoint::handle_models))
         .route(

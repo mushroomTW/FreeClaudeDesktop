@@ -7,6 +7,7 @@ use crate::conversion::response_converter::{
 };
 use crate::optimization;
 use crate::server::streaming::{ReasoningReplayMode, start_sse_stream_conversion};
+use crate::{Settings, to_public_config};
 use axum::{
     Json,
     body::Bytes,
@@ -18,6 +19,41 @@ use serde_json::{Value, json};
 use std::time::{Duration, SystemTime};
 
 const MAX_UPSTREAM_ERROR_BYTES: usize = 64 * 1024;
+
+async fn load_authorized_settings(
+    headers: &HeaderMap,
+) -> Result<Settings, (StatusCode, Json<Value>)> {
+    let settings = match load_runtime_settings().await {
+        Ok(Some(settings)) => settings,
+        Ok(None) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Launcher has not been configured yet." })),
+            ));
+        }
+        Err(error) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error.to_string() })),
+            ));
+        }
+    };
+
+    let authorization = headers
+        .get("Authorization")
+        .and_then(|value| value.to_str().ok());
+    let x_api_key = headers
+        .get("x-api-key")
+        .and_then(|value| value.to_str().ok());
+    if !super::is_authorized_proxy_request(authorization, x_api_key, &settings.proxy_auth_token) {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Unauthorized" })),
+        ));
+    }
+
+    Ok(settings)
+}
 
 fn is_model_gone_or_invalid_error(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
@@ -170,6 +206,27 @@ pub async fn handle_launcher_show() -> impl IntoResponse {
 
 pub async fn handle_healthz() -> Json<Value> {
     Json(json!({ "status": "ok" }))
+}
+
+pub async fn handle_admin_settings(headers: HeaderMap) -> impl IntoResponse {
+    match load_authorized_settings(&headers).await {
+        Ok(settings) => (StatusCode::OK, Json(to_public_config(&settings))).into_response(),
+        Err(response) => response.into_response(),
+    }
+}
+
+pub async fn handle_admin_status(headers: HeaderMap) -> impl IntoResponse {
+    match load_authorized_settings(&headers).await {
+        Ok(settings) => (
+            StatusCode::OK,
+            Json(json!({
+                "proxy": { "status": "ok", "port": settings.active_port },
+                "settings": to_public_config(&settings),
+            })),
+        )
+            .into_response(),
+        Err(response) => response.into_response(),
+    }
 }
 
 #[cfg(test)]
