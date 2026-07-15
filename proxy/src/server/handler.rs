@@ -15,7 +15,7 @@ use axum::{
         WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::Html,
     response::IntoResponse,
 };
@@ -27,8 +27,8 @@ use url::Url;
 
 const MAX_UPSTREAM_ERROR_BYTES: usize = 64 * 1024;
 
-use futures::{SinkExt, StreamExt};
 use free_claude_core::{AsyncOpenAiGatewayFactory, GatewayClientFactory};
+use futures::{SinkExt, StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
@@ -226,7 +226,7 @@ fn apply_settings_update(
 }
 
 async fn load_authorized_settings(
-    headers: &HeaderMap,
+    _headers: &HeaderMap,
 ) -> Result<Settings, (StatusCode, Json<Value>)> {
     let settings = match load_runtime_settings().await {
         Ok(Some(settings)) => settings,
@@ -243,19 +243,6 @@ async fn load_authorized_settings(
             ));
         }
     };
-
-    let authorization = headers
-        .get("Authorization")
-        .and_then(|value| value.to_str().ok());
-    let x_api_key = headers
-        .get("x-api-key")
-        .and_then(|value| value.to_str().ok());
-    if !super::is_authorized_proxy_request(authorization, x_api_key, &settings.proxy_auth_token) {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Unauthorized" })),
-        ));
-    }
 
     Ok(settings)
 }
@@ -425,6 +412,13 @@ pub async fn handle_root() -> impl IntoResponse {
     "FreeClaudeDesktop API proxy is running"
 }
 
+pub async fn handle_app_icon() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "image/png")],
+        include_bytes!("../../../icon.png").as_slice(),
+    )
+}
+
 pub async fn handle_launcher_show() -> impl IntoResponse {
     super::LAUNCHER_SHOW_REQUESTED.store(true, std::sync::atomic::Ordering::Release);
 
@@ -543,6 +537,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       padding: 1.5rem;
       background: var(--bg-main);
     }
+
+    #authWrapper {
+      display: none !important;
+    }
     
     .auth-card {
       background: var(--bg-card);
@@ -562,8 +560,9 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     }
     
     .fox-logo {
-      width: 64px;
-      height: 64px;
+      width: 96px;
+      height: 96px;
+      object-fit: contain;
     }
     
     .auth-title {
@@ -611,8 +610,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     }
     
     .sidebar-header .fox-logo {
-      width: 32px;
-      height: 32px;
+      width: 48px;
+      height: 48px;
     }
     
     .sidebar-title-group {
@@ -1177,23 +1176,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     <div id="authWrapper" class="auth-wrapper">
       <div class="auth-card">
         <div class="auth-logo-area">
-          <svg class="fox-logo" viewBox="0 0 100 100">
-            <path d="M 50 10 L 20 40 L 30 75 L 50 90 L 70 75 L 80 40 Z" fill="var(--primary-color)"/>
-            <path d="M 20 40 L 10 15 L 35 30 Z" fill="var(--primary-hover)"/>
-            <path d="M 80 40 L 90 15 L 65 30 Z" fill="var(--primary-hover)"/>
-            <path d="M 30 75 L 50 90 L 40 60 Z" fill="#ffffff"/>
-            <path d="M 70 75 L 50 90 L 60 60 Z" fill="#ffffff"/>
-            <circle cx="50" cy="90" r="4" fill="#121212"/>
-            <polygon points="35,50 42,50 38,55" fill="#121212"/>
-            <polygon points="65,50 58,50 62,55" fill="#121212"/>
-          </svg>
+          <img class="fox-logo" src="/assets/icon.png" alt="FreeClaudeDesktop 圖標">
         </div>
         <h1 class="auth-title">FreeClaudeDesktop</h1>
         <p class="auth-subtitle">管理您的本機代理伺服器、模型路由與優化開關</p>
-        <div class="form-group" style="text-align: left;">
-          <label for="token">Proxy Token</label>
-          <input id="token" type="password" placeholder="請輸入 fcl_..." autocomplete="off">
-        </div>
         <button class="btn btn-primary" id="loadBtn" style="margin-top: 1.5rem; width: 100%;">
           載入設定 ↵
         </button>
@@ -1206,16 +1192,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         <!-- 左側側邊欄 -->
         <aside class="sidebar">
           <div class="sidebar-header">
-            <svg class="fox-logo" viewBox="0 0 100 100">
-              <path d="M 50 10 L 20 40 L 30 75 L 50 90 L 70 75 L 80 40 Z" fill="var(--primary-color)"/>
-              <path d="M 20 40 L 10 15 L 35 30 Z" fill="var(--primary-hover)"/>
-              <path d="M 80 40 L 90 15 L 65 30 Z" fill="var(--primary-hover)"/>
-              <path d="M 30 75 L 50 90 L 40 60 Z" fill="#ffffff"/>
-              <path d="M 70 75 L 50 90 L 60 60 Z" fill="#ffffff"/>
-              <circle cx="50" cy="90" r="4" fill="#121212"/>
-              <polygon points="35,50 42,50 38,55" fill="#121212"/>
-              <polygon points="65,50 58,50 62,55" fill="#121212"/>
-            </svg>
+            <img class="fox-logo" src="/assets/icon.png" alt="FreeClaudeDesktop 圖標">
             <div class="sidebar-title-group">
               <span class="sidebar-title">FreeClaudeDesktop</span>
               <span class="sidebar-subtitle">設定</span>
@@ -1298,6 +1275,16 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                     <div class="select-wrapper">
                       <select id="apiProvider">
                         <option value="custom">custom</option>
+                        <option value="nvidia">NVIDIA NIM</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="groq">Groq</option>
+                        <option value="grok">xAI Grok</option>
+                        <option value="zai">Z.ai</option>
+                        <option value="kimi">Kimi (Moonshot AI)</option>
+                        <option value="minimax">MiniMax</option>
+                        <option value="qwen">Qwen（國際）</option>
                       </select>
                     </div>
                   </div>
@@ -1555,6 +1542,33 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     let loadedSettings = null;
     let launchAfterSave = false;
 
+    const providerPresets = {
+      nvidia: { baseUrl: 'https://integrate.api.nvidia.com/v1', authScheme: 'bearer' },
+      openrouter: { baseUrl: 'https://openrouter.ai/api/v1', authScheme: 'bearer' },
+      gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', authScheme: 'bearer' },
+      deepseek: { baseUrl: 'https://api.deepseek.com', authScheme: 'bearer' },
+      groq: { baseUrl: 'https://api.groq.com/openai/v1', authScheme: 'bearer' },
+      grok: { baseUrl: 'https://api.x.ai/v1', authScheme: 'bearer' },
+      zai: { baseUrl: 'https://api.z.ai/api/paas/v4', authScheme: 'bearer' },
+      kimi: { baseUrl: 'https://api.moonshot.ai/v1', authScheme: 'bearer' },
+      minimax: { baseUrl: 'https://api.minimax.io/v1', authScheme: 'bearer' },
+      qwen: { baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', authScheme: 'bearer' }
+    };
+
+    function selectProviderForBaseUrl(baseUrl) {
+      const normalized = (baseUrl || '').replace(/\/$/, '');
+      const provider = Object.entries(providerPresets)
+        .find(([, preset]) => preset.baseUrl === normalized)?.[0] || 'custom';
+      $('apiProvider').value = provider;
+    }
+
+    $('apiProvider').addEventListener('change', () => {
+      const preset = providerPresets[$('apiProvider').value];
+      if (!preset) return;
+      $('baseUrl').value = preset.baseUrl;
+      $('authScheme').value = preset.authScheme;
+    });
+
     // Helper functions for Toast
     function showToast(message, type = 'success') {
       const container = $('toastContainer');
@@ -1583,9 +1597,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       $('loadingOverlay').style.display = show ? 'flex' : 'none';
     }
 
-    const headers = () => ({
-      'Authorization': 'Bearer ' + $('token').value.trim()
-    });
+    const headers = () => ({});
 
     async function request(path, options = {}) {
       const r = await fetch(path, {
@@ -1667,12 +1679,6 @@ pub async fn handle_admin_page() -> Html<&'static str> {
 
     // Load Settings
     async function load() {
-      const token = $('token').value.trim();
-      if (!token) {
-        showToast('請輸入 Proxy Token', 'error');
-        return;
-      }
-      
       showLoading(true);
       try {
         const [settings, status] = await Promise.all([
@@ -1690,6 +1696,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         
         $('baseUrl').value = settings.baseUrl || '';
         $('authScheme').value = settings.authScheme || 'bearer';
+        selectProviderForBaseUrl(settings.baseUrl);
         $('apiKey').placeholder = settings.hasApiKey ? '•••••••••••••••• (已儲存)' : '尚未設定 API Key';
         $('keyStatus').textContent = settings.hasApiKey ? '✅ 已儲存金鑰' : '❌ 未儲存金鑰';
         $('keyStatus').style.color = settings.hasApiKey ? '#10b981' : '#f59e0b';
@@ -1801,10 +1808,6 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     }
 
     $('loadBtn').onclick = load;
-    $('token').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') load();
-    });
-
     // Save Logic
     $('saveAndLaunchBtn').onclick = () => {
       launchAfterSave = true;
@@ -1952,6 +1955,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     (function() {
       const savedTheme = localStorage.getItem('theme') || 'system';
       applyTheme(savedTheme);
+      load();
     })();
   </script>
 </body>
@@ -2042,10 +2046,6 @@ pub async fn handle_admin_rpc(
     let mut payload_val = serde_json::to_value(&request).unwrap_or(Value::Null);
     if let Some(obj) = payload_val.as_object_mut() {
         obj.insert("requestId".to_string(), Value::String(request_id.clone()));
-        obj.insert(
-            "token".to_string(),
-            Value::String(settings.proxy_auth_token.clone()),
-        );
     }
 
     let (response_tx, response_rx) = oneshot::channel();
@@ -2160,7 +2160,6 @@ mod healthz_tests {
     #[allow(dead_code)]
     struct CompanionRequest {
         request_id: String,
-        token: String,
         #[serde(flatten)]
         request: AdminRpcRequest,
     }
@@ -2195,17 +2194,12 @@ mod healthz_tests {
     }
 
     #[test]
-    fn companion_request_requires_token_and_request_id() {
+    fn companion_request_requires_request_id_only() {
         assert!(
-            serde_json::from_str::<CompanionRequest>(
-                r#"{"requestId":"1","token":"secret","method":"GetStatus"}"#
-            )
-            .is_ok()
+            serde_json::from_str::<CompanionRequest>(r#"{"requestId":"1","method":"GetStatus"}"#)
+                .is_ok()
         );
-        assert!(
-            serde_json::from_str::<CompanionRequest>(r#"{"token":"secret","method":"GetStatus"}"#)
-                .is_err()
-        );
+        assert!(serde_json::from_str::<CompanionRequest>(r#"{"method":"GetStatus"}"#).is_err());
     }
 }
 
@@ -2228,7 +2222,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         tracing::info!("[req header] Origin: {}", origin);
     }
 
-    // 1. Load settings for the configured proxy token.
+    // 1. Load settings.
     let settings = match load_runtime_settings().await {
         Ok(Some(settings)) => settings,
         Ok(None) => {
@@ -2248,22 +2242,6 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                 .into_response();
         }
     };
-
-    // 2. Validate authorization
-    let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
-    let x_api_key_header = headers.get("x-api-key").and_then(|h| h.to_str().ok());
-    let is_authorized = super::is_authorized_proxy_request(
-        auth_header,
-        x_api_key_header,
-        &settings.proxy_auth_token,
-    );
-    if !is_authorized {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Unauthorized" })),
-        )
-            .into_response();
-    }
 
     let body_str = String::from_utf8_lossy(&body);
 

@@ -215,7 +215,7 @@ async fn test_companion_forwarding_success() {
         if let Some(msg) = rx.recv().await {
             let payload: Value = serde_json::from_str(&msg.payload).unwrap();
             assert_eq!(payload["method"], "DetectClaude");
-            assert_eq!(payload["token"], "test_token");
+            assert!(payload.get("token").is_none());
 
             let _ = msg.response_tx.send(Ok(serde_json::json!({
                 "path": "mock_host_path"
@@ -223,8 +223,7 @@ async fn test_companion_forwarding_success() {
         }
     });
 
-    let mut headers = HeaderMap::new();
-    headers.insert("Authorization", "Bearer test_token".parse().unwrap());
+    let headers = HeaderMap::new();
 
     let response = handle_admin_rpc(headers, Json(AdminRpcRequest::DetectClaude))
         .await

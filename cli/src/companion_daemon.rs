@@ -82,16 +82,7 @@ async fn handle_message(text: &str) -> Result<Value, String> {
 }
 
 async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
-    let token = req_val
-        .get("token")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing token")?;
-
     let settings = free_claude_core::get_launcher_settings().ok_or("Launcher not configured")?;
-    if settings.proxy_auth_token != token {
-        return Err("unauthorized".to_string());
-    }
-
     let rpc_req: AdminRpcRequest =
         serde_json::from_value(req_val.clone()).map_err(|e| e.to_string())?;
     let result = match rpc_req {

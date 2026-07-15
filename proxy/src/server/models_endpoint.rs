@@ -71,8 +71,8 @@ fn clear_models_cache_for_tests() {
     clear_models_cache();
 }
 
-pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
-    // 1. Load settings for the configured proxy token.
+pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
+    // 1. Load settings.
     let mut settings = match load_runtime_settings().await {
         Ok(Some(settings)) => settings,
         Ok(None) => {
@@ -92,22 +92,6 @@ pub async fn handle_models(headers: HeaderMap) -> impl IntoResponse {
                 .into_response();
         }
     };
-
-    // 2. Validate authorization
-    let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
-    let x_api_key_header = headers.get("x-api-key").and_then(|h| h.to_str().ok());
-    let is_authorized = crate::server::is_authorized_proxy_request(
-        auth_header,
-        x_api_key_header,
-        &settings.proxy_auth_token,
-    );
-    if !is_authorized {
-        return (
-            axum::http::StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Unauthorized" })),
-        )
-            .into_response();
-    }
 
     if let Some(models) = cached_models(
         &settings.real_base_url,

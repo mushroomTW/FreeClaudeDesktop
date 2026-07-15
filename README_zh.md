@@ -1,5 +1,7 @@
 # FreeClaudeDesktop
 
+![FreeClaudeDesktop 圖標](icon.png)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-stable-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![HTTP: Axum](https://img.shields.io/badge/HTTP-Axum-6d3f8c.svg?style=for-the-badge)](https://github.com/tokio-rs/axum)
@@ -92,17 +94,17 @@ freeclaude stop
 
 預設連接埠為 `3000`。設定 `FREECLAUDE_PROXY_PORT` 可使用其他本機連接埠；`start` 會等待 `/healthz` 成功後才回報完成。
 
-`freeclaude configure` 會開啟同源的 `/admin` Web Admin 頁面。輸入本機 proxy token 後，即可查看狀態與更新 Gateway 設定。API key 儲存在作業系統 keyring，Admin API 不會回傳它。
+`freeclaude configure` 會開啟同源的 `/admin` Web Admin 頁面。不需要登入或 Proxy Token，即可查看狀態與更新 Gateway 設定。API key 儲存在作業系統 keyring，Admin API 不會回傳它。
 
 執行 `freeclaude start` 後，也可直接開啟 [http://127.0.0.1:3000/admin](http://127.0.0.1:3000/admin) 使用 Web Admin。
 
 ```text
 GET  /healthz
-GET  /admin/settings      （需要 Bearer proxy token）
-POST /admin/settings      （需要 Bearer proxy token）
-GET  /admin/status        （需要 Bearer proxy token）
-POST /admin/rpc           （需要 Bearer proxy token）
-WS   /companion           （首個訊息需要 token 與 requestId）
+GET  /admin/settings
+POST /admin/settings
+GET  /admin/status
+POST /admin/rpc
+WS   /companion           （首個訊息需要 requestId）
 ```
 
 管理自動啟動與移除：
@@ -122,26 +124,7 @@ Windows 使用 Task Scheduler、macOS 使用 LaunchAgent、Linux 使用 systemd 
 
 ## Docker
 
-Docker Compose 僅將 Proxy 映射到 localhost：
-
-```bash
-docker compose up --build
-```
-
-服務與 Web Admin 位於 `http://127.0.0.1:3000`。image 不包含 API key 或 proxy token。
-
-Docker 預設限制 Proxy 最多使用 **4 GB** 記憶體。若要調整，請將 `.env.example` 複製為 `.env`，並設定 `FREECLAUDE_DOCKER_MEMORY_LIMIT`（例如 `512m` 或 `2g`）。
-
-在專案目錄中透過 CLI 管理 Docker runtime；若 Compose 檔位於其他位置，請設定 `FREECLAUDE_COMPOSE_FILE`：
-
-```bash
-freeclaude install --runtime docker
-freeclaude status --runtime docker
-freeclaude stop --runtime docker
-freeclaude start --runtime docker
-freeclaude update --runtime docker
-freeclaude uninstall --runtime docker --yes --purge-image
-```
+Docker Compose 用法、記憶體上限、安全注意事項與 CLI 管理指令，請見 [DOCKER.md](DOCKER.md)。
 
 僅檢查是否有新版 GitHub Release、但不變更本機安裝：
 

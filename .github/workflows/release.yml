@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 建置 ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 Rust 工具鏈
+        run: rustup toolchain install 1.85 --profile minimal
+
+      - name: 使用 Rust 1.85
+        run: rustup override set 1.85
+
+      - name: 建置發行檔
+        run: cargo build --locked --release --package freeclaude --package freeclaude-proxy
+
+      - name: 打包 Unix 發行檔
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist/package
+          cp target/release/freeclaude target/release/freeclaude-proxy dist/package/
+          tar -C dist/package -czf "../freeclaude-${{ matrix.target }}.tar.gz" freeclaude freeclaude-proxy
+
+      - name: 打包 Windows 發行檔
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/package | Out-Null
+          Copy-Item target/release/freeclaude.exe, target/release/freeclaude-proxy.exe dist/package/
+          Compress-Archive -Path dist/package/* -DestinationPath "dist/freeclaude-${{ matrix.target }}.zip"
+
+      - name: 上傳發行檔
+        uses: actions/upload-artifact@v4
+        with:
+          name: freeclaude-${{ matrix.target }}
+          path: dist/freeclaude-${{ matrix.target }}.${{ matrix.archive }}
+          if-no-files-found: error
+
+  publish:
+    name: 建立 GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下載全部發行檔
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 準備安裝器與校驗檔
+        shell: bash
+        run: |
+          cp scripts/install.sh dist/install.sh
+          cp scripts/install.ps1 dist/install.ps1
+          cd dist
+          sha256sum freeclaude-*.tar.gz freeclaude-*.zip > checksums.txt
+
+      - name: 建立 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_type }}" != "tag" ]]; then
+            echo "手動觸發只建置資產，不建立 Release。"
+            exit 0
+          fi
+          gh release create "${{ github.ref_name }}" dist/* \
+            --verify-tag \
+            --title "FreeClaudeDesktop ${{ github.ref_name }}" \
+            --generate-notes
