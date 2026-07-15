@@ -13,6 +13,21 @@ fn keyring_entry() -> AppResult<keyring::Entry> {
         .map_err(|error| AppError::Crypto(error.to_string()))
 }
 
+/// 移除 FreeClaudeDesktop 寫入作業系統金鑰庫的 API key。
+///
+/// 找不到既有項目時視為已完成，讓解除安裝可安全重複執行。
+pub fn delete_stored_secret() -> AppResult<()> {
+    let entry = match keyring_entry() {
+        Ok(entry) => entry,
+        Err(_) => return Ok(()),
+    };
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(AppError::Crypto(error.to_string())),
+    }
+}
+
 /// 將 API key 存進作業系統原生金鑰庫，設定檔只保留參照標記。
 pub fn protect_secret(secret: &str) -> AppResult<String> {
     if secret.is_empty() {

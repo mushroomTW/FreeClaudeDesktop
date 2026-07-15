@@ -1,0 +1,25 @@
+{
+  "name": "@mushroomtw/freeclaudedesktop",
+  "version": "0.1.1",
+  "description": "以 pnpm 管理的 FreeClaudeDesktop 本機 Proxy",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "freeclaude-proxy": "bin/freeclaude-proxy.cjs"
+  },
+  "files": [
+    "bin",
+    "scripts",
+    "README.md"
+  ],
+  "scripts": {
+    "preuninstall": "node scripts/preuninstall.cjs"
+  },
+  "optionalDependencies": {
+    "@mushroomtw/freeclaudedesktop-darwin-arm64": "0.1.1",
+    "@mushroomtw/freeclaudedesktop-darwin-x64": "0.1.1",
+    "@mushroomtw/freeclaudedesktop-linux-x64": "0.1.1",
+    "@mushroomtw/freeclaudedesktop-win32-arm64": "0.1.1",
+    "@mushroomtw/freeclaudedesktop-win32-x64": "0.1.1"
+  }
+}
