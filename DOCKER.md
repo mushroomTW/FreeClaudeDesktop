@@ -1,45 +1,45 @@
-# Docker 執行指南
+# Docker Runtime Guide
 
-本文件說明如何以 Docker Compose 執行 FreeClaudeDesktop Proxy。Docker runtime 是可選項；一般使用情境建議直接使用原生 runtime。
+This guide explains how to run the FreeClaudeDesktop Proxy with Docker Compose. The Docker runtime is optional; the native runtime is recommended for typical use.
 
-## 前置需求
+## Prerequisites
 
-- Docker Engine 或 Docker Desktop（包含 Docker Compose v2）
-- 專案根目錄中的 `compose.yaml`、`Dockerfile` 與 `.env.example`
+- Docker Engine or Docker Desktop, including Docker Compose v2
+- `compose.yaml`, `Dockerfile`, and `.env.example` in the project root
 
-## 快速啟動
+## Quick start
 
-在專案根目錄執行：
+Run this command from the project root:
 
 ```bash
 docker compose up --build
 ```
 
-Proxy 僅對本機公開：`http://127.0.0.1:3000`。Web Admin 不具有登入機制，請勿修改 `compose.yaml` 將連接埠暴露到區域網路或網際網路。
+The proxy is published only on the local machine at `http://127.0.0.1:3000`. Web Admin does not have a sign-in flow. Do not modify `compose.yaml` to expose this port to a LAN or the public Internet.
 
-停止服務：
+Stop the service with:
 
 ```bash
 docker compose down
 ```
 
-## 記憶體上限
+## Memory limit
 
-預設上限為 **4 GB**。將 `.env.example` 複製為 `.env`，並設定 `FREECLAUDE_DOCKER_MEMORY_LIMIT`：
+The default limit is **4 GB**. Copy `.env.example` to `.env`, then set `FREECLAUDE_DOCKER_MEMORY_LIMIT`:
 
 ```dotenv
 FREECLAUDE_DOCKER_MEMORY_LIMIT=2g
 ```
 
-Docker Compose 支援如 `512m`、`1g`、`2g` 的記憶體單位。修改後重新建立容器：
+Docker Compose accepts memory values such as `512m`, `1g`, and `2g`. Recreate the container after changing the value:
 
 ```bash
 docker compose up --build --force-recreate
 ```
 
-## 以 CLI 管理 Docker runtime
+## Managing the Docker runtime with the CLI
 
-在專案根目錄使用：
+From the project root, run:
 
 ```bash
 freeclaude install --runtime docker
@@ -50,8 +50,8 @@ freeclaude update --runtime docker
 freeclaude uninstall --runtime docker --yes --purge-image
 ```
 
-若 Compose 檔位於其他位置，請設定 `FREECLAUDE_COMPOSE_FILE` 為該檔案的絕對路徑。
+If the Compose file is stored elsewhere, set `FREECLAUDE_COMPOSE_FILE` to its absolute path.
 
-## Companion Daemon
+## Companion daemon
 
-Docker 容器只包含 Proxy。CLI 每次啟動 Docker Proxy 時，都會在宿主機啟動 Companion Daemon，維持本機 `/companion` WebSocket 連線以供 Claude Desktop RPC 使用。
+The Docker container contains only the proxy. Each time the CLI starts the Docker proxy, it also starts the Companion Daemon on the host. The daemon maintains the local `/companion` WebSocket connection used for Claude Desktop RPC.

@@ -74,7 +74,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
         }
     }
 
-    // 1. 精確匹配 routes (例如 "claude-sonnet-4-6[0]" 或 "claude-sonnet-4-6[0][1m]")
+    // 1. 精確匹配 routes (例如 "claude-sonnet-4-6_0" 或 "claude-sonnet-4-6_0[1m]")
     if let Some(mapped) = settings.real_model_routes.get(requested_model) {
         return Some(mapped.clone());
     }
@@ -148,7 +148,10 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     // 5. 安全兜底：如果請求的模型名稱看起來像是一個本地的 alias (含有中括號)，
     //    但我們竟然無法將其映射到任何真實模型，則絕對不能原樣發送（因為上游必定報 400）。
     //    此時我們強制將其映射為我們所知道的任何一個可用上游模型。
-    if requested_model.contains('[') && requested_model.contains(']') {
+    let is_indexed_claude_alias = requested_model
+        .rsplit_once('_')
+        .is_some_and(|(prefix, index)| prefix.starts_with("claude-") && index.parse::<usize>().is_ok());
+    if (requested_model.contains('[') && requested_model.contains(']')) || is_indexed_claude_alias {
         // (1) 優先使用 routes 裡的任意一個真實模型
         if let Some(m) = settings.real_model_routes.values().next() {
             tracing::warn!(

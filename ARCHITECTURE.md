@@ -1,41 +1,90 @@
-# 架構
+# Architecture
 
-FreeClaudeDesktop 是跨平台 Rust 專案，由宿主機 CLI/companion 與本機 proxy 組成。它不再包含 Iced 視窗、系統匣或原生 GUI 安裝包。
+This document describes the internal structure and execution paths of FreeClaudeDesktop. For installation, operation, supported platforms, and security guidance, see [README.md](README.md).
 
-```text
-freeclaude CLI + companion（宿主機）
-  ├── 管理 Claude Desktop 設定、系統 keyring 與開機自啟動
-  └── 管理 native 或 Docker proxy runtime
+## Crate boundaries
 
-freeclaude-proxy
-  ├── Axum /v1/messages、/v1/models、/admin/*、/healthz
-  ├── 同源 Web Admin
-  └── 已驗證 companion WebSocket 管理通道
+| Crate | Internal responsibility |
+| --- | --- |
+| `free-claude-core` (`core/`) | Shared schemas, persistent settings, model discovery and routing, request/response conversion, and launcher integration. |
+| `freeclaude-proxy` (`proxy/`) | Axum routes, authentication, gateway forwarding, SSE conversion, Web Admin, and companion WebSocket handling. |
+| `freeclaude` (`cli/`) | Commands that coordinate installation, process lifecycle, profile configuration, autostart, update, and removal. |
+
+Dependencies flow inward: the CLI and proxy depend on `free-claude-core`; the core crate is independent of the HTTP server and command-line interface.
+
+```mermaid
+flowchart BT
+    CORE["free-claude-core"]
+    PROXY["freeclaude-proxy"] --> CORE
+    CLI["freeclaude CLI"] --> CORE
+    CLI --> PROXY
 ```
 
-## Workspace
+## Runtime topology
 
-| 元件 | 位置 | 職責 |
-| --- | --- | --- |
-| `free-claude-core` | `core/` | 設定 schema、Claude/OpenAI 轉換、模型路由、Claude Desktop 設定交易與跨平台啟動。 |
-| `freeclaude-proxy` | `proxy/` | Axum proxy、串流轉換、管理頁與 companion RPC 端點。 |
-| `freeclaude` | `cli/` | `install`、runtime 生命週期、設定還原、Claude 啟動與開機自啟動。 |
-
-## Runtime
-
-原生模式僅監聽 `127.0.0.1:3000`。Docker 模式由 `compose.yaml` 將容器的 3000 映射至相同宿主機 loopback 位址；容器以 non-root 使用者執行。兩種模式都提供相同的 API 與管理端點。
-
-管理頁不直接操作宿主機檔案或程序，而是透過由 companion 主動建立、具 token 驗證與 allowlist 的 WebSocket RPC 執行受限操作。companion 離線時，模型 API 仍可使用，但管理動作會回報離線狀態。
-
-## 設定與還原
-
-敏感 token 由宿主機設定服務保護，Web Admin 僅回傳是否已設定。套用 Claude Desktop 設定時只寫入程式管理的鍵值與 metadata；`restore`／`uninstall` 只移除這些鍵值，保留使用者後續新增的設定。
-
-## 開發與驗證
-
-```powershell
-cargo test --workspace
-cargo run -p freeclaude -- install
-cargo run -p freeclaude -- install --runtime docker
-docker compose -f compose.yaml up --build
+```mermaid
+flowchart LR
+    CD["Claude Desktop"] -->|"Anthropic Messages API"| PX["Proxy"]
+    ADMIN["Web Admin"] --> PX
+    CLI["CLI / Companion"] --> PX
+    PX -->|"OpenAI-compatible Chat Completions"| GW["Configured gateway"]
+    GW --> PROVIDER["Model provider"]
+    PROVIDER --> GW --> PX --> CD
 ```
+
+The proxy is the protocol boundary. It accepts Claude-compatible requests, while the gateway adapter sends OpenAI-compatible requests upstream. The companion connection lets the Web Admin coordinate with the host-side CLI process without putting host-control logic inside the proxy container.
+
+## Message execution flow
+
+```mermaid
+flowchart TD
+    A["Incoming POST /v1/messages"] --> B["Authenticate request and load settings"]
+    B --> C{"Local optimization applies?"}
+    C -->|"Yes"| D["Generate local response"]
+    C -->|"No"| E["Resolve Claude-facing alias"]
+    E --> F["Convert Anthropic Messages payload"]
+    F --> G["Build upstream request and credentials"]
+    G --> H["Forward to gateway"]
+    H --> I{"Response stream?"}
+    I -->|"No"| J["Convert complete OpenAI response"]
+    I -->|"Yes"| K["Convert upstream SSE events"]
+    J --> L["Return Anthropic JSON"]
+    K --> M["Replay thinking and return Anthropic SSE"]
+```
+
+## Model discovery and routing
+
+```mermaid
+flowchart TD
+    A["GET /v1/models"] --> B["Fetch or read cached upstream model list"]
+    B --> C["Normalize model metadata"]
+    C --> D["Apply per-model capability overrides"]
+    D --> E{"Reasoning capability"}
+    E -->|"No"| H["Haiku alias"]
+    E -->|"Yes"| F{"Max reasoning supported"}
+    F -->|"Yes"| G["Opus alias"]
+    F -->|"No"| S["Sonnet alias"]
+    G --> R["Publish alias and route cache"]
+    S --> R
+    H --> R
+```
+
+An alias is stable for the returned model-list position and uses an underscore index, such as `claude-opus-4-8_0`. A 1M-context capability changes the advertised context limit only; it does not select the alias family. Alias selection is determined by reasoning support: `max` maps to Opus, other supported reasoning levels map to Sonnet, and models without reasoning support map to Haiku.
+
+During request conversion, Claude `thinking.budget_tokens` is translated to a supported `reasoning_effort` level before the upstream request is sent. In response conversion, upstream reasoning is represented either as native Claude thinking blocks or as inline `<antThinking>` text, according to `reasoning_replay_mode`.
+
+## State ownership
+
+```mermaid
+flowchart LR
+    SETTINGS["Settings store"] --> PROXY["Proxy request handlers"]
+    SETTINGS --> ADMIN["Web Admin settings API"]
+    KEYRING["OS keyring"] --> PROXY
+    PROFILE["Isolated Claude Desktop profile"] <-->|"configure / sync"| CLI["CLI"]
+    CLI --> SETTINGS
+    PROXY --> CACHE["Model-route cache"]
+```
+
+- The settings store owns non-secret proxy configuration and model capability overrides.
+- The operating-system keyring owns gateway credentials; settings APIs do not return them.
+- The CLI owns lifecycle and profile synchronization. The proxy owns request-time model cache state.

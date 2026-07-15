@@ -69,28 +69,28 @@ fn rewrites_model_from_saved_routes() {
 }
 
 #[test]
-fn rewrites_model_from_saved_routes_bracket_key() {
-    // Claude Desktop sends model IDs like "claude-opus-4-8[0]" (bracket suffix for thinking level).
-    // The routes map must use the same bracket format as keys, otherwise lookup fails and the
+fn rewrites_model_from_saved_routes_underscore_key() {
+    // Claude Desktop receives model IDs like "claude-opus-4-8_0" (underscore suffix for index).
+    // The routes map must use the same underscore format as keys, otherwise lookup fails and the
     // unmapped alias gets forwarded to LiteLLM, causing "Invalid model name" errors.
     let mut routes = HashMap::new();
     routes.insert(
-        "claude-opus-4-8[0]".to_string(),
+        "claude-opus-4-8_0".to_string(),
         "deepseek-v4-flash".to_string(),
     );
-    routes.insert("claude-opus-4-8[3]".to_string(), "glm-5.1".to_string());
+    routes.insert("claude-opus-4-8_3".to_string(), "glm-5.1".to_string());
     let settings = Settings {
         real_model_routes: routes,
         ..Settings::default()
     };
 
-    let body = prepare_proxy_body(r#"{"model":"claude-opus-4-8[0]","messages":[]}"#, &settings);
+    let body = prepare_proxy_body(r#"{"model":"claude-opus-4-8_0","messages":[]}"#, &settings);
     assert_eq!(
         serde_json::from_str::<Value>(&body).unwrap()["model"],
         "deepseek-v4-flash"
     );
 
-    let body2 = prepare_proxy_body(r#"{"model":"claude-opus-4-8[3]","messages":[]}"#, &settings);
+    let body2 = prepare_proxy_body(r#"{"model":"claude-opus-4-8_3","messages":[]}"#, &settings);
     assert_eq!(
         serde_json::from_str::<Value>(&body2).unwrap()["model"],
         "glm-5.1"
@@ -105,7 +105,7 @@ fn prepare_proxy_body_falls_back_for_unmapped_local_alias() {
     };
 
     let body = prepare_proxy_body(
-        r#"{"model":"claude-haiku-4-5[2]","messages":[]}"#,
+        r#"{"model":"claude-haiku-4-5_2","messages":[]}"#,
         &settings,
     );
 
