@@ -64,8 +64,6 @@ Requirements:
 - Claude Desktop for launcher integration
 
 ```bash
-cargo test
-cargo check
 cargo build --release
 cargo run
 ```
@@ -135,6 +133,7 @@ freeclaude update --check
 ## Project Links
 
 - [Architecture](ARCHITECTURE.md)
+- [Extensions & Skills](EXTENSIONS_AND_SKILLS.md)
 - [Issue tracker](https://github.com/mushroomTW/FreeClaudeDesktop/issues)
 
 ## Security

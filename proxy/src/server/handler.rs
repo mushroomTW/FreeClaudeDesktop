@@ -457,6 +457,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="google" content="notranslate">
   <title>FreeClaude Admin Dashboard</title>
   <style>
     :root {
@@ -1195,25 +1196,25 @@ pub async fn handle_admin_page() -> Html<&'static str> {
             <img class="fox-logo" src="/assets/icon.png" alt="FreeClaudeDesktop 圖標">
             <div class="sidebar-title-group">
               <span class="sidebar-title">FreeClaudeDesktop</span>
-              <span class="sidebar-subtitle">設定</span>
+              <span class="sidebar-subtitle" data-i18n="sidebar_subtitle">設定</span>
             </div>
           </div>
           <nav class="sidebar-nav">
             <a href="#connection" class="nav-item active" data-tab="connection">
               <span class="nav-indicator"></span>
-              <span>連線設定</span>
+              <span data-i18n="nav_connection">連線設定</span>
             </a>
             <a href="#models" class="nav-item" data-tab="models">
               <span class="nav-indicator"></span>
-              <span>模型與思考</span>
+              <span data-i18n="nav_models">模型與思考</span>
             </a>
             <a href="#extensions" class="nav-item" data-tab="extensions">
               <span class="nav-indicator"></span>
-              <span>擴充與技能</span>
+              <span data-i18n="nav_extensions">擴充與技能</span>
             </a>
             <a href="#optimization" class="nav-item" data-tab="optimization">
               <span class="nav-indicator"></span>
-              <span>效能優化</span>
+              <span data-i18n="nav_optimization">效能優化</span>
             </a>
           </nav>
           <div class="sidebar-footer">
@@ -1231,7 +1232,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
           <header class="content-header">
             <div class="header-left">
               <h2 class="content-title">FreeClaudeDesktop</h2>
-              <p class="proxy-status">本機 Proxy : <span id="activePort">--</span></p>
+              <p class="proxy-status"><span data-i18n="conn_local_proxy">本機 Proxy</span> : <span id="activePort">--</span></p>
             </div>
             <div class="header-right">
               <div class="theme-capsule">
@@ -1268,10 +1269,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
             <!-- 1. 連線設定分頁 -->
             <section id="tab-connection" class="tab-section">
               <div class="card">
-                <div class="card-title">基本連線設定</div>
+                <div class="card-title" data-i18n="conn_title">基本連線設定</div>
                 <div class="grid">
                   <div class="form-group">
-                    <label for="apiProvider">API 供應商</label>
+                    <label for="apiProvider" data-i18n="conn_provider">API 供應商</label>
                     <div class="select-wrapper">
                       <select id="apiProvider">
                         <option value="custom">custom</option>
@@ -1289,15 +1290,15 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                     </div>
                   </div>
                   <div class="form-group">
-                    <label for="baseUrl">API URL</label>
+                    <label for="baseUrl" data-i18n="conn_api_url">API URL</label>
                     <input id="baseUrl" type="url" required placeholder="http://127.0.0.1:4000">
                   </div>
                   <div class="form-group">
-                    <label for="apiKey">API Key <span id="keyStatus" style="font-size: 0.75rem; margin-left: 0.5rem;"></span></label>
+                    <label for="apiKey"><span data-i18n="conn_api_key">API Key</span> <span id="keyStatus" style="font-size: 0.75rem; margin-left: 0.5rem;"></span></label>
                     <input id="apiKey" type="password" placeholder="••••••••••••••••" autocomplete="new-password">
                   </div>
                   <div class="form-group">
-                    <label for="authScheme">驗證方式 (Auth Scheme)</label>
+                    <label for="authScheme" data-i18n="conn_auth_scheme">驗證方式</label>
                     <div class="select-wrapper">
                       <select id="authScheme">
                         <option value="bearer">bearer</option>
@@ -1310,8 +1311,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                 <div style="margin-top: 1.5rem;">
                   <div class="switch-container" style="opacity: 0.7;">
                     <div class="switch-label">
-                      <span>使用自訂 Claude.exe 路徑</span>
-                      <span class="switch-desc">本機 GUI 管理功能，Web 端僅供展示</span>
+                      <span data-i18n="conn_custom_path_title">使用自訂 Claude.exe 路徑</span>
+                      <span class="switch-desc" data-i18n="conn_custom_path_desc">本機 GUI 管理功能，Web 端僅供展示</span>
                     </div>
                     <label class="switch">
                       <input type="checkbox" id="useCustomClaudePath" disabled>
@@ -1327,7 +1328,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                 <div class="status-card-inner" style="margin-top: 1.5rem;">
                   <div style="display: flex; align-items: center; gap: 0.75rem;">
                     <span class="dot-online"></span>
-                    <span style="font-weight: 600;">已偵測 Claude Desktop</span>
+                    <span style="font-weight: 600;" data-i18n="conn_detected_claude">已偵測 Claude Desktop</span>
                   </div>
                   <div id="detectedClaudePath" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem; font-family: monospace; word-break: break-all;">
                     偵測中...
@@ -1339,40 +1340,45 @@ pub async fn handle_admin_page() -> Html<&'static str> {
             <!-- 2. 模型與思考分頁 -->
             <section id="tab-models" class="tab-section hidden">
               <div class="card">
-                <div class="card-title">模型別名與路由</div>
-                <p class="section-desc">配置 Claude Desktop 對應的核心別名模型，可手動輸入或從偵測到的上游模型中選擇。</p>
+                <div class="card-title" data-i18n="models_title">模型別名與路由</div>
+                <p class="section-desc" data-i18n="models_desc">配置 Claude Desktop 對應的核心別名模型，可手動輸入或從偵測到的上游模型中選擇。</p>
                 
                 <div class="grid">
                   <div class="form-group">
-                    <label for="realModelSonnet">Sonnet Model 別名</label>
-                    <input id="realModelSonnet" type="text" placeholder="例如: claude-3-5-sonnet-latest" list="modelSuggestions">
+                    <label for="realModelSonnet" data-i18n="models_sonnet">Sonnet Model 別名</label>
+                    <input id="realModelSonnet" type="text" placeholder="例如: claude-3-5-sonnet-latest" data-i18n-placeholder="placeholder_sonnet" list="modelSuggestions">
                   </div>
                   <div class="form-group">
-                    <label for="realModelOpus">Opus Model 別名</label>
-                    <input id="realModelOpus" type="text" placeholder="例如: claude-3-opus-latest" list="modelSuggestions">
+                    <label for="realModelOpus" data-i18n="models_opus">Opus Model 別名</label>
+                    <input id="realModelOpus" type="text" placeholder="例如: claude-3-opus-latest" data-i18n-placeholder="placeholder_opus" list="modelSuggestions">
                   </div>
                   <div class="form-group">
-                    <label for="realModelHaiku">Haiku Model 別名</label>
-                    <input id="realModelHaiku" type="text" placeholder="例如: claude-3-5-haiku-latest" list="modelSuggestions">
+                    <label for="realModelHaiku" data-i18n="models_haiku">Haiku Model 別名</label>
+                    <input id="realModelHaiku" type="text" placeholder="例如: claude-3-5-haiku-latest" data-i18n-placeholder="placeholder_haiku" list="modelSuggestions">
                   </div>
                   <div class="form-group">
-                    <label for="realModel">預設保底 Model</label>
-                    <input id="realModel" type="text" placeholder="當找不到路由時使用" list="modelSuggestions">
+                    <label for="realModel" data-i18n="models_fallback">預設保底 Model</label>
+                    <input id="realModel" type="text" placeholder="當找不到路由時使用" data-i18n-placeholder="placeholder_fallback" list="modelSuggestions">
                   </div>
                 </div>
                 <datalist id="modelSuggestions"></datalist>
 
-                <h3 class="subsection-title">已偵測上游模型清單 (Discovered Models)</h3>
-                <p class="section-desc">勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬 Context 上下文支援。</p>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 1.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                  <h3 class="subsection-title" style="margin: 0;" data-i18n="models_discovered_title">已偵測上游模型清單</h3>
+                  <button type="button" class="btn" id="fetchModelsBtn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background-color: var(--primary-color);">
+                    <span data-i18n="models_fetch_btn">抓取模型清單</span>
+                  </button>
+                </div>
+                <p class="section-desc" data-i18n="models_discovered_desc">勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬 Context 上下文支援。</p>
                 
                 <div class="table-container">
                   <table>
                     <thead>
                       <tr>
-                        <th>模型名稱</th>
-                        <th style="width: 5rem; text-align: center;">顯示</th>
-                        <th style="width: 5rem; text-align: center;">1M</th>
-                        <th style="width: 10rem;">Reasoning Effort (思考上限)</th>
+                        <th data-i18n="models_table_name">模型名稱</th>
+                        <th style="width: 5rem; text-align: center;" data-i18n="models_table_show">顯示</th>
+                        <th style="width: 5rem; text-align: center;" data-i18n="models_table_1m">1M</th>
+                        <th style="width: 10rem;" data-i18n="models_table_effort">Reasoning Effort</th>
                       </tr>
                     </thead>
                     <tbody id="modelsTableBody">
@@ -1388,12 +1394,12 @@ pub async fn handle_admin_page() -> Html<&'static str> {
             <!-- 3. 擴充與技能分頁 -->
             <section id="tab-extensions" class="tab-section hidden">
               <div class="card">
-                <div class="card-title">擴充與本地技能</div>
+                <div class="card-title" data-i18n="ext_title">擴充與本地技能</div>
                 
                 <div class="switch-container">
                   <div class="switch-label" onclick="document.getElementById('enableQuotaCheckMock').click()">
-                    <span>配額檢查攔截 (Quota Mock)</span>
-                    <span class="switch-desc">攔截 max_tokens=1 且含有 "quota" 的測試請求</span>
+                    <span data-i18n="ext_quota_title">配額檢查攔截</span>
+                    <span class="switch-desc" data-i18n="ext_quota_desc">攔截 max_tokens=1 且含有 "quota" 的測試請求</span>
                   </div>
                   <label class="switch" aria-label="配額檢查攔截">
                     <input type="checkbox" id="enableQuotaCheckMock">
@@ -1403,8 +1409,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                 
                 <div class="switch-container">
                   <div class="switch-label" onclick="document.getElementById('enablePrefixDetection').click()">
-                    <span>命令前綴快速檢測 (Prefix Detection)</span>
-                    <span class="switch-desc">本地解析 shell 命令，避免不必要地呼叫 LLM</span>
+                    <span data-i18n="ext_prefix_title">命令前綴快速檢測</span>
+                    <span class="switch-desc" data-i18n="ext_prefix_desc">本地解析 shell 命令，避免不必要地呼叫 LLM</span>
                   </div>
                   <label class="switch" aria-label="命令前綴快速檢測">
                     <input type="checkbox" id="enablePrefixDetection">
@@ -1414,8 +1420,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                 
                 <div class="switch-container">
                   <div class="switch-label" onclick="document.getElementById('enableTitleGenerationSkip').click()">
-                    <span>跳過對話標題生成</span>
-                    <span class="switch-desc">直接回傳固定標題 "Conversation"，加速對話開啟</span>
+                    <span data-i18n="ext_title_skip_title">跳過對話標題生成</span>
+                    <span class="switch-desc" data-i18n="ext_title_skip_desc">直接回傳固定標題 "Conversation"，加速對話開啟</span>
                   </div>
                   <label class="switch" aria-label="跳過對話標題生成">
                     <input type="checkbox" id="enableTitleGenerationSkip">
@@ -1425,8 +1431,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                 
                 <div class="switch-container">
                   <div class="switch-label" onclick="document.getElementById('enableSuggestionModeSkip').click()">
-                    <span>跳過建議提問模式</span>
-                    <span class="switch-desc">直接回傳空建議，減少無用 API 請求</span>
+                    <span data-i18n="ext_suggest_skip_title">跳過建議提問模式</span>
+                    <span class="switch-desc" data-i18n="ext_suggest_skip_desc">直接回傳空建議，減少無用 API 請求</span>
                   </div>
                   <label class="switch" aria-label="跳過建議提問模式">
                     <input type="checkbox" id="enableSuggestionModeSkip">
@@ -1436,8 +1442,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                 
                 <div class="switch-container">
                   <div class="switch-label" onclick="document.getElementById('enableFilepathExtractionMock').click()">
-                    <span>本機檔案路徑提取</span>
-                    <span class="switch-desc">由命令輸出中進行本地路徑分析</span>
+                    <span data-i18n="ext_filepath_title">本機檔案路徑提取</span>
+                    <span class="switch-desc" data-i18n="ext_filepath_desc">由命令輸出中進行本地路徑分析</span>
                   </div>
                   <label class="switch" aria-label="本機檔案路徑提取">
                     <input type="checkbox" id="enableFilepathExtractionMock">
@@ -1447,8 +1453,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
 
                 <div class="switch-container">
                   <div class="switch-label" onclick="document.getElementById('enableWebServerTools').click()">
-                    <span>Web 網頁存取工具</span>
-                    <span class="switch-desc">允許本地執行 web_search 與 web_fetch 抓取工具</span>
+                    <span data-i18n="ext_web_tools_title">Web 網頁存取工具</span>
+                    <span class="switch-desc" data-i18n="ext_web_tools_desc">允許本地執行 web_search 與 web_fetch 抓取工具</span>
                   </div>
                   <label class="switch" aria-label="Web 網頁存取工具">
                     <input type="checkbox" id="enableWebServerTools">
@@ -1458,12 +1464,12 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                 
                 <div id="webToolsSettings" class="hidden" style="margin-left: 1.5rem; padding-left: 1rem; border-left: 2px solid var(--border-color); margin-top: 0.5rem; margin-bottom: 0.75rem;">
                   <div class="form-group">
-                    <label for="webFetchAllowedSchemes">Web Fetch 允許 URL Schemes (以逗號分隔)</label>
+                    <label for="webFetchAllowedSchemes" data-i18n="ext_web_fetch_schemes">Web Fetch 允許 URL Schemes (以逗號分隔)</label>
                     <input id="webFetchAllowedSchemes" type="text" placeholder="http,https">
                   </div>
                   <div class="switch-container" style="background: none; border: none; padding: 0.5rem 0;">
                     <div class="switch-label" onclick="document.getElementById('webFetchAllowPrivateNetworks').click()">
-                      <span>允許 web_fetch 存取私有網路 (Private Networks)</span>
+                      <span data-i18n="ext_web_fetch_private">允許 web_fetch 存取私有網路 (Private Networks)</span>
                     </div>
                     <label class="switch" aria-label="允許 web_fetch 存取私有網路">
                       <input type="checkbox" id="webFetchAllowPrivateNetworks">
@@ -1477,26 +1483,26 @@ pub async fn handle_admin_page() -> Html<&'static str> {
             <!-- 4. 效能優化分頁 -->
             <section id="tab-optimization" class="tab-section hidden">
               <div class="card">
-                <div class="card-title">效能優化設定</div>
+                <div class="card-title" data-i18n="opt_title">效能優化設定</div>
                 
                 <div class="grid">
                   <div class="form-group">
-                    <label for="transportType">傳輸協定 (Transport Protocol)</label>
+                    <label for="transportType" data-i18n="opt_transport">傳輸協定</label>
                     <div class="select-wrapper">
                       <select id="transportType">
-                        <option value="openai_chat">OpenAI Chat 格式轉換</option>
-                        <option value="anthropic_messages">原生 Anthropic passthrough</option>
+                        <option value="openai_chat" data-i18n="opt_transport_openai">OpenAI Chat 格式轉換</option>
+                        <option value="anthropic_messages" data-i18n="opt_transport_anthropic">原生 Anthropic passthrough</option>
                       </select>
                     </div>
                   </div>
                   
                   <div class="form-group">
-                    <label for="reasoningReplayMode">Thinking 模式 (Reasoning Replay)</label>
+                    <label for="reasoningReplayMode" data-i18n="opt_thinking">Thinking 模式</label>
                     <div class="select-wrapper">
                       <select id="reasoningReplayMode">
-                        <option value="disabled">不啟用 (丟棄思考內容)</option>
-                        <option value="think_tags">Think Tags (包裝在 &lt;thinking&gt; 標籤)</option>
-                        <option value="reasoning_content">Reasoning Content 欄位 (Provider 原生支援)</option>
+                        <option value="disabled" data-i18n="opt_thinking_disabled">不啟用 (丟棄思考內容)</option>
+                        <option value="think_tags" data-i18n="opt_thinking_tags">Think Tags (包裝在 &lt;thinking&gt; 標籤)</option>
+                        <option value="reasoning_content" data-i18n="opt_thinking_content">Reasoning Content 欄位 (Provider 原生支援)</option>
                       </select>
                     </div>
                   </div>
@@ -1508,11 +1514,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                   <option value="system">系統 (System)</option>
                 </select>
 
-                <div style="margin-top: 2rem;">
-                  <button type="button" class="btn btn-secondary" id="launchClaudeBtn" style="width: 100%;">
-                    啟動 Claude Desktop
-                  </button>
-                </div>
+
               </div>
             </section>
           </div>
@@ -1520,10 +1522,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
           <!-- 3. 底部固定動作列 -->
           <footer class="bottom-actions">
             <div class="actions-wrapper">
-              <button type="button" class="btn btn-secondary" id="resetMirrorBtn">重置鏡像 Profile</button>
-              <button type="button" class="btn btn-secondary" id="syncOfficialBtn">從原版同步</button>
-              <button type="button" class="btn btn-secondary" id="saveOnlyBtn">僅儲存</button>
-              <button type="submit" class="btn btn-primary" id="saveAndLaunchBtn">儲存並啟動 ↵</button>
+              <button type="button" class="btn btn-secondary" id="resetMirrorBtn" data-i18n="btn_reset_mirror">重置鏡像 Profile</button>
+              <button type="button" class="btn btn-secondary" id="syncOfficialBtn" data-i18n="btn_sync_original">從原版同步</button>
+              <button type="button" class="btn btn-secondary" id="saveOnlyBtn" data-i18n="btn_save_only">僅儲存</button>
+              <button type="submit" class="btn btn-primary" id="saveAndLaunchBtn" data-i18n="btn_save_launch">儲存並啟動 ↵</button>
             </div>
           </footer>
         </main>
@@ -1541,6 +1543,199 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     const $ = id => document.getElementById(id);
     let loadedSettings = null;
     let launchAfterSave = false;
+
+    const translations = {
+      'zh-tw': {
+        'nav_connection': '連線設定',
+        'nav_models': '模型與思考',
+        'nav_extensions': '擴充與技能',
+        'nav_optimization': '效能優化',
+        'conn_title': '基本連線設定',
+        'conn_provider': 'API 供應商',
+        'conn_api_url': 'API URL',
+        'conn_api_key': 'API Key',
+        'conn_auth_scheme': '驗證方式',
+        'conn_custom_path_title': '使用自訂 Claude.exe 路徑',
+        'conn_custom_path_desc': '本機 GUI 管理功能，Web 端僅供展示',
+        'conn_detected_claude': '已偵測 Claude Desktop',
+        'conn_detecting': '偵測中...',
+        'models_title': '模型別名與路由',
+        'models_desc': '配置 Claude Desktop 對應的核心別名模型，可手動輸入或從偵測到的上游模型中選擇。',
+        'models_sonnet': 'Sonnet Model 別名',
+        'models_opus': 'Opus Model 別名',
+        'models_haiku': 'Haiku Model 別名',
+        'models_fallback': '預設保底 Model',
+        'models_discovered_title': '已偵測上游模型清單',
+        'models_fetch_btn': '抓取模型清單',
+        'models_discovered_desc': '勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬 Context 上下文支援。',
+        'models_table_name': '模型名稱',
+        'models_table_show': '顯示',
+        'models_table_1m': '1M',
+        'models_table_effort': 'Reasoning Effort',
+        'ext_title': '擴充與本地技能',
+        'ext_quota_title': '配額檢查攔截',
+        'ext_quota_desc': '攔截 max_tokens=1 且含有 "quota" 的測試請求',
+        'ext_prefix_title': '命令前綴快速檢測',
+        'ext_prefix_desc': '本地解析 shell 命令，避免不必要地呼叫 LLM',
+        'ext_title_skip_title': '跳過對話標題生成',
+        'ext_title_skip_desc': '直接回傳固定標題 "Conversation"，加速對話開啟',
+        'ext_suggest_skip_title': '跳過建議提問模式',
+        'ext_suggest_skip_desc': '直接回傳空建議，減少無用 API 請求',
+        'ext_filepath_title': '本機檔案路徑提取',
+        'ext_filepath_desc': '由命令輸出中進行本地路徑分析',
+        'ext_web_tools_title': 'Web 網頁存取工具',
+        'ext_web_tools_desc': '允許本地執行 web_search 與 web_fetch 抓取工具',
+        'ext_web_fetch_schemes': 'Web Fetch 允許 URL Schemes (以逗號分隔)',
+        'ext_web_fetch_private': '允許 web_fetch 存取私有網路 (Private Networks)',
+        'opt_title': '效能優化設定',
+        'opt_transport': '傳輸協定',
+        'opt_transport_openai': 'OpenAI Chat 格式轉換',
+        'opt_transport_anthropic': '原生 Anthropic passthrough',
+        'opt_thinking': 'Thinking 模式',
+        'opt_thinking_disabled': '不啟用 (丟棄思考內容)',
+        'opt_thinking_tags': 'Think Tags (包裝在 <thinking> 標籤)',
+        'opt_thinking_content': 'Reasoning Content 欄位 (Provider 原生支援)',
+        'btn_launch_claude': '啟動 Claude Desktop',
+        'btn_reset_mirror': '重置鏡像 Profile',
+        'btn_sync_original': '從原版同步',
+        'btn_save_only': '僅儲存',
+        'btn_save_launch': '儲存並啟動 ↵',
+        'toast_save_success': '設定已成功儲存！',
+        'toast_save_failed': '儲存失敗: ',
+        'toast_load_success': '設定載入成功！',
+        'toast_load_failed': '載入失敗: ',
+        'toast_launch_success': 'Claude Desktop 啟動成功，路徑: ',
+        'toast_launch_failed': '儲存成功，但 Claude 啟動失敗: ',
+        'toast_fetch_success': '模型清單抓取成功！',
+        'toast_fetch_failed': '抓取失敗: ',
+        'confirm_sync': '⚠ 確定要從官方原版 Claude Desktop 同步配置？',
+        'confirm_reset': '⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。',
+        'detected_online': '已偵測 Claude Desktop',
+        'detected_offline': '未偵測到安裝路徑，將使用預設路徑',
+        'detected_failed': '無法偵測安裝路徑',
+        'sidebar_subtitle': '設定',
+        'conn_local_proxy': '本機 Proxy',
+        'placeholder_sonnet': '例如: claude-3-5-sonnet-latest',
+        'placeholder_opus': '例如: claude-3-opus-latest',
+        'placeholder_haiku': '例如: claude-3-5-haiku-latest',
+        'placeholder_fallback': '當找不到路由時使用',
+        'apiKey_saved': '•••••••••••••••• (已儲存)',
+        'apiKey_not_set': '尚未設定 API Key',
+        'keyStatus_saved': '✅ 已儲存金鑰',
+        'keyStatus_not_set': '❌ 未儲存金鑰'
+      },
+      'en': {
+        'nav_connection': 'Connection',
+        'nav_models': 'Models & Thinking',
+        'nav_extensions': 'Extensions & Skills',
+        'nav_optimization': 'Optimization',
+        'conn_title': 'Connection Settings',
+        'conn_provider': 'API Provider',
+        'conn_api_url': 'API URL',
+        'conn_api_key': 'API Key',
+        'conn_auth_scheme': 'Auth Scheme',
+        'conn_custom_path_title': 'Use custom Claude.exe path',
+        'conn_custom_path_desc': 'Local GUI only, Web for display',
+        'conn_detected_claude': 'Claude Desktop Detected',
+        'conn_detecting': 'Detecting...',
+        'models_title': 'Model Aliases & Routing',
+        'models_desc': 'Configure core model aliases for Claude Desktop. Select or type custom ones.',
+        'models_sonnet': 'Sonnet Model Alias',
+        'models_opus': 'Opus Model Alias',
+        'models_haiku': 'Haiku Model Alias',
+        'models_fallback': 'Fallback Model',
+        'models_discovered_title': 'Discovered Models',
+        'models_fetch_btn': 'Fetch Models',
+        'models_discovered_desc': 'Check "Show" to present in Claude; "1M" to enable 1M token context support.',
+        'models_table_name': 'Model Name',
+        'models_table_show': 'Show',
+        'models_table_1m': '1M',
+        'models_table_effort': 'Reasoning Effort',
+        'ext_title': 'Extensions & Skills',
+        'ext_quota_title': 'Quota Mock',
+        'ext_quota_desc': 'Intercept max_tokens=1 and quota checks',
+        'ext_prefix_title': 'Prefix Detection',
+        'ext_prefix_desc': 'Parse shell prefixes locally to bypass LLM',
+        'ext_title_skip_title': 'Skip Title Generation',
+        'ext_title_skip_desc': 'Return static title "Conversation" to speed up',
+        'ext_suggest_skip_title': 'Skip Suggestion Mode',
+        'ext_suggest_skip_desc': 'Return empty suggestions to reduce API usage',
+        'ext_filepath_title': 'Filepath Extraction',
+        'ext_filepath_desc': 'Extract filepaths locally from command output',
+        'ext_web_tools_title': 'Web Access Tools',
+        'ext_web_tools_desc': 'Enable local execution of web_search and web_fetch',
+        'ext_web_fetch_schemes': 'Allowed URL Schemes (comma separated)',
+        'ext_web_fetch_private': 'Allow web_fetch to access private networks',
+        'opt_title': 'Optimization Settings',
+        'opt_transport': 'Transport Protocol',
+        'opt_transport_openai': 'OpenAI Chat Format Conversion',
+        'opt_transport_anthropic': 'Native Anthropic Passthrough',
+        'opt_thinking': 'Thinking Mode',
+        'opt_thinking_disabled': 'Disabled (Discard thinking)',
+        'opt_thinking_tags': 'Think Tags (Wrapped in <thinking>)',
+        'opt_thinking_content': 'Reasoning Content Field (Native)',
+        'btn_launch_claude': 'Launch Claude',
+        'btn_reset_mirror': 'Reset Mirror',
+        'btn_sync_original': 'Sync from Official',
+        'btn_save_only': 'Save Only',
+        'btn_save_launch': 'Save & Launch ↵',
+        'toast_save_success': 'Settings saved successfully!',
+        'toast_save_failed': 'Save failed: ',
+        'toast_load_success': 'Settings loaded successfully!',
+        'toast_load_failed': 'Load failed: ',
+        'toast_launch_success': 'Claude Desktop launched, path: ',
+        'toast_launch_failed': 'Saved, but failed to launch Claude: ',
+        'toast_fetch_success': 'Model list fetched successfully!',
+        'toast_fetch_failed': 'Fetch failed: ',
+        'confirm_sync': '⚠ Are you sure you want to sync settings from original Claude?',
+        'confirm_reset': '⚠ Are you sure you want to reset mirror Profile? Original profile will not be affected.',
+        'detected_online': 'Claude Desktop Detected',
+        'detected_offline': 'Claude Desktop not detected, using default path',
+        'detected_failed': 'Failed to detect Claude Desktop path',
+        'sidebar_subtitle': 'Console',
+        'conn_local_proxy': 'Local Proxy',
+        'placeholder_sonnet': 'e.g. claude-3-5-sonnet-latest',
+        'placeholder_opus': 'e.g. claude-3-opus-latest',
+        'placeholder_haiku': 'e.g. claude-3-5-haiku-latest',
+        'placeholder_fallback': 'Used when no route matches',
+        'apiKey_saved': '•••••••••••••••• (Saved)',
+        'apiKey_not_set': 'API Key not set',
+        'keyStatus_saved': '✅ Saved',
+        'keyStatus_not_set': '❌ Not set'
+      }
+    };
+
+    function applyLanguage(lang) {
+      const dict = translations[lang] || translations['zh-tw'];
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.dataset.i18n;
+        if (dict[key]) {
+          el.textContent = dict[key];
+        }
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.dataset.i18nPlaceholder;
+        if (dict[key]) {
+          el.placeholder = dict[key];
+        }
+      });
+      if (loadedSettings) {
+        $('apiKey').placeholder = loadedSettings.hasApiKey ? dict['apiKey_saved'] : dict['apiKey_not_set'];
+        $('keyStatus').textContent = loadedSettings.hasApiKey ? dict['keyStatus_saved'] : dict['keyStatus_not_set'];
+      }
+      document.title = dict['title'] || 'FreeClaude Admin Dashboard';
+      document.documentElement.lang = lang === 'en' ? 'en' : 'zh-TW';
+    }
+
+    function t(key, param = '') {
+      const lang = $('language').value || 'zh-tw';
+      const dict = translations[lang] || translations['zh-tw'];
+      let text = dict[key] || key;
+      if (param) {
+        text += param;
+      }
+      return text;
+    }
 
     const providerPresets = {
       nvidia: { baseUrl: 'https://integrate.api.nvidia.com/v1', authScheme: 'bearer' },
@@ -1680,6 +1875,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     // Load Settings
     async function load() {
       showLoading(true);
+      $('detectedClaudePath').textContent = t('conn_detecting');
       try {
         const [settings, status] = await Promise.all([
           request('/admin/settings'),
@@ -1697,8 +1893,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         $('baseUrl').value = settings.baseUrl || '';
         $('authScheme').value = settings.authScheme || 'bearer';
         selectProviderForBaseUrl(settings.baseUrl);
-        $('apiKey').placeholder = settings.hasApiKey ? '•••••••••••••••• (已儲存)' : '尚未設定 API Key';
-        $('keyStatus').textContent = settings.hasApiKey ? '✅ 已儲存金鑰' : '❌ 未儲存金鑰';
+        $('apiKey').placeholder = settings.hasApiKey ? t('apiKey_saved') : t('apiKey_not_set');
+        $('keyStatus').textContent = settings.hasApiKey ? t('keyStatus_saved') : t('keyStatus_not_set');
         $('keyStatus').style.color = settings.hasApiKey ? '#10b981' : '#f59e0b';
         
         $('realModelSonnet').value = settings.realModelSonnet || '';
@@ -1715,8 +1911,6 @@ pub async fn handle_admin_page() -> Html<&'static str> {
             dl.appendChild(opt);
           });
         }
-        
-        renderModelsTable(settings);
         
         $('transportType').value = settings.transportType || 'openai_chat';
         $('reasoningReplayMode').value = settings.reasoningReplayMode || 'think_tags';
@@ -1742,6 +1936,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         applyTheme(theme);
         
         $('language').value = settings.language || 'zh-tw';
+        applyLanguage($('language').value);
+        renderModelsTable(settings);
         
         // Detect Claude Path via RPC
         try {
@@ -1753,15 +1949,15 @@ pub async fn handle_admin_page() -> Html<&'static str> {
           if (detectRes && detectRes.result && detectRes.result.path) {
             $('detectedClaudePath').textContent = detectRes.result.path;
           } else {
-            $('detectedClaudePath').textContent = '未偵測到安裝路徑，將使用預設路徑';
+            $('detectedClaudePath').textContent = t('detected_offline');
           }
         } catch (err) {
-          $('detectedClaudePath').textContent = '無法偵測安裝路徑';
+          $('detectedClaudePath').textContent = t('detected_failed');
         }
         
-        showToast('設定載入成功！');
+        showToast(t('toast_load_success'));
       } catch (e) {
-        showToast('載入失敗: ' + e.message, 'error');
+        showToast(t('toast_load_failed') + e.message, 'error');
       } finally {
         showLoading(false);
       }
@@ -1772,11 +1968,18 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       tbody.innerHTML = '';
       
       const models = settings.discoveredModels || [];
+      const lang = $('language').value || 'zh-tw';
+      
       if (models.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">尚未偵測到官方上游模型</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">${t('no_models_yet')}</td></tr>`;
         return;
       }
       
+      const optDefault = lang === 'en' ? 'Default' : '預設';
+      const optNone = lang === 'en' ? 'None' : '無';
+      const optHigh = lang === 'en' ? 'High' : '高';
+      const optMax = lang === 'en' ? 'Max' : 'Max';
+
       models.forEach(model => {
         const tr = document.createElement('tr');
         
@@ -1795,10 +1998,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
           <td>
             <div class="select-wrapper">
               <select class="model-effort" data-model="${model}" aria-label="${model} 思考上限設定">
-                <option value="" ${effort === '' ? 'selected' : ''}>預設 (Default)</option>
-                <option value="low" ${effort === 'low' ? 'selected' : ''}>低 (Low)</option>
-                <option value="medium" ${effort === 'medium' ? 'selected' : ''}>中 (Medium)</option>
-                <option value="high" ${effort === 'high' ? 'selected' : ''}>高 (High)</option>
+                <option value="" ${effort === '' ? 'selected' : ''}>${optDefault}</option>
+                <option value="none" ${effort === 'none' ? 'selected' : ''}>${optNone}</option>
+                <option value="high" ${effort === 'high' ? 'selected' : ''}>${optHigh}</option>
+                <option value="max" ${effort === 'max' ? 'selected' : ''}>${optMax}</option>
               </select>
             </div>
           </td>
@@ -1875,7 +2078,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         });
 
         $('apiKey').value = '';
-        showToast('設定已成功儲存！');
+        showToast(t('toast_save_success'));
         
         if (launchAfterSave) {
           try {
@@ -1884,39 +2087,24 @@ pub async fn handle_admin_page() -> Html<&'static str> {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ method: 'LaunchClaude' })
             });
-            showToast('Claude Desktop 啟動成功，路徑: ' + launchRes.result.path);
+            showToast(t('toast_launch_success') + launchRes.result.path);
           } catch (launchErr) {
-            showToast('儲存成功，但 Claude 啟動失敗: ' + launchErr.message, 'error');
+            showToast(t('toast_launch_failed') + launchErr.message, 'error');
           }
         }
         
         await load();
       } catch (e) {
-        showToast('儲存失敗: ' + e.message, 'error');
+        showToast(t('toast_save_failed') + e.message, 'error');
       } finally {
         showLoading(false);
       }
     };
 
     // RPC Actions
-    $('launchClaudeBtn').onclick = async () => {
-      showLoading(true);
-      try {
-        const res = await request('/admin/rpc', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method: 'LaunchClaude' })
-        });
-        showToast('Claude Desktop 啟動成功，路徑: ' + res.result.path);
-      } catch(e) {
-        showToast('啟動失敗: ' + e.message, 'error');
-      } finally {
-        showLoading(false);
-      }
-    };
 
     $('resetMirrorBtn').onclick = async () => {
-      if (!confirm('⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。')) return;
+      if (!confirm(t('confirm_reset'))) return;
       showLoading(true);
       try {
         await request('/admin/rpc', {
@@ -1924,17 +2112,17 @@ pub async fn handle_admin_page() -> Html<&'static str> {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ method: 'ResetMirrorProfile' })
         });
-        showToast('已成功重置鏡像目錄！');
+        showToast(t('toast_save_success'));
         await load();
       } catch(e) {
-        showToast('重置失敗: ' + e.message, 'error');
+        showToast(t('toast_save_failed') + e.message, 'error');
       } finally {
         showLoading(false);
       }
     };
 
     $('syncOfficialBtn').onclick = async () => {
-      if (!confirm('⚠ 確定要從官方原版 Claude Desktop 同步配置？')) return;
+      if (!confirm(t('confirm_sync'))) return;
       showLoading(true);
       try {
         await request('/admin/rpc', {
@@ -1942,12 +2130,37 @@ pub async fn handle_admin_page() -> Html<&'static str> {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ method: 'SyncFromOfficial' })
         });
-        showToast('已成功從原版同步！');
+        showToast(t('toast_save_success'));
         await load();
       } catch(e) {
-        showToast('同步失敗: ' + e.message, 'error');
+        showToast(t('toast_save_failed') + e.message, 'error');
       } finally {
         showLoading(false);
+      }
+    };
+
+    $('fetchModelsBtn').onclick = async () => {
+      showLoading(true);
+      try {
+        await request('/admin/rpc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'FetchModels' })
+        });
+        showToast(t('toast_fetch_success'));
+        await load();
+      } catch (e) {
+        showToast(t('toast_fetch_failed') + e.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    };
+
+    $('language').onchange = () => {
+      const val = $('language').value;
+      applyLanguage(val);
+      if (loadedSettings) {
+        renderModelsTable(loadedSettings);
       }
     };
 
@@ -2018,6 +2231,12 @@ pub async fn handle_admin_rpc(
             })),
         )
             .into_response();
+    }
+
+    if matches!(request, AdminRpcRequest::FetchModels) {
+        super::models_endpoint::clear_models_cache();
+        let resp = super::models_endpoint::handle_models(HeaderMap::new()).await;
+        return resp.into_response();
     }
 
     // Check active companion connection

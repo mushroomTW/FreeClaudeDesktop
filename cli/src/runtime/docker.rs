@@ -206,7 +206,30 @@ fn poll_healthz() -> io::Result<()> {
     {
         if let Ok(mock_type) = std::env::var("FREECLAUDE_DOCKER_MOCK") {
             if mock_type == "healthcheck_fail" {
-                // 繼續執行後面的超時邏輯
+                let logs_output = compose_output(&["logs"])?;
+                let stderr = String::from_utf8_lossy(&logs_output.stderr)
+                    .trim()
+                    .to_owned();
+                let stdout = String::from_utf8_lossy(&logs_output.stdout)
+                    .trim()
+                    .to_owned();
+
+                let mut logs = String::new();
+                if !stdout.is_empty() {
+                    logs.push_str("=== Container STDOUT ===\n");
+                    logs.push_str(&stdout);
+                }
+                if !stderr.is_empty() {
+                    if !logs.is_empty() {
+                        logs.push('\n');
+                    }
+                    logs.push_str("=== Container STDERR ===\n");
+                    logs.push_str(&stderr);
+                }
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("docker compose 未通過健康檢查。日誌如下：\n{logs}"),
+                ));
             } else {
                 return Ok(());
             }

@@ -64,8 +64,6 @@ cargo build --release -p freeclaude-proxy
 - 用於啟動整合的 Claude Desktop。
 
 ```bash
-cargo test
-cargo check
 cargo build --release
 cargo run
 ```
@@ -135,6 +133,7 @@ freeclaude update --check
 ## 專案連結
 
 - [架構](ARCHITECTURE.md)
+- [擴充與本地技能功能介紹](EXTENSIONS_AND_SKILLS.md)
 - [Issue tracker](https://github.com/mushroomTW/FreeClaudeDesktop/issues)
 
 ## 安全性
