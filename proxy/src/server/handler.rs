@@ -484,10 +484,11 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       --secondary-active: #242424;
       
       --success: #3ab54a;
+      --warning: #f59e0b;
       --danger: #d9534f;
       --focus-ring: 0 0 0 2px rgba(217, 107, 67, 0.4);
     }
-    
+
     [data-theme="light"] {
       --bg-main: #f5f5f5;
       --bg-sidebar: #eaeaea;
@@ -509,16 +510,17 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       --secondary-active: #c8c8c8;
       
       --success: #2e7d32;
+      --warning: #d97706;
       --danger: #c62828;
       --focus-ring: 0 0 0 2px rgba(224, 106, 59, 0.4);
     }
-    
+
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
     }
-    
+
     body {
       background: var(--bg-main);
       color: var(--text-main);
@@ -613,8 +615,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     }
     
     .sidebar-header .fox-logo {
-      width: 60px;
-      height: 60px;
+      width: 72px;
+      height: 72px;
       flex-shrink: 0;
     }
     
@@ -1075,14 +1077,25 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       padding: 1rem;
     }
     
-    .dot-online {
+    .status-dot {
       width: 8px;
       height: 8px;
-      background: var(--success);
       border-radius: 50%;
       display: inline-block;
     }
     
+    .status-dot.online {
+      background: var(--success);
+    }
+
+    .status-dot.offline {
+      background: var(--warning);
+    }
+
+    .status-dot.failed {
+      background: var(--danger);
+    }
+
     /* Loading overlay */
     .overlay {
       position: fixed;
@@ -1094,7 +1107,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       z-index: 9999;
       backdrop-filter: blur(2px);
     }
-    
+
     .spinner {
       width: 2.5rem;
       height: 2.5rem;
@@ -1107,7 +1120,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
-    
+
     /* Toast */
     .toast-container {
       position: fixed;
@@ -1334,10 +1347,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                 <!-- 偵測到的 Claude Desktop 狀態卡片 -->
                 <div class="status-card-inner" style="margin-top: 1.5rem;">
                   <div style="display: flex; align-items: center; gap: 0.75rem;">
-                    <span class="dot-online"></span>
-                    <span style="font-weight: 600;" data-i18n="conn_detected_claude">已偵測 Claude Desktop</span>
+                    <span id="detectedClaudeDot" class="status-dot offline"></span>
+                    <span id="detectedClaudeStatus" style="font-weight: 600;" data-i18n="conn_detecting">偵測中...</span>
                   </div>
-                  <div id="detectedClaudePath" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem; font-family: monospace; word-break: break-all;">
+                  <div id="detectedClaudePath" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem; font-family: monospace; word-break: break-all;" data-i18n="conn_detecting">
                     偵測中...
                   </div>
                 </div>
@@ -1352,19 +1365,19 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                 
                 <div class="grid">
                   <div class="form-group">
-                    <label for="realModelSonnet" data-i18n="models_sonnet">Sonnet Model 別名</label>
+                    <label for="realModelSonnet" data-i18n="models_sonnet">Sonnet 模型別名</label>
                     <input id="realModelSonnet" type="text" placeholder="例如: claude-3-5-sonnet-latest" data-i18n-placeholder="placeholder_sonnet" list="modelSuggestions">
                   </div>
                   <div class="form-group">
-                    <label for="realModelOpus" data-i18n="models_opus">Opus Model 別名</label>
+                    <label for="realModelOpus" data-i18n="models_opus">Opus 模型別名</label>
                     <input id="realModelOpus" type="text" placeholder="例如: claude-3-opus-latest" data-i18n-placeholder="placeholder_opus" list="modelSuggestions">
                   </div>
                   <div class="form-group">
-                    <label for="realModelHaiku" data-i18n="models_haiku">Haiku Model 別名</label>
+                    <label for="realModelHaiku" data-i18n="models_haiku">Haiku 模型別名</label>
                     <input id="realModelHaiku" type="text" placeholder="例如: claude-3-5-haiku-latest" data-i18n-placeholder="placeholder_haiku" list="modelSuggestions">
                   </div>
                   <div class="form-group">
-                    <label for="realModel" data-i18n="models_fallback">預設保底 Model</label>
+                    <label for="realModel" data-i18n="models_fallback">預設保底模型</label>
                     <input id="realModel" type="text" placeholder="當找不到路由時使用" data-i18n-placeholder="placeholder_fallback" list="modelSuggestions">
                   </div>
                 </div>
@@ -1376,7 +1389,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                     <span data-i18n="models_fetch_btn">抓取模型清單</span>
                   </button>
                 </div>
-                <p class="section-desc" data-i18n="models_discovered_desc">勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬 Context 上下文支援。</p>
+                <p class="section-desc" data-i18n="models_discovered_desc">勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬上下文支援。</p>
                 
                 <div class="table-container">
                   <table>
@@ -1504,12 +1517,11 @@ pub async fn handle_admin_page() -> Html<&'static str> {
                   </div>
                   
                   <div class="form-group">
-                    <label for="reasoningReplayMode" data-i18n="opt_thinking">Thinking 模式</label>
+                    <label for="reasoningReplayMode" data-i18n="opt_thinking">思考模式</label>
                     <div class="select-wrapper">
                       <select id="reasoningReplayMode">
-                        <option value="disabled" data-i18n="opt_thinking_disabled">不啟用 (丟棄思考內容)</option>
-                        <option value="think_tags" data-i18n="opt_thinking_tags">Think Tags (包裝在 &lt;thinking&gt; 標籤)</option>
-                        <option value="reasoning_content" data-i18n="opt_thinking_content">Reasoning Content 欄位 (Provider 原生支援)</option>
+                        <option value="separate" data-i18n="opt_thinking_separate">Separate（Claude 原生 thinking 區塊）</option>
+                        <option value="inline" data-i18n="opt_thinking_inline">Inline（包裝在 &lt;antThinking&gt; 標籤）</option>
                       </select>
                     </div>
                   </div>
@@ -1568,17 +1580,17 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'conn_detecting': '偵測中...',
         'models_title': '模型別名與路由',
         'models_desc': '配置 Claude Desktop 對應的核心別名模型，可手動輸入或從偵測到的上游模型中選擇。',
-        'models_sonnet': 'Sonnet Model 別名',
-        'models_opus': 'Opus Model 別名',
-        'models_haiku': 'Haiku Model 別名',
-        'models_fallback': '預設保底 Model',
+        'models_sonnet': 'Sonnet 模型別名',
+        'models_opus': 'Opus 模型別名',
+        'models_haiku': 'Haiku 模型別名',
+        'models_fallback': '預設保底模型',
         'models_discovered_title': '已偵測上游模型清單',
         'models_fetch_btn': '抓取模型清單',
-        'models_discovered_desc': '勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬 Context 上下文支援。',
+        'models_discovered_desc': '勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬上下文支援。',
         'models_table_name': '模型名稱',
         'models_table_show': '顯示',
         'models_table_1m': '1M',
-        'models_table_effort': 'Reasoning Effort',
+        'models_table_effort': '推理強度',
         'ext_title': '擴充與本地技能',
         'ext_quota_title': '配額檢查攔截',
         'ext_quota_desc': '攔截 max_tokens=1 且含有 "quota" 的測試請求',
@@ -1598,10 +1610,9 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'opt_transport': '傳輸協定',
         'opt_transport_openai': 'OpenAI Chat 格式轉換',
         'opt_transport_anthropic': '原生 Anthropic passthrough',
-        'opt_thinking': 'Thinking 模式',
-        'opt_thinking_disabled': '不啟用 (丟棄思考內容)',
-        'opt_thinking_tags': 'Think Tags (包裝在 <thinking> 標籤)',
-        'opt_thinking_content': 'Reasoning Content 欄位 (Provider 原生支援)',
+        'opt_thinking': '思考模式',
+        'opt_thinking_inline': 'Inline（包裝在 <antThinking> 標籤）',
+        'opt_thinking_separate': 'Separate（Claude 原生 thinking 區塊）',
         'btn_launch_claude': '啟動 Claude Desktop',
         'btn_reset_mirror': '重置鏡像 Profile',
         'btn_sync_original': '從原版同步',
@@ -1617,9 +1628,12 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'toast_fetch_failed': '抓取失敗: ',
         'confirm_sync': '⚠ 確定要從官方原版 Claude Desktop 同步配置？',
         'confirm_reset': '⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。',
+        'conn_detecting': '偵測中...',
         'detected_online': '已偵測 Claude Desktop',
         'detected_offline': '未偵測到安裝路徑，將使用預設路徑',
         'detected_failed': '無法偵測安裝路徑',
+        'detected_offline_title': '未偵測到 Claude Desktop',
+        'detected_failed_title': '無法偵測 Claude Desktop',
         'sidebar_subtitle': '設定',
         'content_title': 'FreeClaude 控制台',
         'close_title': '設定已成功儲存並啟動！',
@@ -1682,9 +1696,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'opt_transport_openai': 'OpenAI Chat Format Conversion',
         'opt_transport_anthropic': 'Native Anthropic Passthrough',
         'opt_thinking': 'Thinking Mode',
-        'opt_thinking_disabled': 'Disabled (Discard thinking)',
-        'opt_thinking_tags': 'Think Tags (Wrapped in <thinking>)',
-        'opt_thinking_content': 'Reasoning Content Field (Native)',
+        'opt_thinking_inline': 'Inline (wrapped in <antThinking> tags)',
+        'opt_thinking_separate': 'Separate (native Claude thinking blocks)',
         'btn_launch_claude': 'Launch Claude',
         'btn_reset_mirror': 'Reset Mirror',
         'btn_sync_original': 'Sync from Official',
@@ -1703,6 +1716,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'detected_online': 'Claude Desktop Detected',
         'detected_offline': 'Claude Desktop not detected, using default path',
         'detected_failed': 'Failed to detect Claude Desktop path',
+        'detected_offline_title': 'Claude Desktop Not Detected',
+        'detected_failed_title': 'Claude Desktop Detection Failed',
         'sidebar_subtitle': 'Console',
         'content_title': 'FreeClaude Console',
         'close_title': 'Settings Saved & Launched!',
@@ -1890,6 +1905,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     // Load Settings
     async function load() {
       showLoading(true);
+      $('detectedClaudeDot').className = 'status-dot offline';
+      $('detectedClaudeStatus').setAttribute('data-i18n', 'conn_detecting');
+      $('detectedClaudeStatus').textContent = t('conn_detecting');
+      $('detectedClaudePath').setAttribute('data-i18n', 'conn_detecting');
       $('detectedClaudePath').textContent = t('conn_detecting');
       try {
         const [settings, status] = await Promise.all([
@@ -1928,7 +1947,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         }
         
         $('transportType').value = settings.transportType || 'openai_chat';
-        $('reasoningReplayMode').value = settings.reasoningReplayMode || 'think_tags';
+        const reasoningReplayMode = ['inline', 'separate'].includes(settings.reasoningReplayMode)
+          ? settings.reasoningReplayMode
+          : 'separate';
+        $('reasoningReplayMode').value = reasoningReplayMode;
         
         $('enableQuotaCheckMock').checked = settings.enableQuotaCheckMock !== false;
         $('enablePrefixDetection').checked = settings.enablePrefixDetection !== false;
@@ -1962,11 +1984,23 @@ pub async fn handle_admin_page() -> Html<&'static str> {
             body: JSON.stringify({ method: 'DetectClaude' })
           });
           if (detectRes && detectRes.result && detectRes.result.path) {
+            $('detectedClaudeDot').className = 'status-dot online';
+            $('detectedClaudeStatus').setAttribute('data-i18n', 'detected_online');
+            $('detectedClaudeStatus').textContent = t('detected_online');
+            $('detectedClaudePath').removeAttribute('data-i18n');
             $('detectedClaudePath').textContent = detectRes.result.path;
           } else {
+            $('detectedClaudeDot').className = 'status-dot offline';
+            $('detectedClaudeStatus').setAttribute('data-i18n', 'detected_offline_title');
+            $('detectedClaudeStatus').textContent = t('detected_offline_title');
+            $('detectedClaudePath').setAttribute('data-i18n', 'detected_offline');
             $('detectedClaudePath').textContent = t('detected_offline');
           }
         } catch (err) {
+          $('detectedClaudeDot').className = 'status-dot failed';
+          $('detectedClaudeStatus').setAttribute('data-i18n', 'detected_failed_title');
+          $('detectedClaudeStatus').textContent = t('detected_failed_title');
+          $('detectedClaudePath').setAttribute('data-i18n', 'detected_failed');
           $('detectedClaudePath').textContent = t('detected_failed');
         }
         
@@ -1993,7 +2027,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       const optDefault = lang === 'en' ? 'Default' : '預設';
       const optNone = lang === 'en' ? 'None' : '無';
       const optHigh = lang === 'en' ? 'High' : '高';
-      const optMax = lang === 'en' ? 'Max' : 'Max';
+      const optMax = lang === 'en' ? 'Max' : '最高';
 
       models.forEach(model => {
         const tr = document.createElement('tr');

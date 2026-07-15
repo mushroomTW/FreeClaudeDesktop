@@ -44,10 +44,9 @@ pub struct Settings {
     /// - "anthropic_messages": 原生 Anthropic Messages API，直接 passthrough
     #[serde(default)]
     pub transport_type: String,
-    /// 推理/思考塊重播模式：
-    /// - "disabled": 丟棄所有 thinking 內容
-    /// - "think_tags": 將 thinking 包裝在 <thinking>...</thinking> 標籤中（預設）
-    /// - "reasoning_content": 使用 reasoning_content 欄位（若 provider 支援）
+    /// 推理/思考塊串流重播模式：
+    /// - "inline": 將思考內容包裝在 <antThinking>...</antThinking> 中並內嵌於文字串流
+    /// - "separate": 以 Claude 原生的獨立 thinking 區塊輸出（預設）
     #[serde(default)]
     pub reasoning_replay_mode: String,
     /// 是否啟用配額檢查模擬（攔截 max_tokens=1 且包含 "quota" 的請求）
@@ -199,7 +198,7 @@ impl Language {
                 "haiku_model" => "Haiku 模型",
                 "fallback_model" => "預設保底模型",
                 "transport_protocol" => "傳輸協定",
-                "thinking_mode" => "Thinking 模式",
+                "thinking_mode" => "思考模式",
                 "extensions_skills" => "擴充與技能",
                 "web_tool_intercept" => "Web 工具攔截 (本地執行 web_search / web_fetch)",
                 "allow_private_network" => "允許 web_fetch 存取私有網路目標",

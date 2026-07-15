@@ -386,24 +386,50 @@ fn get_claude_appx_application_id() -> String {
 
 #[cfg(target_os = "windows")]
 pub fn detect_claude_path() -> Option<PathBuf> {
-    for path in known_claude_paths() {
-        if path.exists() {
-            return Some(path);
-        }
-    }
-    if let Some(install_location) = powershell_output(
-        "Get-AppxPackage -Name *Claude* | Select-Object -ExpandProperty InstallLocation",
-    ) {
-        for suffix in ["app\\Claude.exe", "Claude.exe"] {
-            let path = PathBuf::from(&install_location).join(suffix);
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<PathBuf>>> = std::sync::OnceLock::new();
+    let cache_mutex = CACHE.get_or_init(|| std::sync::Mutex::new(None));
+
+    // 優先使用快取
+    if let Ok(guard) = cache_mutex.lock() {
+        if let Some(ref path) = *guard {
             if path.exists() {
-                return Some(path);
+                return Some(path.clone());
             }
         }
     }
-    powershell_output("Get-Process -Name claude -ErrorAction SilentlyContinue | Where-Object { $_.Path } | Select-Object -First 1 -ExpandProperty Path")
-        .map(PathBuf::from)
-        .filter(|path| path.exists())
+
+    let mut detected = None;
+    for path in known_claude_paths() {
+        if path.exists() {
+            detected = Some(path);
+            break;
+        }
+    }
+    if detected.is_none() {
+        if let Some(install_location) = powershell_output(
+            "Get-AppxPackage -Name *Claude* | Select-Object -ExpandProperty InstallLocation",
+        ) {
+            for suffix in ["app\\Claude.exe", "Claude.exe"] {
+                let path = PathBuf::from(&install_location).join(suffix);
+                if path.exists() {
+                    detected = Some(path);
+                    break;
+                }
+            }
+        }
+    }
+    if detected.is_none() {
+        detected = powershell_output("Get-Process -Name claude -ErrorAction SilentlyContinue | Where-Object { $_.Path } | Select-Object -First 1 -ExpandProperty Path")
+            .map(PathBuf::from)
+            .filter(|path| path.exists());
+    }
+
+    // 更新快取
+    if let Ok(mut guard) = cache_mutex.lock() {
+        *guard = detected.clone();
+    }
+
+    detected
 }
 
 #[cfg(not(target_os = "windows"))]

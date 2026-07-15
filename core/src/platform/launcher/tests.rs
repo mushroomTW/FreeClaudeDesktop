@@ -208,7 +208,7 @@ fn strip_removed_computer_mcp_keeps_unrelated_servers() {
 #[test]
 fn claude_config_uses_supported_1m_variant_without_double_label() {
     let model = crate::models::openai::InferenceModel {
-        name: "claude-sonnet-4-6[0][1m]".to_string(),
+        name: "claude-sonnet-4-6_0[1m]".to_string(),
         label_override: "deepseek-v4-flash 1M".to_string(),
         provider_model_id: "deepseek-v4-flash".to_string(),
         display_name: "deepseek-v4-flash 1M".to_string(),
@@ -222,7 +222,7 @@ fn claude_config_uses_supported_1m_variant_without_double_label() {
     let config = claude_config(12345, &[model], "proxy-token");
     let models = config["inferenceModels"].as_array().unwrap();
     assert_eq!(models.len(), 1);
-    assert_eq!(models[0]["name"], "claude-sonnet-4-6[0]");
+    assert_eq!(models[0]["name"], "claude-sonnet-4-6_0");
     assert_eq!(models[0]["labelOverride"], "deepseek-v4-flash");
     assert_eq!(models[0]["displayName"], "deepseek-v4-flash");
     assert_eq!(models[0]["supports1m"], true);

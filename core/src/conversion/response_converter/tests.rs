@@ -96,10 +96,10 @@ fn models_store_litellm_reasoning_effort_levels() {
     .unwrap();
 
     assert_eq!(
-        normalized.reasoning_effort_routes["claude-sonnet-4-6[0]"],
+        normalized.reasoning_effort_routes["claude-sonnet-4-6_0"],
         vec!["none", "low", "high"]
     );
-    assert_eq!(normalized.data[0].id, "claude-sonnet-4-6[0]");
+    assert_eq!(normalized.data[0].id, "claude-sonnet-4-6_0");
     assert_eq!(
         normalized.data[0].capabilities["thinking"]["supported"],
         true
@@ -119,9 +119,9 @@ fn models_with_max_reasoning_stores_reasoning_effort_levels() {
     }))
     .unwrap();
 
-    assert_eq!(normalized.data[0].id, "claude-opus-4-8[0]");
+    assert_eq!(normalized.data[0].id, "claude-opus-4-8_0");
     assert_eq!(
-        normalized.reasoning_effort_routes["claude-opus-4-8[0]"],
+        normalized.reasoning_effort_routes["claude-opus-4-8_0"],
         vec!["none", "high", "max"]
     );
 }
@@ -146,9 +146,9 @@ fn model_reasoning_override_enables_reasoning_alias() {
     )
     .unwrap();
 
-    assert_eq!(normalized.data[0].id, "claude-sonnet-4-6[0]");
+    assert_eq!(normalized.data[0].id, "claude-sonnet-4-6_0");
     assert_eq!(
-        normalized.reasoning_effort_routes["claude-sonnet-4-6[0]"],
+        normalized.reasoning_effort_routes["claude-sonnet-4-6_0"],
         vec!["none", "high"]
     );
 }
@@ -166,8 +166,8 @@ fn models_without_reasoning_use_provider_model_id() {
     }))
     .unwrap();
 
-    assert_eq!(normalized.data[0].id, "claude-haiku-4-5[0]");
-    assert_eq!(normalized.routes["claude-haiku-4-5[0]"], "glm-5.2");
+    assert_eq!(normalized.data[0].id, "claude-haiku-4-5_0");
+    assert_eq!(normalized.routes["claude-haiku-4-5_0"], "glm-5.2");
 }
 
 #[test]
@@ -193,17 +193,17 @@ fn duplicate_litellm_deployments_are_deduped_by_model_name() {
     .unwrap();
 
     assert_eq!(normalized.data.len(), 1);
-    assert_eq!(normalized.data[0].id, "claude-haiku-4-5[0]");
+    assert_eq!(normalized.data[0].id, "claude-haiku-4-5_0");
 }
 
 #[test]
 fn rewrites_stale_mapped_model_to_fallback_route() {
     let mut routes = std::collections::HashMap::new();
     routes.insert(
-        "claude-opus-4-8[0]".to_string(),
+        "claude-opus-4-8_0".to_string(),
         "deepseek-v4-flash".to_string(),
     );
-    routes.insert("claude-opus-4-8[3]".to_string(), "glm-5.1".to_string());
+    routes.insert("claude-opus-4-8_3".to_string(), "glm-5.1".to_string());
     let settings = Settings {
         real_model_routes: routes,
         ..Settings::default()
@@ -212,7 +212,7 @@ fn rewrites_stale_mapped_model_to_fallback_route() {
     let rewritten = rewrite_stale_model_request(
         r#"{"model":"glm-5.1","messages":[]}"#,
         &settings,
-        "claude-opus-4-8[3]",
+        "claude-opus-4-8_3",
     )
     .unwrap();
 
@@ -240,11 +240,11 @@ fn models_response_applies_1m_suffix_when_override_is_enabled() {
     )
     .unwrap();
 
-    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0]");
+    assert_eq!(normalized.data[0].id, "claude-haiku-4-5_0");
     assert_eq!(normalized.data[0].name, "deepseek-v4-flash 1M");
     assert_eq!(normalized.data[0].max_input_tokens, Some(1_000_000));
     assert_eq!(normalized.data[0].supports1m, Some(true));
-    assert_eq!(normalized.routes["claude-sonnet-5[0]"], "deepseek-v4-flash");
+    assert_eq!(normalized.routes["claude-haiku-4-5_0"], "deepseek-v4-flash");
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn model_info_max_input_tokens_enables_1m_support() {
         normalized.data[0].provider_model_id,
         "nemotron-3-super-120b"
     );
-    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0]");
+    assert_eq!(normalized.data[0].id, "claude-haiku-4-5_0");
     assert_eq!(normalized.data[0].name, "nemotron-3-super-120b 1M");
     assert_eq!(normalized.data[0].max_input_tokens, Some(1_000_000));
     assert_eq!(normalized.data[0].max_tokens, Some(65_536));
@@ -306,7 +306,7 @@ fn models_response_hides_same_name_200k_variant_when_1m_enabled() {
     // 只剩被勾選 1M 的那一筆
     assert_eq!(normalized.data.len(), 1);
     assert_eq!(normalized.data[0].provider_model_id, "claude-sonnet-4-5-1m");
-    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0]");
+    assert_eq!(normalized.data[0].id, "claude-haiku-4-5_0");
     assert_eq!(normalized.data[0].name, "Claude Sonnet 4.5 1M");
     assert_eq!(normalized.data[0].supports1m, Some(true));
 }
@@ -431,4 +431,28 @@ fn model_visibility_hides_model_and_its_routes_but_defaults_to_visible() {
     );
     assert_eq!(normalized.first_id, Some(normalized.data[0].id.clone()));
     assert_eq!(normalized.last_id, Some(normalized.data[0].id.clone()));
+}
+
+#[test]
+fn models_response_keeps_sonnet_alias_for_1m_model_without_max_reasoning() {
+    let mut m1_overrides = std::collections::HashMap::new();
+    m1_overrides.insert("reasoning-model".to_string(), true);
+
+    let normalized = normalize_models_response_with_overrides(
+        json!({
+            "data": [{
+                "id": "reasoning-model",
+                "model_info": {
+                    "supports_reasoning_effort": true,
+                    "reasoning_effort_levels": ["none", "high"]
+                }
+            }]
+        }),
+        &std::collections::HashMap::new(),
+        &m1_overrides,
+    )
+    .unwrap();
+
+    assert_eq!(normalized.data[0].id, "claude-sonnet-4-6_0");
+    assert_eq!(normalized.data[0].supports1m, Some(true));
 }

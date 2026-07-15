@@ -75,10 +75,10 @@ fn other_anthropic_native_tools_still_fail_clearly_for_openai_gateways() {
 #[test]
 fn thinking_budget_clamps_to_model_reasoning_effort_levels() {
     let mut routes = std::collections::HashMap::new();
-    routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
+    routes.insert("claude-sonnet-4-6_0".to_string(), "nim-medium".to_string());
     let mut efforts = std::collections::HashMap::new();
     efforts.insert(
-        "claude-sonnet-4-6[0]".to_string(),
+        "claude-sonnet-4-6_0".to_string(),
         vec!["none".to_string(), "low".to_string(), "medium".to_string()],
     );
     let settings = Settings {
@@ -87,7 +87,7 @@ fn thinking_budget_clamps_to_model_reasoning_effort_levels() {
         ..Settings::default()
     };
     let body = json!({
-        "model": "claude-sonnet-4-6[0]",
+        "model": "claude-sonnet-4-6_0",
         "messages": [{"role": "user", "content": "think"}],
         "thinking": {
             "type": "enabled",
@@ -106,8 +106,8 @@ fn thinking_budget_clamps_to_model_reasoning_effort_levels() {
 #[test]
 fn resolve_model_route_handles_1m_suffix_and_fallbacks() {
     let mut routes = std::collections::HashMap::new();
-    routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
-    routes.insert("claude-opus-4-8[0]".to_string(), "gpt-4o".to_string());
+    routes.insert("claude-sonnet-4-6_0".to_string(), "nim-medium".to_string());
+    routes.insert("claude-opus-4-8_0".to_string(), "gpt-4o".to_string());
 
     let settings = Settings {
         real_model_routes: routes,
@@ -117,11 +117,11 @@ fn resolve_model_route_handles_1m_suffix_and_fallbacks() {
     };
 
     assert_eq!(
-        resolve_model_route("claude-sonnet-4-6[0]", &settings),
+        resolve_model_route("claude-sonnet-4-6_0", &settings),
         Some("nim-medium".to_string())
     );
     assert_eq!(
-        resolve_model_route("claude-sonnet-4-6[0][1m]", &settings),
+        resolve_model_route("claude-sonnet-4-6_0[1m]", &settings),
         Some("nim-medium".to_string())
     );
     assert_eq!(
@@ -168,7 +168,7 @@ fn resolve_model_route_robust_bracket_and_fuzzy_matching() {
 #[test]
 fn resolve_model_route_applies_fallback_safety_net_for_local_aliases() {
     let mut routes = std::collections::HashMap::new();
-    routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
+    routes.insert("claude-sonnet-4-6_0".to_string(), "nim-medium".to_string());
 
     let settings = Settings {
         real_model_routes: routes,
@@ -178,7 +178,7 @@ fn resolve_model_route_applies_fallback_safety_net_for_local_aliases() {
     };
 
     assert_eq!(
-        resolve_model_route("claude-haiku-4-5[2]", &settings),
+        resolve_model_route("claude-haiku-4-5_2", &settings),
         Some("nim-medium".to_string())
     );
 
@@ -189,7 +189,7 @@ fn resolve_model_route_applies_fallback_safety_net_for_local_aliases() {
         ..Settings::default()
     };
     assert_eq!(
-        resolve_model_route("claude-haiku-4-5[2]", &settings_empty_routes),
+        resolve_model_route("claude-haiku-4-5_2", &settings_empty_routes),
         Some("gpt-4o".to_string())
     );
 }
@@ -198,7 +198,7 @@ fn resolve_model_route_applies_fallback_safety_net_for_local_aliases() {
 fn resolve_model_route_prefers_family_override_over_dynamic_route() {
     let mut routes = std::collections::HashMap::new();
     routes.insert(
-        "claude-haiku-4-5[2]".to_string(),
+        "claude-haiku-4-5_2".to_string(),
         "diffusiongemma-26b".to_string(),
     );
     let settings = Settings {
@@ -208,7 +208,7 @@ fn resolve_model_route_prefers_family_override_over_dynamic_route() {
     };
 
     assert_eq!(
-        resolve_model_route("claude-haiku-4-5[2]", &settings),
+        resolve_model_route("claude-haiku-4-5_2", &settings),
         Some("nemotron-3-super-120b".to_string())
     );
 }

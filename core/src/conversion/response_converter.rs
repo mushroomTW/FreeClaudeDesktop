@@ -294,19 +294,16 @@ fn model_alias(
     model: &ProviderModel,
     index: usize,
     overrides: &HashMap<String, String>,
-    is_1m: bool,
 ) -> String {
     if supports_reasoning_effort(model, overrides) {
         let levels = effective_reasoning_effort_levels(model, overrides);
-        if is_1m || levels.iter().any(|level| level == "max") {
-            format!("claude-opus-4-8[{index}]")
+        if levels.iter().any(|level| level == "max") {
+            format!("claude-opus-4-8_{index}")
         } else {
-            format!("claude-sonnet-4-6[{index}]")
+            format!("claude-sonnet-4-6_{index}")
         }
-    } else if is_1m {
-        format!("claude-sonnet-5[{index}]")
     } else {
-        format!("claude-haiku-4-5[{index}]")
+        format!("claude-haiku-4-5_{index}")
     }
 }
 
@@ -414,7 +411,7 @@ pub fn normalize_models_response_with_overrides(
                 || raw_max_input
                     .map(|tokens| tokens >= 1_000_000)
                     .unwrap_or(false);
-            let alias = model_alias(&model, index, reasoning_overrides, is_1m);
+            let alias = model_alias(&model, index, reasoning_overrides);
             let max_input = if is_1m {
                 Some(raw_max_input.unwrap_or(200_000).max(1_000_000))
             } else {
