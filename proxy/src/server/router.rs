@@ -18,6 +18,7 @@ pub fn create_router(port: u16) -> Router {
     Router::new()
         .route("/", get(super::handler::handle_root))
         .route("/healthz", get(super::handler::handle_healthz))
+        .route("/assets/icon.png", get(super::handler::handle_app_icon))
         .route("/admin", get(super::handler::handle_admin_page))
         .route(
             "/admin/settings",

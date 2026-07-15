@@ -283,6 +283,8 @@ fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(3000);
     let url = format!("http://127.0.0.1:{port}/admin");
 
+    println!("正在開啟 Web Admin：{url}");
+
     #[cfg(target_os = "windows")]
     let status = ProcessCommand::new("cmd")
         .args(["/C", "start", "", &url])
@@ -295,7 +297,6 @@ fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
     if !status.success() {
         return Err(io::Error::other("無法開啟 Web Admin").into());
     }
-    println!("已開啟 Web Admin：{url}");
     Ok(())
 }
 

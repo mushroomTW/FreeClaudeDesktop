@@ -6,6 +6,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY core/Cargo.toml core/Cargo.toml
 COPY proxy/Cargo.toml proxy/Cargo.toml
 COPY cli/Cargo.toml cli/Cargo.toml
+COPY icon.png icon.png
 COPY core/src core/src
 COPY proxy/src proxy/src
 COPY cli/src cli/src
