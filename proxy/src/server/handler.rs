@@ -597,22 +597,25 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       position: sticky;
       top: 0;
       height: 100vh;
-      padding: 2rem 0;
+      padding: 0 0 2rem 0;
       z-index: 100;
     }
     
     .sidebar-header {
-      padding: 0 1.5rem 2rem 1.5rem;
+      height: 7rem;
+      padding: 0 1.5rem;
       display: flex;
       align-items: center;
       gap: 0.75rem;
       border-bottom: 1px solid var(--border-color);
       margin-bottom: 1.5rem;
+      box-sizing: border-box;
     }
     
     .sidebar-header .fox-logo {
-      width: 48px;
-      height: 48px;
+      width: 60px;
+      height: 60px;
+      flex-shrink: 0;
     }
     
     .sidebar-title-group {
@@ -621,9 +624,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     }
     
     .sidebar-title {
-      font-size: 1.05rem;
+      font-size: 1.75rem;
       font-weight: 700;
       color: var(--text-active);
+      line-height: 1.15;
     }
     
     .sidebar-subtitle {
@@ -699,11 +703,13 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     }
     
     .content-header {
-      padding: 2rem 2.5rem 1.5rem 2.5rem;
+      height: 7rem;
+      padding: 0 2.5rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid var(--border-color);
+      box-sizing: border-box;
     }
     
     .content-title {
@@ -1154,7 +1160,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         display: none;
       }
       .sidebar-header {
-        padding: 0 0 1.5rem 0;
+        height: 7rem;
+        padding: 0;
         justify-content: center;
       }
       .nav-item {
@@ -1195,7 +1202,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
           <div class="sidebar-header">
             <img class="fox-logo" src="/assets/icon.png" alt="FreeClaudeDesktop 圖標">
             <div class="sidebar-title-group">
-              <span class="sidebar-title">FreeClaudeDesktop</span>
+              <span class="sidebar-title">FreeClaude<br>Desktop</span>
               <span class="sidebar-subtitle" data-i18n="sidebar_subtitle">設定</span>
             </div>
           </div>
@@ -1231,7 +1238,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         <main class="content-area">
           <header class="content-header">
             <div class="header-left">
-              <h2 class="content-title">FreeClaudeDesktop</h2>
+              <h2 class="content-title" data-i18n="content_title">FreeClaude 控制台</h2>
               <p class="proxy-status"><span data-i18n="conn_local_proxy">本機 Proxy</span> : <span id="activePort">--</span></p>
             </div>
             <div class="header-right">
@@ -1614,6 +1621,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'detected_offline': '未偵測到安裝路徑，將使用預設路徑',
         'detected_failed': '無法偵測安裝路徑',
         'sidebar_subtitle': '設定',
+        'content_title': 'FreeClaude 控制台',
+        'close_title': '設定已成功儲存並啟動！',
+        'close_desc': 'Claude Desktop 已順利啟動，本網頁已完成使命。',
+        'close_fallback': '如果此分頁沒有自動關閉，您可以手動將其關閉。',
         'conn_local_proxy': '本機 Proxy',
         'placeholder_sonnet': '例如: claude-3-5-sonnet-latest',
         'placeholder_opus': '例如: claude-3-opus-latest',
@@ -1693,6 +1704,10 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'detected_offline': 'Claude Desktop not detected, using default path',
         'detected_failed': 'Failed to detect Claude Desktop path',
         'sidebar_subtitle': 'Console',
+        'content_title': 'FreeClaude Console',
+        'close_title': 'Settings Saved & Launched!',
+        'close_desc': 'Claude Desktop has been launched successfully.',
+        'close_fallback': 'If this tab did not close automatically, you can close it manually.',
         'conn_local_proxy': 'Local Proxy',
         'placeholder_sonnet': 'e.g. claude-3-5-sonnet-latest',
         'placeholder_opus': 'e.g. claude-3-opus-latest',
@@ -2088,6 +2103,18 @@ pub async fn handle_admin_page() -> Html<&'static str> {
               body: JSON.stringify({ method: 'LaunchClaude' })
             });
             showToast(t('toast_launch_success') + launchRes.result.path);
+            setTimeout(() => {
+              window.close();
+              document.body.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; background: #1e1e1e; color: #fff; padding: 2rem; text-align: center;">
+                  <div style="font-size: 4rem; margin-bottom: 1.5rem;">🚀</div>
+                  <h1 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem;">${t('close_title')}</h1>
+                  <p style="color: #aaa; margin-bottom: 2rem;">${t('close_desc')}</p>
+                  <p style="font-size: 0.9rem; color: #888;">${t('close_fallback')}</p>
+                </div>
+              `;
+            }, 1000);
+            return;
           } catch (launchErr) {
             showToast(t('toast_launch_failed') + launchErr.message, 'error');
           }
