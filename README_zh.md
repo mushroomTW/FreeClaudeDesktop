@@ -56,6 +56,19 @@ cargo build --release -p freeclaude-proxy
 
 `freeclaude install` 預設使用原生 proxy；只有明確需要 Docker runtime 時才使用 `freeclaude install --runtime docker`。
 
+## 以 pnpm 全域安裝
+
+```bash
+pnpm add -g @mushroomtw/freeclaudedesktop
+freeclaude-proxy start
+```
+
+可使用 `freeclaude-proxy status`、`freeclaude-proxy admin` 與 `freeclaude-proxy stop` 管理本機服務。解除安裝時會停止服務、還原 Claude 設定，並完整清除 FreeClaudeDesktop 擁有的設定、隔離 profile 與 OS keyring API key：
+
+```bash
+pnpm remove -g @mushroomtw/freeclaudedesktop
+```
+
 ## 建置與執行
 
 需求：

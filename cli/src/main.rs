@@ -24,6 +24,7 @@ enum Command {
     #[command(name = "launch-claude")]
     LaunchClaude,
     Restore,
+    Purge(PurgeArgs),
     Update(UpdateArgs),
     Uninstall(UninstallArgs),
     Autostart {
@@ -72,6 +73,12 @@ struct UninstallArgs {
     yes: bool,
 }
 
+#[derive(Debug, Args)]
+struct PurgeArgs {
+    #[arg(long)]
+    yes: bool,
+}
+
 #[derive(Debug, Subcommand)]
 enum AutostartCommand {
     Enable,
@@ -91,6 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Configure => open_admin(),
         Command::LaunchClaude => launch_claude(),
         Command::Restore => restore_settings(),
+        Command::Purge(args) => purge(args),
         Command::Update(args) => update(args).await,
         Command::Uninstall(args) => uninstall(args),
         Command::Autostart { command } => manage_autostart(command),
@@ -312,6 +320,22 @@ fn restore_settings() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn purge(args: PurgeArgs) -> Result<(), Box<dyn std::error::Error>> {
+    if !args.yes {
+        return Err("purge 會停止服務、還原 Claude 設定並刪除所有 FreeClaudeDesktop 資料；請加入 --yes 確認".into());
+    }
+    let _ = crate::runtime::native::stop_companion();
+    if let Err(error) = crate::runtime::native::stop_proxy() {
+        if error.kind() != io::ErrorKind::NotFound {
+            return Err(error.into());
+        }
+    }
+    let _ = crate::runtime::autostart::disable();
+    free_claude_core::purge_application_data()?;
+    println!("FreeClaudeDesktop 的本機資料已完整清除");
+    Ok(())
+}
+
 fn proxy_port() -> Result<u16, Box<dyn std::error::Error>> {
     Ok(std::env::var("FREECLAUDE_PROXY_PORT")
         .unwrap_or_else(|_| "3000".to_string())
@@ -426,6 +450,7 @@ mod tests {
             .expect("uninstall 選項應可解析");
         Cli::try_parse_from(["freeclaude", "autostart", "enable"])
             .expect("autostart 子命令應可解析");
+        Cli::try_parse_from(["freeclaude", "purge", "--yes"]).expect("purge 選項應可解析");
     }
 
     #[test]

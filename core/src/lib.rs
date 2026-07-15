@@ -24,11 +24,11 @@ pub use conversion::response_converter::{
     build_inference_models, normalize_messages_url, normalize_models_response,
     normalize_models_response_with_overrides, openai_to_anthropic_response, prepare_proxy_body,
 };
-pub use crypto::{protect_secret, unprotect_secret};
+pub use crypto::{delete_stored_secret, protect_secret, unprotect_secret};
 pub use gateway_client::{AsyncOpenAiGatewayFactory, GatewayClientFactory};
 pub use launcher::{
-    detect_claude_path, launch_claude, reset_mirror_profile, restore_official_config,
-    resync_from_official, update_config_port,
+    detect_claude_path, launch_claude, purge_application_data, reset_mirror_profile,
+    restore_official_config, resync_from_official, update_config_port,
 };
 pub use models::openai::InferenceModel;
 

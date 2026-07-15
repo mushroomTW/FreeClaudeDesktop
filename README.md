@@ -56,6 +56,19 @@ cargo build --release -p freeclaude-proxy
 
 `freeclaude install` uses the native proxy by default. Use `freeclaude install --runtime docker` if you explicitly want the Docker runtime.
 
+## pnpm global installation
+
+```bash
+pnpm add -g @mushroomtw/freeclaudedesktop
+freeclaude-proxy start
+```
+
+Use `freeclaude-proxy status`, `freeclaude-proxy admin`, and `freeclaude-proxy stop` to manage the local service. Removing the package stops the service, restores Claude settings, and deletes FreeClaudeDesktop-owned settings, its isolated profile, and its OS-keyring API key:
+
+```bash
+pnpm remove -g @mushroomtw/freeclaudedesktop
+```
+
 ## Build and Run
 
 Requirements:

@@ -531,6 +531,22 @@ pub fn restore_official_config() -> AppResult<()> {
     Ok(())
 }
 
+/// 還原 Claude 官方設定並清除本程式所擁有的所有本機資料。
+///
+/// 此函式僅移除 `local_app_data()/FreeClaudeDesktop`，不會觸碰官方
+/// Claude Desktop profile、其他服務或使用者的其他套件資料。
+pub fn purge_application_data() -> AppResult<()> {
+    restore_official_config()?;
+    crate::crypto::delete_stored_secret()?;
+
+    let data_dir = local_app_data().join("FreeClaudeDesktop");
+    match fs::remove_dir_all(data_dir) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(AppError::Launcher(error.to_string())),
+    }
+}
+
 pub use crate::constants::CONFIG_ID;
 
 fn claude_config_model_name(name: &str) -> (&str, bool) {
