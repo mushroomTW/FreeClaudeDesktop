@@ -203,7 +203,7 @@ fn override_reasoning_levels(level: &str) -> Vec<String> {
     match level {
         "low" => vec!["none".to_string(), "low".to_string()],
         "medium" => vec!["none".to_string(), "medium".to_string()],
-        "high" => vec!["none".to_string(), "high".to_string()],
+        "high" | "" => vec!["none".to_string(), "high".to_string()],
         "max" => vec!["none".to_string(), "high".to_string(), "max".to_string()],
         _ => vec!["none".to_string()],
     }

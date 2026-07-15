@@ -114,6 +114,7 @@ pub enum AdminRpcRequest {
     RestoreSettings,
     SyncFromOfficial,
     ResetMirrorProfile,
+    FetchModels,
 }
 
 use std::sync::OnceLock;

@@ -112,6 +112,9 @@ async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
             free_claude_core::reset_mirror_profile().map_err(|e| e.to_string())?;
             json!({ "reset": true })
         }
+        AdminRpcRequest::FetchModels => {
+            return Err("FetchModels should be handled by proxy directly".to_string());
+        }
         AdminRpcRequest::ApplySettings {
             base_url,
             auth_scheme,
