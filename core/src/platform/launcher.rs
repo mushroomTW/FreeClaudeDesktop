@@ -107,9 +107,10 @@ pub fn reset_mirror_profile() -> AppResult<()> {
 
 pub fn user_data_dir() -> PathBuf {
     if let Ok(dir) = env::var("CLAUDE_USER_DATA_DIR")
-        && !dir.trim().is_empty() {
-            return PathBuf::from(dir);
-        }
+        && !dir.trim().is_empty()
+    {
+        return PathBuf::from(dir);
+    }
     mirror_profile_dir()
 }
 
@@ -385,15 +386,17 @@ fn get_claude_appx_application_id() -> String {
 
 #[cfg(target_os = "windows")]
 pub fn detect_claude_path() -> Option<PathBuf> {
-    static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<PathBuf>>> = std::sync::OnceLock::new();
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<PathBuf>>> =
+        std::sync::OnceLock::new();
     let cache_mutex = CACHE.get_or_init(|| std::sync::Mutex::new(None));
 
     // 優先使用快取
     if let Ok(guard) = cache_mutex.lock()
         && let Some(ref path) = *guard
-            && path.exists() {
-                return Some(path.clone());
-            }
+        && path.exists()
+    {
+        return Some(path.clone());
+    }
 
     let mut detected = None;
     for path in known_claude_paths() {
@@ -405,15 +408,16 @@ pub fn detect_claude_path() -> Option<PathBuf> {
     if detected.is_none()
         && let Some(install_location) = powershell_output(
             "Get-AppxPackage -Name *Claude* | Select-Object -ExpandProperty InstallLocation",
-        ) {
-            for suffix in ["app\\Claude.exe", "Claude.exe"] {
-                let path = PathBuf::from(&install_location).join(suffix);
-                if path.exists() {
-                    detected = Some(path);
-                    break;
-                }
+        )
+    {
+        for suffix in ["app\\Claude.exe", "Claude.exe"] {
+            let path = PathBuf::from(&install_location).join(suffix);
+            if path.exists() {
+                detected = Some(path);
+                break;
             }
         }
+    }
     if detected.is_none() {
         detected = powershell_output("Get-Process -Name claude -ErrorAction SilentlyContinue | Where-Object { $_.Path } | Select-Object -First 1 -ExpandProperty Path")
             .map(PathBuf::from)
@@ -925,10 +929,11 @@ pub fn clean_json_text(input: &str) -> String {
                 chars.next();
                 while let Some(c) = chars.next() {
                     if c == '*'
-                        && let Some(&'/') = chars.peek() {
-                            chars.next();
-                            break;
-                        }
+                        && let Some(&'/') = chars.peek()
+                    {
+                        chars.next();
+                        break;
+                    }
                 }
                 continue;
             }
@@ -1009,13 +1014,14 @@ pub fn collect_all_mcp_servers_result() -> AppResult<serde_json::Map<String, Val
 
     for path in search_paths {
         if let Some(data) = read_json_config_result(&path)?
-            && let Some(servers) = data.get("mcpServers").and_then(Value::as_object) {
-                for (k, v) in servers {
-                    if !merged.contains_key(k) {
-                        merged.insert(k.clone(), v.clone());
-                    }
+            && let Some(servers) = data.get("mcpServers").and_then(Value::as_object)
+        {
+            for (k, v) in servers {
+                if !merged.contains_key(k) {
+                    merged.insert(k.clone(), v.clone());
                 }
             }
+        }
     }
     Ok(merged)
 }
@@ -1025,19 +1031,20 @@ pub fn merge_mcp_servers(mut data: Value, all_servers: &serde_json::Map<String, 
         data = json!({});
     }
     if !all_servers.is_empty()
-        && let Some(obj) = data.as_object_mut() {
-            let servers = obj.entry("mcpServers").or_insert_with(|| json!({}));
-            if !servers.is_object() {
-                *servers = json!({});
-            }
-            if let Some(servers_obj) = servers.as_object_mut() {
-                for (k, v) in all_servers {
-                    if !servers_obj.contains_key(k) {
-                        servers_obj.insert(k.clone(), v.clone());
-                    }
+        && let Some(obj) = data.as_object_mut()
+    {
+        let servers = obj.entry("mcpServers").or_insert_with(|| json!({}));
+        if !servers.is_object() {
+            *servers = json!({});
+        }
+        if let Some(servers_obj) = servers.as_object_mut() {
+            for (k, v) in all_servers {
+                if !servers_obj.contains_key(k) {
+                    servers_obj.insert(k.clone(), v.clone());
                 }
             }
         }
+    }
     data
 }
 
@@ -1127,11 +1134,12 @@ pub fn restore_1p_deployment_mode() -> AppResult<()> {
 
     for path in mcp_config_paths() {
         if path.exists()
-            && let Some(data) = read_json_config_result(&path)? {
-                let data = merge_mcp_servers(data, &all_mcp_servers);
-                let content = serde_json::to_string_pretty(&restore_managed_deployment_mode(data))?;
-                writes.push(PendingWrite::new(path, content.into_bytes()));
-            }
+            && let Some(data) = read_json_config_result(&path)?
+        {
+            let data = merge_mcp_servers(data, &all_mcp_servers);
+            let content = serde_json::to_string_pretty(&restore_managed_deployment_mode(data))?;
+            writes.push(PendingWrite::new(path, content.into_bytes()));
+        }
     }
     write_transaction(writes)?;
     Ok(())

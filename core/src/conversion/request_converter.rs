@@ -68,9 +68,10 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
             _ => &None,
         };
         if let Some(m) = family_model
-            && !m.trim().is_empty() {
-                return Some(m.clone());
-            }
+            && !m.trim().is_empty()
+        {
+            return Some(m.clone());
+        }
     }
 
     // 1. 精確匹配 routes (例如 "claude-sonnet-4-6_0" 或 "claude-sonnet-4-6_0[1m]")
@@ -147,9 +148,12 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     // 5. 安全兜底：如果請求的模型名稱看起來像是一個本地的 alias (含有中括號)，
     //    但我們竟然無法將其映射到任何真實模型，則絕對不能原樣發送（因為上游必定報 400）。
     //    此時我們強制將其映射為我們所知道的任何一個可用上游模型。
-    let is_indexed_claude_alias = requested_model
-        .rsplit_once('_')
-        .is_some_and(|(prefix, index)| prefix.starts_with("claude-") && index.parse::<usize>().is_ok());
+    let is_indexed_claude_alias =
+        requested_model
+            .rsplit_once('_')
+            .is_some_and(|(prefix, index)| {
+                prefix.starts_with("claude-") && index.parse::<usize>().is_ok()
+            });
     if (requested_model.contains('[') && requested_model.contains(']')) || is_indexed_claude_alias {
         // (1) 優先使用 routes 裡的任意一個真實模型
         if let Some(m) = settings.real_model_routes.values().next() {
@@ -202,18 +206,19 @@ pub fn anthropic_to_openai_request(
 
     // 處理 thinking 屬性
     if let Some(ref thinking) = req.thinking
-        && thinking.enabled.unwrap_or(true) {
-            let budget = thinking.budget_tokens.unwrap_or(1024);
-            let effort = thinking_budget_to_effort(budget);
-            let target_model = data["model"].as_str().unwrap_or("");
-            if let Some(supported) = settings.real_model_reasoning_efforts.get(&req.model) {
-                if let Some(effort) = clamp_reasoning_effort(effort, supported) {
-                    data["reasoning_effort"] = Value::String(effort.to_string());
-                }
-            } else if target_model.contains("o1") || target_model.contains("o3") {
+        && thinking.enabled.unwrap_or(true)
+    {
+        let budget = thinking.budget_tokens.unwrap_or(1024);
+        let effort = thinking_budget_to_effort(budget);
+        let target_model = data["model"].as_str().unwrap_or("");
+        if let Some(supported) = settings.real_model_reasoning_efforts.get(&req.model) {
+            if let Some(effort) = clamp_reasoning_effort(effort, supported) {
                 data["reasoning_effort"] = Value::String(effort.to_string());
             }
+        } else if target_model.contains("o1") || target_model.contains("o3") {
+            data["reasoning_effort"] = Value::String(effort.to_string());
         }
+    }
 
     // 處理 system prompt（對齊 Python 專案的 System 處理）
     let mut openai_messages = Vec::new();
@@ -300,92 +305,92 @@ pub fn anthropic_to_openai_request(
             if i + 1 < req.messages.len() {
                 let next_msg = &req.messages[i + 1];
                 if next_msg.role == ClaudeRole::User
-                    && let ClaudeMessageContent::Blocks(ref next_blocks) = next_msg.content {
-                        let has_tool_result = next_blocks
-                            .iter()
-                            .any(|b| matches!(b, ClaudeContentBlock::ToolResult { .. }));
+                    && let ClaudeMessageContent::Blocks(ref next_blocks) = next_msg.content
+                {
+                    let has_tool_result = next_blocks
+                        .iter()
+                        .any(|b| matches!(b, ClaudeContentBlock::ToolResult { .. }));
 
-                        if has_tool_result {
-                            for block in next_blocks {
-                                if let ClaudeContentBlock::ToolResult {
-                                    tool_use_id,
-                                    content,
-                                } = block
-                                {
-                                    let mut text_parts = Vec::new();
+                    if has_tool_result {
+                        for block in next_blocks {
+                            if let ClaudeContentBlock::ToolResult {
+                                tool_use_id,
+                                content,
+                            } = block
+                            {
+                                let mut text_parts = Vec::new();
 
-                                    if let Some(res_c) = content {
-                                        match res_c {
-                                            ClaudeToolResultContent::Text(text) => {
-                                                text_parts.push(text.clone());
-                                            }
-                                            ClaudeToolResultContent::Blocks(arr) => {
-                                                for res_block in arr {
+                                if let Some(res_c) = content {
+                                    match res_c {
+                                        ClaudeToolResultContent::Text(text) => {
+                                            text_parts.push(text.clone());
+                                        }
+                                        ClaudeToolResultContent::Blocks(arr) => {
+                                            for res_block in arr {
+                                                if let Some(text) =
+                                                    res_block.get("text").and_then(Value::as_str)
+                                                {
+                                                    text_parts.push(text.to_string());
+                                                } else if res_block
+                                                    .get("type")
+                                                    .and_then(Value::as_str)
+                                                    == Some("text")
+                                                {
                                                     if let Some(text) = res_block
                                                         .get("text")
                                                         .and_then(Value::as_str)
                                                     {
                                                         text_parts.push(text.to_string());
-                                                    } else if res_block
-                                                        .get("type")
-                                                        .and_then(Value::as_str)
-                                                        == Some("text")
-                                                    {
-                                                        if let Some(text) = res_block
-                                                            .get("text")
-                                                            .and_then(Value::as_str)
-                                                        {
-                                                            text_parts.push(text.to_string());
-                                                        }
-                                                    } else if res_block
-                                                        .get("type")
-                                                        .and_then(Value::as_str)
-                                                        == Some("image")
-                                                    {
-                                                        // tool result 的圖片不轉發。
-                                                    } else {
-                                                        text_parts.push(res_block.to_string());
                                                     }
+                                                } else if res_block
+                                                    .get("type")
+                                                    .and_then(Value::as_str)
+                                                    == Some("image")
+                                                {
+                                                    // tool result 的圖片不轉發。
+                                                } else {
+                                                    text_parts.push(res_block.to_string());
                                                 }
                                             }
-                                            ClaudeToolResultContent::Object(obj) => {
-                                                text_parts.push(obj.to_string());
-                                            }
+                                        }
+                                        ClaudeToolResultContent::Object(obj) => {
+                                            text_parts.push(obj.to_string());
                                         }
                                     }
-
-                                    let combined_text = text_parts.join("\n").trim().to_string();
-
-                                    openai_messages.push(json!({
-                                        "role": "tool",
-                                        "tool_call_id": tool_use_id,
-                                        "content": combined_text
-                                    }));
                                 }
+
+                                let combined_text = text_parts.join("\n").trim().to_string();
+
+                                openai_messages.push(json!({
+                                    "role": "tool",
+                                    "tool_call_id": tool_use_id,
+                                    "content": combined_text
+                                }));
                             }
-                            // After tool results, check for after-tools text in the same message
-                            let after_tools_text: Vec<String> = next_blocks
-                                .iter()
-                                .filter_map(|b| {
-                                    // Extract text from non-ToolResult blocks that may be after the tools
-                                    match b {
-                                        ClaudeContentBlock::Text { text } => Some(text.clone()),
-                                        _ => None,
-                                    }
-                                })
-                                .collect();
-                            if !after_tools_text.is_empty() {
-                                let combined_text = after_tools_text.join("\n").trim().to_string();
-                                if !combined_text.is_empty() {
-                                    openai_messages.push(json!({
-                                        "role": "user",
-                                        "content": combined_text
-                                    }));
-                                }
-                            }
-                            i += 1; // 跳過此 user 訊息，因為它的 tool_result 已經被處理了
                         }
+                        // After tool results, check for after-tools text in the same message
+                        let after_tools_text: Vec<String> = next_blocks
+                            .iter()
+                            .filter_map(|b| {
+                                // Extract text from non-ToolResult blocks that may be after the tools
+                                match b {
+                                    ClaudeContentBlock::Text { text } => Some(text.clone()),
+                                    _ => None,
+                                }
+                            })
+                            .collect();
+                        if !after_tools_text.is_empty() {
+                            let combined_text = after_tools_text.join("\n").trim().to_string();
+                            if !combined_text.is_empty() {
+                                openai_messages.push(json!({
+                                    "role": "user",
+                                    "content": combined_text
+                                }));
+                            }
+                        }
+                        i += 1; // 跳過此 user 訊息，因為它的 tool_result 已經被處理了
                     }
+                }
             }
         } else {
             // role == "user" or "system"
@@ -502,36 +507,36 @@ pub fn anthropic_to_openai_request(
 
     // 轉換 tool_choice
     if let Some(ref tool_choice_val) = req.tool_choice
-        && let Some(choice_type) = tool_choice_val.get("type").and_then(Value::as_str) {
-            let new_choice = match choice_type {
-                "auto" => json!("auto"),
-                "any" => json!("required"),
-                "tool" => {
-                    if let Some(name) = tool_choice_val.get("name").and_then(Value::as_str) {
-                        json!({
-                            "type": "function",
-                            "function": { "name": name }
-                        })
-                    } else {
-                        json!("auto")
-                    }
+        && let Some(choice_type) = tool_choice_val.get("type").and_then(Value::as_str)
+    {
+        let new_choice = match choice_type {
+            "auto" => json!("auto"),
+            "any" => json!("required"),
+            "tool" => {
+                if let Some(name) = tool_choice_val.get("name").and_then(Value::as_str) {
+                    json!({
+                        "type": "function",
+                        "function": { "name": name }
+                    })
+                } else {
+                    json!("auto")
                 }
-                _ => json!("auto"),
-            };
-            data["tool_choice"] = new_choice;
-        }
+            }
+            _ => json!("auto"),
+        };
+        data["tool_choice"] = new_choice;
+    }
 
     let is_stream = req.stream.unwrap_or(false);
-    if is_stream
-        && let Some(obj) = data.as_object_mut() {
-            obj.insert("stream".to_string(), json!(true));
-            obj.insert(
-                "stream_options".to_string(),
-                json!({
-                    "include_usage": true
-                }),
-            );
-        }
+    if is_stream && let Some(obj) = data.as_object_mut() {
+        obj.insert("stream".to_string(), json!(true));
+        obj.insert(
+            "stream_options".to_string(),
+            json!({
+                "include_usage": true
+            }),
+        );
+    }
 
     if let Some(temp) = req.temperature {
         data["temperature"] = json!(temp);
