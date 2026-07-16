@@ -246,55 +246,56 @@ fn poll_healthz() -> io::Result<()> {
         let interval = Duration::from_secs(1);
         let max_attempts = 15;
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_millis(500))
-        .build()
-        .map_err(io::Error::other)?;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_millis(500))
+            .build()
+            .map_err(io::Error::other)?;
 
-    for _ in 1..=max_attempts {
-        std::thread::sleep(interval);
-        let success = rt.block_on(async {
-            match client.get("http://127.0.0.1:3000/healthz").send().await {
-                Ok(resp) => {
-                    if resp.status().is_success()
-                        && let Ok(body) = resp.text().await {
+        for _ in 1..=max_attempts {
+            std::thread::sleep(interval);
+            let success = rt.block_on(async {
+                match client.get("http://127.0.0.1:3000/healthz").send().await {
+                    Ok(resp) => {
+                        if resp.status().is_success()
+                            && let Ok(body) = resp.text().await
+                        {
                             return body.contains("\"status\":\"ok\"")
                                 || body.contains("\"status\": \"ok\"");
                         }
-                    false
+                        false
+                    }
+                    Err(_) => false,
                 }
-                Err(_) => false,
+            });
+            if success {
+                return Ok(());
             }
-        });
-        if success {
-            return Ok(());
         }
-    }
 
-    let logs_output = compose_output(&["logs"])?;
-    let stderr = String::from_utf8_lossy(&logs_output.stderr)
-        .trim()
-        .to_owned();
-    let stdout = String::from_utf8_lossy(&logs_output.stdout)
-        .trim()
-        .to_owned();
+        let logs_output = compose_output(&["logs"])?;
+        let stderr = String::from_utf8_lossy(&logs_output.stderr)
+            .trim()
+            .to_owned();
+        let stdout = String::from_utf8_lossy(&logs_output.stdout)
+            .trim()
+            .to_owned();
 
-    let mut logs = String::new();
-    if !stdout.is_empty() {
-        logs.push_str("=== Container STDOUT ===\n");
-        logs.push_str(&stdout);
-    }
-    if !stderr.is_empty() {
-        if !logs.is_empty() {
-            logs.push('\n');
+        let mut logs = String::new();
+        if !stdout.is_empty() {
+            logs.push_str("=== Container STDOUT ===\n");
+            logs.push_str(&stdout);
         }
-        logs.push_str("=== Container STDERR ===\n");
-        logs.push_str(&stderr);
-    }
+        if !stderr.is_empty() {
+            if !logs.is_empty() {
+                logs.push('\n');
+            }
+            logs.push_str("=== Container STDERR ===\n");
+            logs.push_str(&stderr);
+        }
 
         Err(io::Error::new(
             io::ErrorKind::TimedOut,
@@ -334,9 +335,10 @@ fn parse_compose_ps(stdout: &str) -> serde_json::Value {
                 continue;
             }
             if let Ok(item) = serde_json::from_str::<serde_json::Value>(line)
-                && let Some(c) = extract_container_info(item) {
-                    containers.push(c);
-                }
+                && let Some(c) = extract_container_info(item)
+            {
+                containers.push(c);
+            }
         }
     }
 
@@ -349,9 +351,10 @@ fn extract_container_info(item: serde_json::Value) -> Option<serde_json::Value> 
     let get_field = |keys: &[&str]| -> String {
         for key in keys {
             if let Some(val) = obj.get(*key)
-                && let Some(s) = val.as_str() {
-                    return s.to_string();
-                }
+                && let Some(s) = val.as_str()
+            {
+                return s.to_string();
+            }
         }
         String::new()
     };

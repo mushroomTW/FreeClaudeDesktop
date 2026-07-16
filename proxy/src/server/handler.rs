@@ -330,9 +330,10 @@ fn build_upstream_request(
     for (name, value) in headers {
         let lower = name.as_str().to_ascii_lowercase();
         if let Some(skip) = skip_header
-            && lower == skip {
-                continue;
-            }
+            && lower == skip
+        {
+            continue;
+        }
 
         if is_anthropic_native {
             if !matches!(lower.as_str(), "host" | "content-length" | "connection") {
@@ -2843,33 +2844,25 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 &api_key,
                                 &retry_settings.real_auth_scheme,
                                 false,
-                            )
-                                && let Ok(retry) = request.send().await
-                                    && retry.status().is_success() {
-                                        let reasoning_mode =
-                                            match settings.reasoning_replay_mode.as_str() {
-                                                "inline" => Some(ReasoningReplayMode::Inline),
-                                                "separate" => Some(ReasoningReplayMode::Separate),
-                                                _ => None,
-                                            };
-                                        let rx = start_sse_stream_conversion(
-                                            retry,
-                                            req_model,
-                                            reasoning_mode,
-                                        );
-                                        let stream =
-                                            tokio_stream::wrappers::ReceiverStream::new(rx);
-                                        return axum::response::Response::builder()
-                                            .status(StatusCode::OK)
-                                            .header(
-                                                "Content-Type",
-                                                "text/event-stream; charset=utf-8",
-                                            )
-                                            .header("Cache-Control", "no-cache")
-                                            .header("Connection", "keep-alive")
-                                            .body(axum::body::Body::from_stream(stream))
-                                            .unwrap();
-                                    }
+                            ) && let Ok(retry) = request.send().await
+                                && retry.status().is_success()
+                            {
+                                let reasoning_mode = match settings.reasoning_replay_mode.as_str() {
+                                    "inline" => Some(ReasoningReplayMode::Inline),
+                                    "separate" => Some(ReasoningReplayMode::Separate),
+                                    _ => None,
+                                };
+                                let rx =
+                                    start_sse_stream_conversion(retry, req_model, reasoning_mode);
+                                let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+                                return axum::response::Response::builder()
+                                    .status(StatusCode::OK)
+                                    .header("Content-Type", "text/event-stream; charset=utf-8")
+                                    .header("Cache-Control", "no-cache")
+                                    .header("Connection", "keep-alive")
+                                    .body(axum::body::Body::from_stream(stream))
+                                    .unwrap();
+                            }
                         }
                     }
                     return (status, Json(json!({ "error": text }))).into_response();
@@ -2940,16 +2933,15 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
                             if let Ok(retry_req) = retry_req
                                 && let Ok(retry_response) = retry_req.send().await
-                                    && retry_response.status().is_success() {
-                                        let retry_text =
-                                            retry_response.text().await.unwrap_or_default();
-                                        if let Ok(anthropic_res) =
-                                            openai_to_anthropic_response(&retry_text, &req_model)
-                                        {
-                                            return (StatusCode::OK, Json(anthropic_res))
-                                                .into_response();
-                                        }
-                                    }
+                                && retry_response.status().is_success()
+                            {
+                                let retry_text = retry_response.text().await.unwrap_or_default();
+                                if let Ok(anthropic_res) =
+                                    openai_to_anthropic_response(&retry_text, &req_model)
+                                {
+                                    return (StatusCode::OK, Json(anthropic_res)).into_response();
+                                }
+                            }
                         }
                     }
                     let err_json: Value =
@@ -2991,18 +2983,17 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                             );
 
                             if let Ok(retry_req) = retry_req
-                                && let Ok(retry_response) = retry_req.send().await {
-                                    let mut res_builder = axum::response::Response::builder()
-                                        .status(retry_response.status());
-                                    for (name, value) in retry_response.headers() {
-                                        res_builder =
-                                            res_builder.header(name.clone(), value.clone());
-                                    }
-                                    let body = axum::body::Body::from_stream(
-                                        retry_response.bytes_stream(),
-                                    );
-                                    return res_builder.body(body).unwrap();
+                                && let Ok(retry_response) = retry_req.send().await
+                            {
+                                let mut res_builder = axum::response::Response::builder()
+                                    .status(retry_response.status());
+                                for (name, value) in retry_response.headers() {
+                                    res_builder = res_builder.header(name.clone(), value.clone());
                                 }
+                                let body =
+                                    axum::body::Body::from_stream(retry_response.bytes_stream());
+                                return res_builder.body(body).unwrap();
+                            }
                         }
                     }
 

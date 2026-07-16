@@ -147,9 +147,11 @@ pub fn rewrite_stale_model_request(
         }
     }
     if let Some(real_m) = &settings.real_model
-        && !real_m.trim().is_empty() && real_m != &stale_model {
-            fallback.push(real_m.clone());
-        }
+        && !real_m.trim().is_empty()
+        && real_m != &stale_model
+    {
+        fallback.push(real_m.clone());
+    }
     for disc in &settings.discovered_models {
         if disc != &stale_model && !disc.trim().is_empty() {
             fallback.push(disc.clone());
@@ -289,11 +291,7 @@ fn supports_reasoning_effort(model: &ProviderModel, overrides: &HashMap<String, 
             .any(|level| level != "none")
 }
 
-fn model_alias(
-    model: &ProviderModel,
-    index: usize,
-    overrides: &HashMap<String, String>,
-) -> String {
+fn model_alias(model: &ProviderModel, index: usize, overrides: &HashMap<String, String>) -> String {
     if supports_reasoning_effort(model, overrides) {
         let levels = effective_reasoning_effort_levels(model, overrides);
         if levels.iter().any(|level| level == "max") {

@@ -104,10 +104,7 @@ fn prepare_proxy_body_falls_back_for_unmapped_local_alias() {
         ..Settings::default()
     };
 
-    let body = prepare_proxy_body(
-        r#"{"model":"claude-haiku-4-5_2","messages":[]}"#,
-        &settings,
-    );
+    let body = prepare_proxy_body(r#"{"model":"claude-haiku-4-5_2","messages":[]}"#, &settings);
 
     assert_eq!(
         serde_json::from_str::<Value>(&body).unwrap()["model"],

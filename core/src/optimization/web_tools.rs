@@ -108,22 +108,23 @@ fn is_private_address(host: &str) -> bool {
     // IPv4 private ranges
     let parts: Vec<&str> = host.split('.').collect();
     if parts.len() == 4
-        && let Ok(first) = parts[0].parse::<u8>() {
-            // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-            if first == 10
-                || (first == 172
-                    && parts.len() > 1
-                    && parts[1].parse::<u8>().unwrap_or(0) >= 16
-                    && parts[1].parse::<u8>().unwrap_or(255) <= 31)
-                || (first == 192 && parts.len() > 1 && parts[1] == "168")
-            {
-                return true;
-            }
-            // 127.0.0.0/8
-            if first == 127 {
-                return true;
-            }
+        && let Ok(first) = parts[0].parse::<u8>()
+    {
+        // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+        if first == 10
+            || (first == 172
+                && parts.len() > 1
+                && parts[1].parse::<u8>().unwrap_or(0) >= 16
+                && parts[1].parse::<u8>().unwrap_or(255) <= 31)
+            || (first == 192 && parts.len() > 1 && parts[1] == "168")
+        {
+            return true;
         }
+        // 127.0.0.0/8
+        if first == 127 {
+            return true;
+        }
+    }
 
     // IPv6 loopback
     if host == "::1" || host == "::ffff:127.0.0.1" {
