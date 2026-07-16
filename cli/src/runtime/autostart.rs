@@ -7,6 +7,7 @@ use std::fs;
 #[cfg(not(target_os = "windows"))]
 use std::path::PathBuf;
 
+#[cfg(target_os = "windows")]
 const SERVICE_NAME: &str = "FreeClaudeDesktop";
 
 pub fn enable() -> io::Result<()> {
@@ -150,6 +151,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "windows")]
     #[test]
     fn service_name_is_stable() {
         assert_eq!(SERVICE_NAME, "FreeClaudeDesktop");
