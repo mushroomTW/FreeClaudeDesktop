@@ -158,6 +158,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "會修改使用者的自動啟動設定，請在本機手動執行"]
     fn test_autostart_integration() {
         let was_enabled = is_enabled().unwrap_or(false);
         let _guard = AutostartTestGuard { was_enabled };

@@ -23,7 +23,7 @@ jobs:
       - name: 安裝 Rust 工具鏈
         run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
 
-      - name: 使用 Rust 1.85
+      - name: 使用 Rust 1.97.0
         run: rustup override set 1.97.0
 
       - name: 檢查格式
