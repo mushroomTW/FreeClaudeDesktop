@@ -1,4 +1,7 @@
-use std::{io, path::PathBuf, process::Command, time::Duration};
+use std::{io, path::PathBuf, process::Command};
+
+#[cfg(not(test))]
+use std::time::Duration;
 
 const COMPOSE_FILE_ENV: &str = "FREECLAUDE_COMPOSE_FILE";
 
@@ -226,20 +229,22 @@ fn poll_healthz() -> io::Result<()> {
                     logs.push_str("=== Container STDERR ===\n");
                     logs.push_str(&stderr);
                 }
-                return Err(io::Error::new(
+                Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     format!("docker compose 未通過健康檢查。日誌如下：\n{logs}"),
-                ));
+                ))
             } else {
-                return Ok(());
+                Ok(())
             }
         } else {
-            return Ok(());
+            Ok(())
         }
     }
 
-    let interval = Duration::from_secs(1);
-    let max_attempts = 15;
+    #[cfg(not(test))]
+    {
+        let interval = Duration::from_secs(1);
+        let max_attempts = 15;
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -255,12 +260,11 @@ fn poll_healthz() -> io::Result<()> {
         let success = rt.block_on(async {
             match client.get("http://127.0.0.1:3000/healthz").send().await {
                 Ok(resp) => {
-                    if resp.status().is_success() {
-                        if let Ok(body) = resp.text().await {
+                    if resp.status().is_success()
+                        && let Ok(body) = resp.text().await {
                             return body.contains("\"status\":\"ok\"")
                                 || body.contains("\"status\": \"ok\"");
                         }
-                    }
                     false
                 }
                 Err(_) => false,
@@ -292,10 +296,11 @@ fn poll_healthz() -> io::Result<()> {
         logs.push_str(&stderr);
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::TimedOut,
-        format!("容器啟動後未通過健康檢查。容器日誌：\n{logs}"),
-    ))
+        Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!("容器啟動後未通過健康檢查。容器日誌：\n{logs}"),
+        ))
+    }
 }
 
 fn parse_compose_ps(stdout: &str) -> serde_json::Value {
@@ -328,11 +333,10 @@ fn parse_compose_ps(stdout: &str) -> serde_json::Value {
             if line.is_empty() {
                 continue;
             }
-            if let Ok(item) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(c) = extract_container_info(item) {
+            if let Ok(item) = serde_json::from_str::<serde_json::Value>(line)
+                && let Some(c) = extract_container_info(item) {
                     containers.push(c);
                 }
-            }
         }
     }
 
@@ -344,11 +348,10 @@ fn extract_container_info(item: serde_json::Value) -> Option<serde_json::Value> 
 
     let get_field = |keys: &[&str]| -> String {
         for key in keys {
-            if let Some(val) = obj.get(*key) {
-                if let Some(s) = val.as_str() {
+            if let Some(val) = obj.get(*key)
+                && let Some(s) = val.as_str() {
                     return s.to_string();
                 }
-            }
         }
         String::new()
     };

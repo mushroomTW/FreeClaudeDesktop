@@ -329,11 +329,10 @@ fn build_upstream_request(
 
     for (name, value) in headers {
         let lower = name.as_str().to_ascii_lowercase();
-        if let Some(skip) = skip_header {
-            if lower == skip {
+        if let Some(skip) = skip_header
+            && lower == skip {
                 continue;
             }
-        }
 
         if is_anthropic_native {
             if !matches!(lower.as_str(), "host" | "content-length" | "connection") {
@@ -2391,8 +2390,8 @@ async fn handle_companion_session(socket: WebSocket) {
             ws_msg = ws_stream.next() => {
                 match ws_msg {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(resp_val) = serde_json::from_str::<Value>(&text) {
-                            if let Some(req_id) = resp_val.get("requestId").and_then(|v| v.as_str()) {
+                        if let Ok(resp_val) = serde_json::from_str::<Value>(&text)
+                            && let Some(req_id) = resp_val.get("requestId").and_then(|v| v.as_str()) {
                                 let mut pending = pending_requests.lock().await;
                                 if let Some(tx) = pending.remove(req_id) {
                                     if let Some(err) = resp_val.get("error").and_then(|v| v.as_str()) {
@@ -2406,7 +2405,6 @@ async fn handle_companion_session(socket: WebSocket) {
                                     }
                                 }
                             }
-                        }
                     }
                     Some(Ok(Message::Ping(payload))) => {
                         if ws_sink.send(Message::Pong(payload)).await.is_err() {
@@ -2845,9 +2843,9 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 &api_key,
                                 &retry_settings.real_auth_scheme,
                                 false,
-                            ) {
-                                if let Ok(retry) = request.send().await {
-                                    if retry.status().is_success() {
+                            )
+                                && let Ok(retry) = request.send().await
+                                    && retry.status().is_success() {
                                         let reasoning_mode =
                                             match settings.reasoning_replay_mode.as_str() {
                                                 "inline" => Some(ReasoningReplayMode::Inline),
@@ -2872,8 +2870,6 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                             .body(axum::body::Body::from_stream(stream))
                                             .unwrap();
                                     }
-                                }
-                            }
                         }
                     }
                     return (status, Json(json!({ "error": text }))).into_response();
@@ -2942,9 +2938,9 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 false,
                             );
 
-                            if let Ok(retry_req) = retry_req {
-                                if let Ok(retry_response) = retry_req.send().await {
-                                    if retry_response.status().is_success() {
+                            if let Ok(retry_req) = retry_req
+                                && let Ok(retry_response) = retry_req.send().await
+                                    && retry_response.status().is_success() {
                                         let retry_text =
                                             retry_response.text().await.unwrap_or_default();
                                         if let Ok(anthropic_res) =
@@ -2954,8 +2950,6 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                                 .into_response();
                                         }
                                     }
-                                }
-                            }
                         }
                     }
                     let err_json: Value =
@@ -2996,8 +2990,8 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                 false,
                             );
 
-                            if let Ok(retry_req) = retry_req {
-                                if let Ok(retry_response) = retry_req.send().await {
+                            if let Ok(retry_req) = retry_req
+                                && let Ok(retry_response) = retry_req.send().await {
                                     let mut res_builder = axum::response::Response::builder()
                                         .status(retry_response.status());
                                     for (name, value) in retry_response.headers() {
@@ -3009,7 +3003,6 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                                     );
                                     return res_builder.body(body).unwrap();
                                 }
-                            }
                         }
                     }
 

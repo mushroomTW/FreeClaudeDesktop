@@ -146,11 +146,10 @@ pub fn rewrite_stale_model_request(
             fallback.push(model.clone());
         }
     }
-    if let Some(real_m) = &settings.real_model {
-        if !real_m.trim().is_empty() && real_m != &stale_model {
+    if let Some(real_m) = &settings.real_model
+        && !real_m.trim().is_empty() && real_m != &stale_model {
             fallback.push(real_m.clone());
         }
-    }
     for disc in &settings.discovered_models {
         if disc != &stale_model && !disc.trim().is_empty() {
             fallback.push(disc.clone());

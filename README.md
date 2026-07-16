@@ -50,8 +50,11 @@ Only use this route when building from source; it requires the stable [Rust tool
 ```bash
 git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
 cd FreeClaudeDesktop
-cargo install --path cli
-cargo build --release -p freeclaude-proxy
+cargo build --release -p freeclaude -p freeclaude-proxy
+# macOS / Linux
+./target/release/freeclaude install
+# Windows (PowerShell)
+.\target\release\freeclaude.exe install
 ```
 
 `freeclaude install` uses the native proxy by default. Use `freeclaude install --runtime docker` if you explicitly want the Docker runtime.
@@ -63,7 +66,7 @@ pnpm add -g @mushroomtw/freeclaudedesktop
 freeclaude-proxy start
 ```
 
-Use `freeclaude-proxy status`, `freeclaude-proxy admin`, and `freeclaude-proxy stop` to manage the local service. Removing the package stops the service, restores Claude settings, and deletes FreeClaudeDesktop-owned settings, its isolated profile, and its OS-keyring API key:
+Use `freeclaude-proxy status`, `restart`, `admin`, and `path` to manage the local service. Run `freeclaude-proxy purge` to fully reset its local data. Removing the package stops the service, restores Claude settings, and deletes FreeClaudeDesktop-owned settings, its isolated profile, and its OS-keyring API key:
 
 ```bash
 pnpm remove -g @mushroomtw/freeclaudedesktop
@@ -77,14 +80,11 @@ Requirements:
 - Claude Desktop for launcher integration
 
 ```bash
-cargo build --release
-cargo run
-```
-
-Install the CLI from a source checkout:
-
-```bash
-cargo install --path cli
+cargo build --release -p freeclaude -p freeclaude-proxy
+# macOS / Linux
+./target/release/freeclaude start
+# Windows (PowerShell)
+.\target\release\freeclaude.exe start
 ```
 
 ## CLI and local administration
@@ -92,7 +92,7 @@ cargo install --path cli
 Build both binaries in a development checkout:
 
 ```bash
-cargo build --bin freeclaude --bin freeclaude-proxy
+cargo build -p freeclaude -p freeclaude-proxy
 ```
 
 Manage the native proxy:
@@ -125,6 +125,7 @@ freeclaude autostart enable
 freeclaude autostart status
 freeclaude autostart disable
 freeclaude uninstall --yes
+freeclaude purge --yes
 ```
 
 Windows uses Task Scheduler, macOS uses a LaunchAgent, and Linux uses a systemd user service.

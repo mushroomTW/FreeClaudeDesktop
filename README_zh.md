@@ -33,7 +33,7 @@ curl -fsSL "https://github.com/mushroomTW/FreeClaudeDesktop/releases/latest/down
 ### Windows（PowerShell）
 
 ```powershell
-irm "https://github.com/mushroomTW/FreeClaudeDesktop/main/scripts/install.ps1" | iex
+irm "https://github.com/mushroomTW/FreeClaudeDesktop/releases/latest/download/install.ps1" | iex
 ```
 
 穩定安裝器 URL 會解析至最新 GitHub Release。安裝程式會下載符合平台的預編譯 binary、依 release 的 `checksums.txt` 驗證 SHA-256，並將 `freeclaude` 加入使用者 PATH；它**不會**修改 Claude Desktop 設定。請在確認安裝內容後，再執行：
@@ -50,8 +50,11 @@ freeclaude configure
 ```bash
 git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
 cd FreeClaudeDesktop
-cargo install --path cli
-cargo build --release -p freeclaude-proxy
+cargo build --release -p freeclaude -p freeclaude-proxy
+# macOS / Linux
+./target/release/freeclaude install
+# Windows（PowerShell）
+.\target\release\freeclaude.exe install
 ```
 
 `freeclaude install` 預設使用原生 proxy；只有明確需要 Docker runtime 時才使用 `freeclaude install --runtime docker`。
@@ -63,7 +66,7 @@ pnpm add -g @mushroomtw/freeclaudedesktop
 freeclaude-proxy start
 ```
 
-可使用 `freeclaude-proxy status`、`freeclaude-proxy admin` 與 `freeclaude-proxy stop` 管理本機服務。解除安裝時會停止服務、還原 Claude 設定，並完整清除 FreeClaudeDesktop 擁有的設定、隔離 profile 與 OS keyring API key：
+可使用 `freeclaude-proxy status`、`restart`、`admin` 與 `path` 管理本機服務；執行 `freeclaude-proxy purge` 可完整重設本機資料。解除安裝時會停止服務、還原 Claude 設定，並完整清除 FreeClaudeDesktop 擁有的設定、隔離 profile 與 OS keyring API key：
 
 ```bash
 pnpm remove -g @mushroomtw/freeclaudedesktop
@@ -77,14 +80,11 @@ pnpm remove -g @mushroomtw/freeclaudedesktop
 - 用於啟動整合的 Claude Desktop。
 
 ```bash
-cargo build --release
-cargo run
-```
-
-從原始碼工作區安裝 CLI：
-
-```bash
-cargo install --path cli
+cargo build --release -p freeclaude -p freeclaude-proxy
+# macOS / Linux
+./target/release/freeclaude start
+# Windows（PowerShell）
+.\target\release\freeclaude.exe start
 ```
 
 ## CLI 與本機管理
@@ -92,7 +92,7 @@ cargo install --path cli
 在開發工作區同時建置兩個 binary：
 
 ```bash
-cargo build --bin freeclaude --bin freeclaude-proxy
+cargo build -p freeclaude -p freeclaude-proxy
 ```
 
 管理原生 Proxy：
@@ -125,6 +125,7 @@ freeclaude autostart enable
 freeclaude autostart status
 freeclaude autostart disable
 freeclaude uninstall --yes
+freeclaude purge --yes
 ```
 
 Windows 使用 Task Scheduler、macOS 使用 LaunchAgent、Linux 使用 systemd user service。

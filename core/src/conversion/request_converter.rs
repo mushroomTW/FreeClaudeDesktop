@@ -67,11 +67,10 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
             "haiku" => &settings.real_model_haiku,
             _ => &None,
         };
-        if let Some(m) = family_model {
-            if !m.trim().is_empty() {
+        if let Some(m) = family_model
+            && !m.trim().is_empty() {
                 return Some(m.clone());
             }
-        }
     }
 
     // 1. 精確匹配 routes (例如 "claude-sonnet-4-6_0" 或 "claude-sonnet-4-6_0[1m]")
@@ -202,8 +201,8 @@ pub fn anthropic_to_openai_request(
     }
 
     // 處理 thinking 屬性
-    if let Some(ref thinking) = req.thinking {
-        if thinking.enabled.unwrap_or(true) {
+    if let Some(ref thinking) = req.thinking
+        && thinking.enabled.unwrap_or(true) {
             let budget = thinking.budget_tokens.unwrap_or(1024);
             let effort = thinking_budget_to_effort(budget);
             let target_model = data["model"].as_str().unwrap_or("");
@@ -215,7 +214,6 @@ pub fn anthropic_to_openai_request(
                 data["reasoning_effort"] = Value::String(effort.to_string());
             }
         }
-    }
 
     // 處理 system prompt（對齊 Python 專案的 System 處理）
     let mut openai_messages = Vec::new();
@@ -301,8 +299,8 @@ pub fn anthropic_to_openai_request(
             // 緊接著檢查下一個訊息是否是 user 訊息且內含 tool_result
             if i + 1 < req.messages.len() {
                 let next_msg = &req.messages[i + 1];
-                if next_msg.role == ClaudeRole::User {
-                    if let ClaudeMessageContent::Blocks(ref next_blocks) = next_msg.content {
+                if next_msg.role == ClaudeRole::User
+                    && let ClaudeMessageContent::Blocks(ref next_blocks) = next_msg.content {
                         let has_tool_result = next_blocks
                             .iter()
                             .any(|b| matches!(b, ClaudeContentBlock::ToolResult { .. }));
@@ -388,7 +386,6 @@ pub fn anthropic_to_openai_request(
                             i += 1; // 跳過此 user 訊息，因為它的 tool_result 已經被處理了
                         }
                     }
-                }
             }
         } else {
             // role == "user" or "system"
@@ -504,8 +501,8 @@ pub fn anthropic_to_openai_request(
     }
 
     // 轉換 tool_choice
-    if let Some(ref tool_choice_val) = req.tool_choice {
-        if let Some(choice_type) = tool_choice_val.get("type").and_then(Value::as_str) {
+    if let Some(ref tool_choice_val) = req.tool_choice
+        && let Some(choice_type) = tool_choice_val.get("type").and_then(Value::as_str) {
             let new_choice = match choice_type {
                 "auto" => json!("auto"),
                 "any" => json!("required"),
@@ -523,11 +520,10 @@ pub fn anthropic_to_openai_request(
             };
             data["tool_choice"] = new_choice;
         }
-    }
 
     let is_stream = req.stream.unwrap_or(false);
-    if is_stream {
-        if let Some(obj) = data.as_object_mut() {
+    if is_stream
+        && let Some(obj) = data.as_object_mut() {
             obj.insert("stream".to_string(), json!(true));
             obj.insert(
                 "stream_options".to_string(),
@@ -536,7 +532,6 @@ pub fn anthropic_to_openai_request(
                 }),
             );
         }
-    }
 
     if let Some(temp) = req.temperature {
         data["temperature"] = json!(temp);
