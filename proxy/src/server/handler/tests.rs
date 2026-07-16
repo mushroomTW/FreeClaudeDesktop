@@ -121,15 +121,17 @@ async fn test_companion_offline_fails() {
 
     let old_local = std::env::var_os("LOCALAPPDATA");
     let old_home = std::env::var_os("HOME");
+    let old_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
 
     unsafe {
         std::env::set_var("LOCALAPPDATA", &temp_dir);
         std::env::set_var("HOME", &temp_dir);
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
     }
 
-    let settings_dir = temp_dir.join("FreeClaudeDesktop");
-    std::fs::create_dir_all(&settings_dir).unwrap();
-    let settings_file = settings_dir.join("launcher_settings.json");
+    let settings_file = crate::config::settings_file();
+    let settings_dir = settings_file.parent().expect("設定檔目錄");
+    std::fs::create_dir_all(settings_dir).unwrap();
 
     let settings = Settings {
         real_base_url: "https://api.anthropic.com".to_string(),
@@ -167,6 +169,11 @@ async fn test_companion_offline_fails() {
         } else {
             std::env::remove_var("HOME");
         }
+        if let Some(val) = old_xdg_config_home {
+            std::env::set_var("XDG_CONFIG_HOME", val);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 }
 
@@ -184,15 +191,17 @@ async fn test_companion_forwarding_success() {
 
     let old_local = std::env::var_os("LOCALAPPDATA");
     let old_home = std::env::var_os("HOME");
+    let old_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
 
     unsafe {
         std::env::set_var("LOCALAPPDATA", &temp_dir);
         std::env::set_var("HOME", &temp_dir);
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
     }
 
-    let settings_dir = temp_dir.join("FreeClaudeDesktop");
-    std::fs::create_dir_all(&settings_dir).unwrap();
-    let settings_file = settings_dir.join("launcher_settings.json");
+    let settings_file = crate::config::settings_file();
+    let settings_dir = settings_file.parent().expect("設定檔目錄");
+    std::fs::create_dir_all(settings_dir).unwrap();
 
     let settings = Settings {
         real_base_url: "https://api.anthropic.com".to_string(),
@@ -252,6 +261,11 @@ async fn test_companion_forwarding_success() {
             std::env::set_var("HOME", val);
         } else {
             std::env::remove_var("HOME");
+        }
+        if let Some(val) = old_xdg_config_home {
+            std::env::set_var("XDG_CONFIG_HOME", val);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
         }
     }
 }
