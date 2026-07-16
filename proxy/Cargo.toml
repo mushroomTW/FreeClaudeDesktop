@@ -2,7 +2,7 @@
 name = "freeclaude-proxy"
 version = "0.1.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.97.0"
 description = "Axum Proxy for FreeClaudeDesktop"
 license = "MIT"
 
@@ -24,4 +24,3 @@ tracing-appender = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = ["dpapi", "winbase", "wincrypt", "winuser", "processthreadsapi"] }
-

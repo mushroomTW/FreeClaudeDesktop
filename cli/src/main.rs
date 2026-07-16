@@ -238,11 +238,10 @@ fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     let _ = crate::runtime::native::stop_companion();
     match args.runtime {
         Runtime::Native => {
-            if let Err(error) = crate::runtime::native::stop_proxy() {
-                if error.kind() != io::ErrorKind::NotFound {
+            if let Err(error) = crate::runtime::native::stop_proxy()
+                && error.kind() != io::ErrorKind::NotFound {
                     return Err(error.into());
                 }
-            }
             let _ = crate::runtime::autostart::disable();
         }
         Runtime::Docker => {
@@ -325,11 +324,10 @@ fn purge(args: PurgeArgs) -> Result<(), Box<dyn std::error::Error>> {
         return Err("purge 會停止服務、還原 Claude 設定並刪除所有 FreeClaudeDesktop 資料；請加入 --yes 確認".into());
     }
     let _ = crate::runtime::native::stop_companion();
-    if let Err(error) = crate::runtime::native::stop_proxy() {
-        if error.kind() != io::ErrorKind::NotFound {
+    if let Err(error) = crate::runtime::native::stop_proxy()
+        && error.kind() != io::ErrorKind::NotFound {
             return Err(error.into());
         }
-    }
     let _ = crate::runtime::autostart::disable();
     free_claude_core::purge_application_data()?;
     println!("FreeClaudeDesktop 的本機資料已完整清除");

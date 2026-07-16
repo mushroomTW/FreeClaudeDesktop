@@ -185,15 +185,14 @@ pub async fn try_optimizations(
     }
 
     // 2. Prefix detection
-    if settings.enable_prefix_detection {
-        if let Some(prefix) = extract_command_prefix(body_str) {
+    if settings.enable_prefix_detection
+        && let Some(prefix) = extract_command_prefix(body_str) {
             tracing::info!("Optimization: fast prefix detection");
             let model = extract_model(body_str);
             return Some(build_optimized_text_response(
                 body_str, &model, &prefix, 100, 5,
             ));
         }
-    }
 
     // 3. Title generation skip
     if settings.enable_title_generation_skip && is_title_generation_request(body_str) {
@@ -216,19 +215,18 @@ pub async fn try_optimizations(
     }
 
     // 5. Filepath extraction
-    if settings.enable_filepath_extraction_mock {
-        if let Some(filepaths) = extract_filepaths(body_str) {
+    if settings.enable_filepath_extraction_mock
+        && let Some(filepaths) = extract_filepaths(body_str) {
             tracing::info!("Optimization: mocked filepath extraction");
             let model = extract_model(body_str);
             return Some(build_optimized_text_response(
                 body_str, &model, &filepaths, 100, 10,
             ));
         }
-    }
 
     // 6. Web server tools
-    if settings.enable_web_server_tools {
-        if let Some((_id, name, input)) = web_tools::extract_latest_web_tool_call(body_str) {
+    if settings.enable_web_server_tools
+        && let Some((_id, name, input)) = web_tools::extract_latest_web_tool_call(body_str) {
             let policy = web_tools::policy_from_settings(settings);
             if let Some(text) = web_tools::execute_web_tool(&policy, &name, &input).await {
                 tracing::info!("Optimization: executed local web tool {}", name);
@@ -238,7 +236,6 @@ pub async fn try_optimizations(
                 ));
             }
         }
-    }
 
     None
 }

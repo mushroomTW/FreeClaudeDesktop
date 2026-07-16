@@ -123,12 +123,11 @@ async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
             let mut settings = free_claude_core::get_launcher_settings().unwrap_or_default();
             settings.real_base_url = base_url;
             settings.real_auth_scheme = auth_scheme;
-            if let Some(key) = api_key {
-                if !key.is_empty() {
+            if let Some(key) = api_key
+                && !key.is_empty() {
                     settings.real_api_key =
                         free_claude_core::protect_secret(&key).map_err(|e| e.to_string())?;
                 }
-            }
             free_claude_core::save_launcher_settings(&settings).map_err(|e| e.to_string())?;
             free_claude_core::to_public_config(&settings)
         }
