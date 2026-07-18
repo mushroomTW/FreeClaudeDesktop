@@ -1,6 +1,8 @@
 # FreeClaudeDesktop
 
-![FreeClaudeDesktop icon](icon.png)
+<p align="center">
+  <img src="icon.png" alt="FreeClaudeDesktop icon" />
+</p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-stable-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
@@ -111,10 +113,10 @@ After `freeclaude start`, open [http://127.0.0.1:3000/admin](http://127.0.0.1:30
 
 ```text
 GET  /healthz
-GET  /admin/settings
-POST /admin/settings
-GET  /admin/status
-POST /admin/rpc
+GET  /settings
+POST /settings
+GET  /status
+POST /rpc
 WS   /companion           (first message requires requestId)
 ```
 

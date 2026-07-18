@@ -98,7 +98,7 @@ fn compose_file() -> io::Result<PathBuf> {
     } else {
         Err(io::Error::new(
             io::ErrorKind::NotFound,
-            "找不到 compose.yaml；請在專案目錄執行，或設定 FREECLAUDE_COMPOSE_FILE。",
+            "找不到 compose.yaml；Docker runtime 需要專案的 Dockerfile 與 Compose 設定。請在專案根目錄執行，或將 FREECLAUDE_COMPOSE_FILE 設為其絕對路徑。使用預編譯 release 的使用者請改用 native runtime。",
         ))
     }
 }

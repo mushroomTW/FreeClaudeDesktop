@@ -299,30 +299,10 @@ fn build_upstream_request(
     let mut request = client.post(target_url).body(body);
 
     let skip_header = if !api_key.is_empty() {
-        let scheme = match auth_scheme {
-            "auto" => {
-                if url::Url::parse(target_url)
-                    .map_err(|error| crate::AppError::InvalidConfig(error.to_string()))?
-                    .host_str()
-                    == Some("api.anthropic.com")
-                {
-                    "x-api-key"
-                } else {
-                    "bearer"
-                }
-            }
-            "x-api-key" | "bearer" | "sso" => auth_scheme,
-            _ => {
-                return Err(crate::AppError::InvalidConfig(
-                    "不支援的 Auth Scheme".to_string(),
-                ));
-            }
-        };
-        if scheme == "x-api-key" {
-            Some("x-api-key")
-        } else {
-            Some("authorization")
-        }
+        Some(free_claude_core::resolve_auth_header_name(
+            auth_scheme,
+            target_url,
+        )?)
     } else {
         None
     };
@@ -406,6 +386,183 @@ async fn refresh_settings_for_retry(
         .map(|model| model.provider_model_id)
         .collect();
     Some(refreshed)
+}
+
+fn reasoning_mode_from(settings: &Settings) -> Option<ReasoningReplayMode> {
+    match settings.reasoning_replay_mode.as_str() {
+        "inline" => Some(ReasoningReplayMode::Inline),
+        "separate" => Some(ReasoningReplayMode::Separate),
+        _ => None,
+    }
+}
+
+fn sse_stream_response(
+    rx: mpsc::Receiver<Result<Bytes, std::convert::Infallible>>,
+) -> axum::response::Response {
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+    axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/event-stream; charset=utf-8")
+        .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
+        .body(axum::body::Body::from_stream(stream))
+        .unwrap()
+}
+
+/// 上游因模型失效/無效而報錯時，刷新路由並改用一個備援模型重試。
+///
+/// 三種轉發路徑（串流、OpenAI 非串流、Anthropic 直通）共用同一套「刷新→改寫→
+/// 重建→送出」流程，避免各自複製一份而發生行為分歧。`is_anthropic_native`
+/// 需與外層一致：Anthropic 直通傳 `true`，OpenAI 相容路徑傳 `false`。
+/// `require_success` 為 `true` 時只有成功回應才回傳（OpenAI 路徑需再轉換），
+/// 為 `false` 時原樣回傳重試結果（Anthropic 直通）。
+#[allow(clippy::too_many_arguments)]
+async fn try_stale_model_retry(
+    settings: &Settings,
+    api_key: &str,
+    proxy_body: &str,
+    req_model: &str,
+    target_url: &str,
+    headers: &HeaderMap,
+    is_anthropic_native: bool,
+    error_text: &str,
+    require_success: bool,
+) -> Option<reqwest::Response> {
+    if !may_retry_stale_model(false, true, error_text) {
+        return None;
+    }
+    let retry_settings = refresh_settings_for_retry(settings, api_key)
+        .await
+        .unwrap_or_else(|| settings.clone());
+    let rewrite = rewrite_stale_model_request(proxy_body, &retry_settings, req_model)?;
+    tracing::warn!(
+        "[model fallback] model error, retrying {} with {}",
+        req_model,
+        rewrite.fallback_model
+    );
+    let request = build_upstream_request(
+        crate::server::http_client(),
+        target_url,
+        rewrite.updated_body.to_string(),
+        headers,
+        api_key,
+        &retry_settings.real_auth_scheme,
+        is_anthropic_native,
+    )
+    .ok()?;
+    let response = request.send().await.ok()?;
+    if require_success && !response.status().is_success() {
+        return None;
+    }
+    Some(response)
+}
+
+/// 攔截 Claude Desktop 的背景連線健康檢查（probe）並立即回傳成功回應。
+///
+/// 只有三條件同時成立才視為 probe，避免誤吃使用者的正式請求：
+///   1. `messages` 解析為空 array（人類對話不可能丟空訊息）
+///   2. `max_tokens` 很小（避免誤吃沒有 body 但有 tools 的請求）
+///   3. body 極短（背景 ping 不會帶大 system 與 tools schemas）
+///
+/// 不能單看 `max_tokens <= 5`，因為 Anthropic 官方認可 `max_tokens=1` 的多選題
+/// 預填用法；若只看 max_tokens 會把正式請求攔下改回假的「.」，造成切換模型時
+/// 「訊息送出但什麼都沒發生」的錯覺。
+fn try_probe_response(body_str: &str, req_model: &str) -> Option<axum::response::Response> {
+    let value = serde_json::from_str::<Value>(body_str).ok()?;
+    let max_tokens = value.get("max_tokens").and_then(Value::as_u64).unwrap_or(9999);
+    let is_probe_stream = value.get("stream").and_then(Value::as_bool).unwrap_or(false);
+    let messages_empty = value
+        .get("messages")
+        .and_then(Value::as_array)
+        .map(|arr| arr.is_empty())
+        .unwrap_or(false);
+    let has_user_content = value
+        .get("messages")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter().any(|m| {
+                m.get("role").and_then(Value::as_str) == Some("user")
+                    && m.get("content").map(|c| !c.is_null()).unwrap_or(false)
+            })
+        })
+        .unwrap_or(false);
+
+    if has_user_content || !messages_empty || max_tokens > 5 || body_str.len() >= 400 {
+        return None;
+    }
+
+    tracing::info!(
+        "-> [探測攔截] 繞過 Claude 檢查，自動回傳成功回應 (model: {})",
+        req_model
+    );
+
+    let msg_id = format!(
+        "msg_probe_{}",
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO)
+            .as_millis()
+    );
+
+    if is_probe_stream {
+        let events = vec![
+            format!(
+                "event: message_start\ndata: {}\n\n",
+                json!({
+                    "type": "message_start",
+                    "message": {
+                        "id": msg_id,
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [],
+                        "model": req_model,
+                        "stop_reason": null,
+                        "usage": { "input_tokens": 1, "output_tokens": 0 }
+                    }
+                })
+            ),
+            format!(
+                "event: content_block_start\ndata: {}\n\n",
+                json!({
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": { "type": "text", "text": "" }
+                })
+            ),
+            format!(
+                "event: content_block_delta\ndata: {}\n\n",
+                json!({
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": { "type": "text_delta", "text": "." }
+                })
+            ),
+            "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+                .to_string(),
+            "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":1}}\n\n"
+                .to_string(),
+            "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n".to_string(),
+        ];
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::convert::Infallible>>(10);
+        tokio::spawn(async move {
+            for event in events {
+                let _ = tx.send(Ok(Bytes::from(event))).await;
+            }
+        });
+        Some(sse_stream_response(rx))
+    } else {
+        let probe_res = json!({
+            "id": msg_id,
+            "type": "message",
+            "role": "assistant",
+            "content": [ { "type": "text", "text": "." } ],
+            "model": req_model,
+            "stop_reason": "end_turn",
+            "usage": { "input_tokens": 1, "output_tokens": 1 }
+        });
+        Some((StatusCode::OK, Json(probe_res)).into_response())
+    }
 }
 
 pub async fn handle_root() -> impl IntoResponse {
@@ -1912,8 +2069,8 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       $('detectedClaudePath').textContent = t('conn_detecting');
       try {
         const [settings, status] = await Promise.all([
-          request('/admin/settings'),
-          request('/admin/status')
+          request('/settings'),
+          request('/status')
         ]);
         
         loadedSettings = settings;
@@ -1978,7 +2135,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         
         // Detect Claude Path via RPC
         try {
-          const detectRes = await request('/admin/rpc', {
+          const detectRes = await request('/rpc', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ method: 'DetectClaude' })
@@ -2120,7 +2277,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
           language: $('language').value
         };
 
-        await request('/admin/settings', {
+        await request('/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -2131,7 +2288,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         
         if (launchAfterSave) {
           try {
-            const launchRes = await request('/admin/rpc', {
+            const launchRes = await request('/rpc', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ method: 'LaunchClaude' })
@@ -2168,7 +2325,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       if (!confirm(t('confirm_reset'))) return;
       showLoading(true);
       try {
-        await request('/admin/rpc', {
+        await request('/rpc', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ method: 'ResetMirrorProfile' })
@@ -2186,7 +2343,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
       if (!confirm(t('confirm_sync'))) return;
       showLoading(true);
       try {
-        await request('/admin/rpc', {
+        await request('/rpc', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ method: 'SyncFromOfficial' })
@@ -2203,7 +2360,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
     $('fetchModelsBtn').onclick = async () => {
       showLoading(true);
       try {
-        await request('/admin/rpc', {
+        await request('/rpc', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ method: 'FetchModels' })
@@ -2549,141 +2706,9 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         Err(_) => "unknown".to_string(),
     };
 
-    // 3. Connection Probe interception (empty messages + tiny max_tokens)
-    //
-    // 真正的「連線健康檢查」訊息長相：`messages` 是空陣列（人類對話不可能丟空訊息）。
-    // 不能單看 `max_tokens <= 5`，因為 Anthropic 官方認可 `max_tokens=1` 多選題
-    // 預填用法；如果只看 max_tokens，會把使用者的正式請求吃掉、攔下、改回假的「.」，
-    // 造成切換模型時「訊息送出但什麼都沒發生」的視覺感（即重複無效呼叫）。
-    //
-    // 因此必須三條件同時成立才視為 probe：
-    //   1. `messages` 解析為空 array
-    //   2. `max_tokens` 很小（避免誤吃沒有 body 但有 tools 的請求）
-    //   3. body 極短（背景 ping 不會帶大 system 與 tools schemas）
-    let probe_decision = match serde_json::from_str::<Value>(&body_str) {
-        Ok(v) => {
-            let max_tokens = v.get("max_tokens").and_then(Value::as_u64).unwrap_or(9999);
-            let stream = v.get("stream").and_then(Value::as_bool).unwrap_or(false);
-            let messages_empty = v
-                .get("messages")
-                .and_then(Value::as_array)
-                .map(|arr| arr.is_empty())
-                .unwrap_or(false);
-            let has_user_content = v
-                .get("messages")
-                .and_then(Value::as_array)
-                .map(|arr| {
-                    arr.iter().any(|m| {
-                        m.get("role").and_then(Value::as_str) == Some("user")
-                            && m.get("content").map(|c| !c.is_null()).unwrap_or(false)
-                    })
-                })
-                .unwrap_or(false);
-            Some((max_tokens, stream, messages_empty, has_user_content))
-        }
-        Err(_) => None,
-    };
-
-    if let Some((max_tokens, is_probe_stream, messages_empty, has_user_content)) = probe_decision {
-        // 只要帶有任何 user 訊息就不是 probe，避免誤吃真實請求。
-        if !has_user_content && messages_empty && max_tokens <= 5 && body_str.len() < 400 {
-            tracing::info!(
-                "-> [探測攔截] 繞過 Claude 檢查，自動回傳成功回應 (model: {})",
-                req_model
-            );
-            if is_probe_stream {
-                let msg_id = format!(
-                    "msg_probe_{}",
-                    SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or(Duration::ZERO)
-                        .as_millis()
-                );
-
-                // Construct events
-                let events = vec![
-                format!(
-                    "event: message_start\ndata: {}\n\n",
-                    json!({
-                        "type": "message_start",
-                        "message": {
-                            "id": msg_id,
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [],
-                            "model": req_model,
-                            "stop_reason": null,
-                            "usage": { "input_tokens": 1, "output_tokens": 0 }
-                        }
-                    })
-                ),
-                format!(
-                    "event: content_block_start\ndata: {}\n\n",
-                    json!({
-                        "type": "content_block_start",
-                        "index": 0,
-                        "content_block": { "type": "text", "text": "" }
-                    })
-                ),
-                format!(
-                    "event: content_block_delta\ndata: {}\n\n",
-                    json!({
-                        "type": "content_block_delta",
-                        "index": 0,
-                        "delta": { "type": "text_delta", "text": "." }
-                    })
-                ),
-                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n".to_string(),
-                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":1}}\n\n".to_string(),
-                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n".to_string(),
-            ];
-
-                let (tx, rx) =
-                    tokio::sync::mpsc::channel::<Result<Bytes, std::convert::Infallible>>(10);
-                tokio::spawn(async move {
-                    for event in events {
-                        let _ = tx.send(Ok(Bytes::from(event))).await;
-                    }
-                });
-
-                let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
-                let body = axum::body::Body::from_stream(stream);
-
-                return axum::response::Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", "text/event-stream; charset=utf-8")
-                    .header("Cache-Control", "no-cache")
-                    .header("Connection", "keep-alive")
-                    .body(body)
-                    .unwrap();
-            } else {
-                let msg_id = format!(
-                    "msg_probe_{}",
-                    SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or(Duration::ZERO)
-                        .as_millis()
-                );
-                let probe_res = json!({
-                    "id": msg_id,
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "."
-                        }
-                    ],
-                    "model": req_model,
-                    "stop_reason": "end_turn",
-                    "usage": {
-                        "input_tokens": 1,
-                        "output_tokens": 1
-                    }
-                });
-                return (StatusCode::OK, Json(probe_res)).into_response();
-            }
-        } // 內層 probe 條件 (messages 空 + 沒 user 內容) 結束
+    // 3. Connection Probe interception：攔截背景連線健康檢查（詳見 try_probe_response）。
+    if let Some(response) = try_probe_response(&body_str, &req_model) {
+        return response;
     }
 
     // 4. Request format conversion
@@ -2823,67 +2848,22 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                 if !status.is_success() {
                     let text = read_bounded_error(response).await;
                     tracing::error!("<- 上游流式錯誤狀態碼: {}", status_u16);
-                    if may_retry_stale_model(false, true, &text) {
-                        let retry_settings = refresh_settings_for_retry(&settings, &api_key)
-                            .await
-                            .unwrap_or_else(|| settings.clone());
-                        if let Some(rewrite) =
-                            rewrite_stale_model_request(&proxy_body, &retry_settings, &req_model)
-                        {
-                            tracing::warn!(
-                                "[model fallback] model error ({}), retrying {} with {}",
-                                status_u16,
-                                req_model,
-                                rewrite.fallback_model
-                            );
-                            if let Ok(request) = build_upstream_request(
-                                crate::server::http_client(),
-                                &target_url,
-                                rewrite.updated_body.to_string(),
-                                &headers,
-                                &api_key,
-                                &retry_settings.real_auth_scheme,
-                                false,
-                            ) && let Ok(retry) = request.send().await
-                                && retry.status().is_success()
-                            {
-                                let reasoning_mode = match settings.reasoning_replay_mode.as_str() {
-                                    "inline" => Some(ReasoningReplayMode::Inline),
-                                    "separate" => Some(ReasoningReplayMode::Separate),
-                                    _ => None,
-                                };
-                                let rx =
-                                    start_sse_stream_conversion(retry, req_model, reasoning_mode);
-                                let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
-                                return axum::response::Response::builder()
-                                    .status(StatusCode::OK)
-                                    .header("Content-Type", "text/event-stream; charset=utf-8")
-                                    .header("Cache-Control", "no-cache")
-                                    .header("Connection", "keep-alive")
-                                    .body(axum::body::Body::from_stream(stream))
-                                    .unwrap();
-                            }
-                        }
+                    if let Some(retry) = try_stale_model_retry(
+                        &settings, &api_key, &proxy_body, &req_model, &target_url, &headers, false,
+                        &text, true,
+                    )
+                    .await
+                    {
+                        let reasoning_mode = reasoning_mode_from(&settings);
+                        let rx = start_sse_stream_conversion(retry, req_model, reasoning_mode);
+                        return sse_stream_response(rx);
                     }
                     return (status, Json(json!({ "error": text }))).into_response();
                 }
 
-                let reasoning_mode = match settings.reasoning_replay_mode.as_str() {
-                    "inline" => Some(ReasoningReplayMode::Inline),
-                    "separate" => Some(ReasoningReplayMode::Separate),
-                    _ => None,
-                };
+                let reasoning_mode = reasoning_mode_from(&settings);
                 let rx = start_sse_stream_conversion(response, req_model, reasoning_mode);
-                let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
-                let body = axum::body::Body::from_stream(stream);
-
-                axum::response::Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", "text/event-stream; charset=utf-8")
-                    .header("Cache-Control", "no-cache")
-                    .header("Connection", "keep-alive")
-                    .body(body)
-                    .unwrap()
+                sse_stream_response(rx)
             } else {
                 tracing::info!("<- 上游回應狀態碼: {}", status_u16);
                 if is_openai_format && status.is_success() {
@@ -2908,40 +2888,17 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                 } else if is_openai_format {
                     let text = read_bounded_error(response).await;
                     tracing::error!("<- 上游錯誤狀態碼: {}", status_u16);
-                    if may_retry_stale_model(false, true, &text) {
-                        let retry_settings = refresh_settings_for_retry(&settings, &api_key)
-                            .await
-                            .unwrap_or_else(|| settings.clone());
-                        if let Some(rewrite) =
-                            rewrite_stale_model_request(&proxy_body, &retry_settings, &req_model)
+                    if let Some(retry) = try_stale_model_retry(
+                        &settings, &api_key, &proxy_body, &req_model, &target_url, &headers, false,
+                        &text, true,
+                    )
+                    .await
+                    {
+                        let retry_text = retry.text().await.unwrap_or_default();
+                        if let Ok(anthropic_res) =
+                            openai_to_anthropic_response(&retry_text, &req_model)
                         {
-                            tracing::warn!(
-                                "[model fallback] model error ({}), retrying {} with {}",
-                                status_u16,
-                                req_model,
-                                rewrite.fallback_model
-                            );
-                            let retry_req = build_upstream_request(
-                                crate::server::http_client(),
-                                &target_url,
-                                rewrite.updated_body.to_string(),
-                                &headers,
-                                &api_key,
-                                &retry_settings.real_auth_scheme,
-                                false,
-                            );
-
-                            if let Ok(retry_req) = retry_req
-                                && let Ok(retry_response) = retry_req.send().await
-                                && retry_response.status().is_success()
-                            {
-                                let retry_text = retry_response.text().await.unwrap_or_default();
-                                if let Ok(anthropic_res) =
-                                    openai_to_anthropic_response(&retry_text, &req_model)
-                                {
-                                    return (StatusCode::OK, Json(anthropic_res)).into_response();
-                                }
-                            }
+                            return (StatusCode::OK, Json(anthropic_res)).into_response();
                         }
                     }
                     let err_json: Value =
@@ -2959,42 +2916,19 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                         return output;
                     }
                     let text = read_bounded_error(response).await;
-                    if may_retry_stale_model(false, true, &text) {
-                        let retry_settings = refresh_settings_for_retry(&settings, &api_key)
-                            .await
-                            .unwrap_or_else(|| settings.clone());
-                        if let Some(rewrite) =
-                            rewrite_stale_model_request(&proxy_body, &retry_settings, &req_model)
-                        {
-                            tracing::warn!(
-                                "[model fallback] model error ({}), retrying {} with {}",
-                                status_u16,
-                                req_model,
-                                rewrite.fallback_model
-                            );
-                            let retry_req = build_upstream_request(
-                                crate::server::http_client(),
-                                &target_url,
-                                rewrite.updated_body.to_string(),
-                                &headers,
-                                &api_key,
-                                &retry_settings.real_auth_scheme,
-                                false,
-                            );
-
-                            if let Ok(retry_req) = retry_req
-                                && let Ok(retry_response) = retry_req.send().await
-                            {
-                                let mut res_builder = axum::response::Response::builder()
-                                    .status(retry_response.status());
-                                for (name, value) in retry_response.headers() {
-                                    res_builder = res_builder.header(name.clone(), value.clone());
-                                }
-                                let body =
-                                    axum::body::Body::from_stream(retry_response.bytes_stream());
-                                return res_builder.body(body).unwrap();
-                            }
+                    if let Some(retry) = try_stale_model_retry(
+                        &settings, &api_key, &proxy_body, &req_model, &target_url, &headers, true,
+                        &text, false,
+                    )
+                    .await
+                    {
+                        let mut res_builder =
+                            axum::response::Response::builder().status(retry.status());
+                        for (name, value) in retry.headers() {
+                            res_builder = res_builder.header(name.clone(), value.clone());
                         }
+                        let body = axum::body::Body::from_stream(retry.bytes_stream());
+                        return res_builder.body(body).unwrap();
                     }
 
                     let mut res_builder = axum::response::Response::builder().status(status);

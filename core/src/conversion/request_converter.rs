@@ -155,8 +155,9 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
                 prefix.starts_with("claude-") && index.parse::<usize>().is_ok()
             });
     if (requested_model.contains('[') && requested_model.contains(']')) || is_indexed_claude_alias {
-        // (1) 優先使用 routes 裡的任意一個真實模型
-        if let Some(m) = settings.real_model_routes.values().next() {
+        // (1) 優先使用 routes 裡的真實模型；取字典序最小者確保決定性，
+        //     避免 HashMap 迭代順序造成每次兜底選到不同模型。
+        if let Some(m) = settings.real_model_routes.values().min() {
             tracing::warn!(
                 "[model 映射安全兜底] 無法解析 alias {}，強制映射為 routes 內的第一個模型 {}",
                 requested_model,

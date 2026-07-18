@@ -132,13 +132,13 @@ pub fn http_client() -> &'static reqwest::Client {
     })
 }
 
-pub fn apply_gateway_auth(
-    request: reqwest::RequestBuilder,
-    scheme: &str,
-    key: &str,
-    url: &str,
-) -> AppResult<reqwest::RequestBuilder> {
-    let scheme = match scheme {
+/// 解析驗證方案最終使用的請求標頭名稱（`"x-api-key"` 或 `"authorization"`）。
+///
+/// 這是 auth scheme 判定的單一來源：`apply_gateway_auth`（設定標頭）與
+/// proxy 的 `build_upstream_request`（判斷該略過哪個既有標頭）皆共用此函式，
+/// 避免 `auto` / `sso` 的判定邏輯散落多處而發生不一致。
+pub fn resolve_auth_header_name(scheme: &str, url: &str) -> AppResult<&'static str> {
+    let resolved = match scheme {
         "auto" => {
             if url::Url::parse(url)
                 .map_err(|error| AppError::InvalidConfig(error.to_string()))?
@@ -154,9 +154,24 @@ pub fn apply_gateway_auth(
         _ => return Err(AppError::InvalidConfig("不支援的 Auth Scheme".to_string())),
     };
 
+    Ok(if resolved == "x-api-key" {
+        "x-api-key"
+    } else {
+        "authorization"
+    })
+}
+
+pub fn apply_gateway_auth(
+    request: reqwest::RequestBuilder,
+    scheme: &str,
+    key: &str,
+    url: &str,
+) -> AppResult<reqwest::RequestBuilder> {
+    let header = resolve_auth_header_name(scheme, url)?;
+
     if key.is_empty() {
         Ok(request)
-    } else if scheme == "x-api-key" {
+    } else if header == "x-api-key" {
         Ok(request.header("x-api-key", key))
     } else {
         Ok(request.bearer_auth(key))

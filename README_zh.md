@@ -1,6 +1,8 @@
 # FreeClaudeDesktop
 
-![FreeClaudeDesktop 圖標](icon.png)
+<p align="center">
+  <img src="icon.png" alt="FreeClaudeDesktop 圖標" />
+</p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-stable-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
@@ -63,8 +65,11 @@ cargo build --release -p freeclaude -p freeclaude-proxy
 
 ```bash
 pnpm add -g @mushroomtw/freeclaudedesktop
-freeclaude-proxy start
+freeclaude-proxy install
+freeclaude-proxy admin
 ```
+
+在 Web Admin 填入並儲存 Gateway URL、API key 與模型設定後，按「啟動 Claude Desktop」即可開始使用。單獨執行 `freeclaude-proxy start` 只會啟動 Proxy，尚未完成 Claude Desktop 整合與 Gateway 設定。
 
 可使用 `freeclaude-proxy status`、`restart`、`admin` 與 `path` 管理本機服務；執行 `freeclaude-proxy purge` 可完整重設本機資料。解除安裝時會停止服務、還原 Claude 設定，並完整清除 FreeClaudeDesktop 擁有的設定、隔離 profile 與 OS keyring API key：
 
@@ -111,10 +116,10 @@ freeclaude stop
 
 ```text
 GET  /healthz
-GET  /admin/settings
-POST /admin/settings
-GET  /admin/status
-POST /admin/rpc
+GET  /settings
+POST /settings
+GET  /status
+POST /rpc
 WS   /companion           （首個訊息需要 requestId）
 ```
 

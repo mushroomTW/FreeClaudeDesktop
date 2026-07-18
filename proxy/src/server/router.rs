@@ -21,11 +21,11 @@ pub fn create_router(port: u16) -> Router {
         .route("/assets/icon.png", get(super::handler::handle_app_icon))
         .route("/admin", get(super::handler::handle_admin_page))
         .route(
-            "/admin/settings",
+            "/settings",
             get(super::handler::handle_admin_settings).post(super::handler::update_admin_settings),
         )
-        .route("/admin/status", get(super::handler::handle_admin_status))
-        .route("/admin/rpc", post(super::handler::handle_admin_rpc))
+        .route("/status", get(super::handler::handle_admin_status))
+        .route("/rpc", post(super::handler::handle_admin_rpc))
         .route(
             "/companion",
             get(super::handler::handle_companion_websocket),
