@@ -51,6 +51,9 @@ freeclaude uninstall --runtime docker --yes --purge-image
 ```
 
 If the Compose file is stored elsewhere, set `FREECLAUDE_COMPOSE_FILE` to its absolute path.
+Docker runtime currently uses port `3000` only. Do not set `FREECLAUDE_PROXY_PORT` when using it; use the native runtime if a custom port is required.
+
+The prebuilt `freeclaude` release contains only the executables, not the Docker build context. Docker commands therefore require a checkout or another directory containing this project's `compose.yaml` and `Dockerfile`.
 
 ## Companion daemon
 

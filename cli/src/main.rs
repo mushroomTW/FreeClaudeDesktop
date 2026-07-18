@@ -113,6 +113,7 @@ async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
 async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     let port = proxy_port()?;
     if matches!(args.runtime, Runtime::Docker) {
+        ensure_docker_default_port(port)?;
         crate::runtime::docker::install()?;
         free_claude_core::update_config_port(port)?;
         let _ = crate::runtime::native::start_companion(port);
@@ -146,6 +147,7 @@ async fn start(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Runtime::Docker => {
+            ensure_docker_default_port(port)?;
             crate::runtime::docker::start()?;
             let _ = crate::runtime::native::start_companion(port);
             println!("Docker proxy 已啟動。");
@@ -249,6 +251,7 @@ fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
             crate::runtime::docker::uninstall(args.purge_image)?;
         }
     }
+    let _ = crate::runtime::autostart::disable();
     free_claude_core::restore_official_config()?;
 
     if args.purge_image && matches!(args.runtime, Runtime::Native) {
@@ -340,6 +343,15 @@ fn proxy_port() -> Result<u16, Box<dyn std::error::Error>> {
     Ok(std::env::var("FREECLAUDE_PROXY_PORT")
         .unwrap_or_else(|_| "3000".to_string())
         .parse()?)
+}
+
+/// Docker Compose 的容器與健康檢查目前固定使用 3000，避免寫入 Claude
+/// 設定的連接埠與實際對外映射不一致。
+fn ensure_docker_default_port(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    if port != 3000 {
+        return Err("Docker runtime 目前只支援連接埠 3000；請移除 FREECLAUDE_PROXY_PORT，或改用 native runtime".into());
+    }
+    Ok(())
 }
 
 async fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
@@ -477,5 +489,11 @@ mod tests {
         assert!(version_is_newer("0.2.0", "0.1.9"));
         assert!(!version_is_newer("0.1.1", "0.1.1"));
         assert!(!version_is_newer("invalid", "0.1.1"));
+    }
+
+    #[test]
+    fn docker_runtime_rejects_non_default_proxy_port() {
+        assert!(ensure_docker_default_port(3000).is_ok());
+        assert!(ensure_docker_default_port(3001).is_err());
     }
 }
