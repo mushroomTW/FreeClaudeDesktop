@@ -35,7 +35,7 @@ jobs:
             archive: zip
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 安裝 Rust 工具鏈
         run: rustup toolchain install 1.97.0 --profile minimal
@@ -47,7 +47,7 @@ jobs:
         run: cargo build --locked --release --package freeclaude --package freeclaude-proxy
 
       - name: 設定 pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.15.0
 
@@ -78,14 +78,14 @@ jobs:
           Compress-Archive -Path dist/package/* -DestinationPath "dist/freeclaude-${{ matrix.target }}.zip"
 
       - name: 上傳發行檔
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: freeclaude-${{ matrix.target }}
           path: dist/freeclaude-${{ matrix.target }}.${{ matrix.archive }}
           if-no-files-found: error
 
       - name: 上傳 pnpm binary 套件
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-${{ matrix.target }}
           path: dist/npm/mushroomtw-freeclaudedesktop-*-*.tgz
@@ -98,24 +98,24 @@ jobs:
     env:
       HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 下載全部發行檔
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
 
       - name: 設定 Node.js
         if: github.ref_type == 'tag' && env.HAS_NPM_TOKEN == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: 設定 pnpm
         if: github.ref_type == 'tag' && env.HAS_NPM_TOKEN == 'true'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.15.0
 
