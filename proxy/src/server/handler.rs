@@ -469,8 +469,14 @@ async fn try_stale_model_retry(
 /// 「訊息送出但什麼都沒發生」的錯覺。
 fn try_probe_response(body_str: &str, req_model: &str) -> Option<axum::response::Response> {
     let value = serde_json::from_str::<Value>(body_str).ok()?;
-    let max_tokens = value.get("max_tokens").and_then(Value::as_u64).unwrap_or(9999);
-    let is_probe_stream = value.get("stream").and_then(Value::as_bool).unwrap_or(false);
+    let max_tokens = value
+        .get("max_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(9999);
+    let is_probe_stream = value
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let messages_empty = value
         .get("messages")
         .and_then(Value::as_array)
@@ -2849,8 +2855,15 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                     let text = read_bounded_error(response).await;
                     tracing::error!("<- 上游流式錯誤狀態碼: {}", status_u16);
                     if let Some(retry) = try_stale_model_retry(
-                        &settings, &api_key, &proxy_body, &req_model, &target_url, &headers, false,
-                        &text, true,
+                        &settings,
+                        &api_key,
+                        &proxy_body,
+                        &req_model,
+                        &target_url,
+                        &headers,
+                        false,
+                        &text,
+                        true,
                     )
                     .await
                     {
@@ -2889,8 +2902,15 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                     let text = read_bounded_error(response).await;
                     tracing::error!("<- 上游錯誤狀態碼: {}", status_u16);
                     if let Some(retry) = try_stale_model_retry(
-                        &settings, &api_key, &proxy_body, &req_model, &target_url, &headers, false,
-                        &text, true,
+                        &settings,
+                        &api_key,
+                        &proxy_body,
+                        &req_model,
+                        &target_url,
+                        &headers,
+                        false,
+                        &text,
+                        true,
                     )
                     .await
                     {
@@ -2917,8 +2937,15 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                     }
                     let text = read_bounded_error(response).await;
                     if let Some(retry) = try_stale_model_retry(
-                        &settings, &api_key, &proxy_body, &req_model, &target_url, &headers, true,
-                        &text, false,
+                        &settings,
+                        &api_key,
+                        &proxy_body,
+                        &req_model,
+                        &target_url,
+                        &headers,
+                        true,
+                        &text,
+                        false,
                     )
                     .await
                     {
