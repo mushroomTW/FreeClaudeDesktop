@@ -2461,7 +2461,7 @@ pub async fn handle_admin_page() -> impl IntoResponse {
               window.close();
               document.body.innerHTML = `
                 <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; background: #1e1e1e; color: #fff; padding: 2rem; text-align: center;">
-                  <div style="font-size: 4rem; margin-bottom: 1.5rem;">🚀</div>
+                  <img src="/assets/icon.png" alt="FreeClaudeDesktop 圖標" style="width: 8rem; height: 8rem; object-fit: contain; margin-bottom: 1.5rem;" />
                   <h1 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem;">${t('close_title')}</h1>
                   <p style="color: #aaa; margin-bottom: 2rem;">${t('close_desc')}</p>
                   <p style="font-size: 0.9rem; color: #888;">${t('close_fallback')}</p>
