@@ -22,6 +22,9 @@ pub fn proxy_binary_path() -> io::Result<PathBuf> {
     Ok(directory.join(name))
 }
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 pub fn start_proxy(port: u16) -> io::Result<u32> {
     if let Some(parent) = pid_file().parent() {
         fs::create_dir_all(parent)?;
@@ -34,12 +37,16 @@ pub fn start_proxy(port: u16) -> io::Result<u32> {
         ));
     }
 
-    let child = Command::new(binary)
-        .env("FREECLAUDE_PROXY_PORT", port.to_string())
+    let mut cmd = Command::new(binary);
+    cmd.env("FREECLAUDE_PROXY_PORT", port.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
+        .stderr(Stdio::null());
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x00000008 | 0x00000200);
+
+    let child = cmd.spawn()?;
     fs::write(pid_file(), child.id().to_string())?;
     Ok(child.id())
 }
@@ -78,13 +85,17 @@ pub fn start_companion(port: u16) -> io::Result<u32> {
         fs::create_dir_all(parent)?;
     }
     let binary = std::env::current_exe()?;
-    let child = Command::new(binary)
-        .arg("companion-daemon")
+    let mut cmd = Command::new(binary);
+    cmd.arg("companion-daemon")
         .env("FREECLAUDE_PROXY_PORT", port.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
+        .stderr(Stdio::null());
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x00000008 | 0x00000200);
+
+    let child = cmd.spawn()?;
     fs::write(companion_pid_file(), child.id().to_string())?;
     Ok(child.id())
 }

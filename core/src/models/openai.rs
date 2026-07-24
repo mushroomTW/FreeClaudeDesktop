@@ -96,20 +96,20 @@ pub struct ProviderModel {
     pub pricing: Option<Pricing>,
     /// 總 context window 容量。NVIDIA NIM 不一定會回這個欄位，但部份 OpenAI
     /// 相容 provider 會以這個名稱表示視窗大小。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_u64_or_none")]
     pub context_length: Option<u64>,
     /// NVIDIA NIM 的輸入上限。Anthropic discovery 對應 `max_input_tokens`。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_u64_or_none")]
     pub max_input_tokens: Option<u64>,
     /// NVIDIA NIM 對單次輸出的硬上限。對應 Anthropic `max_tokens`。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_u64_or_none")]
     pub max_output_tokens: Option<u64>,
     /// 部份 provider 給「總上限」(context_length) 而把輸出另外拆出
     /// `max_completion_tokens` 欄位。兩者並存時兩者皆保留。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_u64_or_none")]
     pub max_completion_tokens: Option<u64>,
     /// OpenAI 格式的 unix timestamp（秒），對應 Anthropic 的 `created_at`。
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_u64_or_none")]
     pub created: Option<u64>,
 }
 
@@ -155,11 +155,7 @@ where
             if value.trim().is_empty() {
                 return Ok(None);
             }
-            value
-                .trim()
-                .parse::<f64>()
-                .map(Some)
-                .map_err(|e| serde::de::Error::custom(format!("invalid float string: {e}")))
+            Ok(value.trim().parse::<f64>().ok())
         }
 
         fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
@@ -185,4 +181,63 @@ where
     }
 
     deserializer.deserialize_option(PriceVisitor)
+}
+
+pub(crate) fn deserialize_u64_or_none<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct U64Visitor;
+
+    impl<'de> serde::de::Visitor<'de> for U64Visitor {
+        type Value = Option<u64>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("an integer, float or string representing an integer")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(self)
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value.trim().parse::<u64>().ok())
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(Some(value))
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(if value >= 0 { Some(value as u64) } else { None })
+        }
+
+        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(if value >= 0.0 { Some(value as u64) } else { None })
+        }
+    }
+
+    deserializer.deserialize_option(U64Visitor)
 }

@@ -14,6 +14,7 @@ pub use platform::{common, crypto, launcher};
 use std::collections::HashMap;
 
 // 重導出 main.rs 和外部需要的 API，保持向後相容
+pub use config_service::{SaveConfigInput, save_config_async, unprotect_runtime_api_key};
 pub use config::{
     Settings, generate_proxy_auth_token, get_launcher_settings, save_launcher_settings,
     to_public_config,

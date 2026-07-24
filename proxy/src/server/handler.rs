@@ -230,12 +230,7 @@ async fn load_authorized_settings(
 ) -> Result<Settings, (StatusCode, Json<Value>)> {
     let settings = match load_runtime_settings().await {
         Ok(Some(settings)) => settings,
-        Ok(None) => {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Launcher has not been configured yet." })),
-            ));
-        }
+        Ok(None) => Settings::default(),
         Err(error) => {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -613,9 +608,15 @@ pub async fn handle_healthz() -> Json<Value> {
     Json(json!({ "status": "ok" }))
 }
 
-pub async fn handle_admin_page() -> Html<&'static str> {
-    Html(
-        r##"<!doctype html>
+pub async fn handle_admin_page() -> impl IntoResponse {
+    (
+        [
+            (header::CACHE_CONTROL, "no-cache, no-store, must-revalidate"),
+            (header::PRAGMA, "no-cache"),
+            (header::EXPIRES, "0"),
+        ],
+        Html(
+            r##"<!doctype html>
 <html lang="zh-TW">
 <head>
   <meta charset="utf-8">
@@ -1548,20 +1549,32 @@ pub async fn handle_admin_page() -> Html<&'static str> {
 
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 1.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
                   <h3 class="subsection-title" style="margin: 0;" data-i18n="models_discovered_title">已偵測上游模型清單</h3>
-                  <button type="button" class="btn" id="fetchModelsBtn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background-color: var(--primary-color);">
-                    <span data-i18n="models_fetch_btn">抓取模型清單</span>
-                  </button>
+                  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button type="button" class="btn" id="toggleAllShowBtn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                      <span data-i18n="models_toggle_show">全選/取消顯示</span>
+                    </button>
+                    <button type="button" class="btn" id="toggleAll1mBtn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                      <span data-i18n="models_toggle_1m">全選/取消 1M</span>
+                    </button>
+                    <button type="button" class="btn" id="fetchModelsBtn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background-color: var(--primary-color);">
+                      <span data-i18n="models_fetch_btn">抓取模型清單</span>
+                    </button>
+                  </div>
                 </div>
                 <p class="section-desc" data-i18n="models_discovered_desc">勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬上下文支援。</p>
+                
+                <div style="margin-top: 0.75rem; margin-bottom: 0.75rem;">
+                  <input type="text" id="modelSearchInput" placeholder="🔍 搜尋模型名稱 (例如: claude, gpt, gemini, free)..." data-i18n-placeholder="models_search_placeholder" style="width: 100%; max-width: 26rem; font-size: 0.85rem; padding: 0.5rem 0.85rem;">
+                </div>
                 
                 <div class="table-container">
                   <table>
                     <thead>
                       <tr>
-                        <th data-i18n="models_table_name">模型名稱</th>
-                        <th style="width: 5rem; text-align: center;" data-i18n="models_table_show">顯示</th>
-                        <th style="width: 5rem; text-align: center;" data-i18n="models_table_1m">1M</th>
-                        <th style="width: 10rem;" data-i18n="models_table_effort">Reasoning Effort</th>
+                        <th class="sortable-th" data-sort="name" style="cursor: pointer; user-select: none;"><span data-i18n="models_table_name">模型名稱</span> <span class="sort-icon" id="sort-icon-name">↕</span></th>
+                        <th class="sortable-th" data-sort="show" style="width: 6rem; text-align: center; cursor: pointer; user-select: none;"><span data-i18n="models_table_show">顯示</span> <span class="sort-icon" id="sort-icon-show">↕</span></th>
+                        <th class="sortable-th" data-sort="1m" style="width: 5rem; text-align: center; cursor: pointer; user-select: none;"><span data-i18n="models_table_1m">1M</span> <span class="sort-icon" id="sort-icon-1m">↕</span></th>
+                        <th class="sortable-th" data-sort="effort" style="width: 10rem; cursor: pointer; user-select: none;"><span data-i18n="models_table_effort">推理強度</span> <span class="sort-icon" id="sort-icon-effort">↕</span></th>
                       </tr>
                     </thead>
                     <tbody id="modelsTableBody">
@@ -1707,7 +1720,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
               <button type="button" class="btn btn-secondary" id="resetMirrorBtn" data-i18n="btn_reset_mirror">重置鏡像 Profile</button>
               <button type="button" class="btn btn-secondary" id="syncOfficialBtn" data-i18n="btn_sync_original">從原版同步</button>
               <button type="button" class="btn btn-secondary" id="saveOnlyBtn" data-i18n="btn_save_only">僅儲存</button>
-              <button type="submit" class="btn btn-primary" id="saveAndLaunchBtn" data-i18n="btn_save_launch">儲存並啟動 ↵</button>
+              <button type="button" class="btn btn-primary" id="saveAndLaunchBtn" data-i18n="btn_save_launch">儲存並啟動</button>
             </div>
           </footer>
         </main>
@@ -1754,6 +1767,9 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'models_table_show': '顯示',
         'models_table_1m': '1M',
         'models_table_effort': '推理強度',
+        'models_toggle_show': '全選/取消顯示',
+        'models_toggle_1m': '全選/取消 1M',
+        'models_search_placeholder': '🔍 搜尋模型名稱 (例如: claude, gpt, gemini, free)...',
         'ext_title': '擴充與本地技能',
         'ext_quota_title': '配額檢查攔截',
         'ext_quota_desc': '攔截 max_tokens=1 且含有 "quota" 的測試請求',
@@ -1780,7 +1796,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'btn_reset_mirror': '重置鏡像 Profile',
         'btn_sync_original': '從原版同步',
         'btn_save_only': '僅儲存',
-        'btn_save_launch': '儲存並啟動 ↵',
+        'btn_save_launch': '儲存並啟動',
         'toast_save_success': '設定已成功儲存！',
         'toast_save_failed': '儲存失敗: ',
         'toast_load_success': '設定載入成功！',
@@ -1839,6 +1855,9 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         'models_table_show': 'Show',
         'models_table_1m': '1M',
         'models_table_effort': 'Reasoning Effort',
+        'models_toggle_show': 'Toggle All Show',
+        'models_toggle_1m': 'Toggle All 1M',
+        'models_search_placeholder': '🔍 Search model name (e.g. claude, gpt, gemini, free)...',
         'ext_title': 'Extensions & Skills',
         'ext_quota_title': 'Quota Mock',
         'ext_quota_desc': 'Intercept max_tokens=1 and quota checks',
@@ -2169,22 +2188,79 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         
         showToast(t('toast_load_success'));
       } catch (e) {
+        $('authWrapper').classList.add('hidden');
+        $('mainLayout').classList.remove('hidden');
+        $('appContainer').classList.remove('unauthorized');
         showToast(t('toast_load_failed') + e.message, 'error');
       } finally {
         showLoading(false);
       }
     }
 
+    let currentSort = { key: null, asc: true };
+    let searchQuery = '';
+
+    function syncStateFromDOM() {
+      if (!loadedSettings) return;
+      if (!loadedSettings.modelVisibilityOverrides) loadedSettings.modelVisibilityOverrides = {};
+      if (!loadedSettings.model1mOverrides) loadedSettings.model1mOverrides = {};
+      if (!loadedSettings.modelReasoningOverrides) loadedSettings.modelReasoningOverrides = {};
+
+      document.querySelectorAll('.model-visibility').forEach(el => {
+        loadedSettings.modelVisibilityOverrides[el.dataset.model] = el.checked;
+      });
+      document.querySelectorAll('.model-1m').forEach(el => {
+        loadedSettings.model1mOverrides[el.dataset.model] = el.checked;
+      });
+      document.querySelectorAll('.model-effort').forEach(el => {
+        loadedSettings.modelReasoningOverrides[el.dataset.model] = el.value;
+      });
+    }
+
     function renderModelsTable(settings) {
       const tbody = $('modelsTableBody');
       tbody.innerHTML = '';
       
-      const models = settings.discoveredModels || [];
+      let models = (settings.discoveredModels || []).slice();
       const lang = $('language').value || 'zh-tw';
       
       if (models.length === 0) {
         tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">${t('no_models_yet')}</td></tr>`;
         return;
+      }
+
+      if (searchQuery) {
+        models = models.filter(m => m.toLowerCase().includes(searchQuery));
+      }
+
+      if (models.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">未找到符合關鍵字 "${searchQuery}" 的模型</td></tr>`;
+        return;
+      }
+
+      if (currentSort.key) {
+        const effortRank = { '': 0, 'none': 1, 'high': 2, 'max': 3 };
+        models.sort((a, b) => {
+          let valA, valB;
+          if (currentSort.key === 'name') {
+            valA = a.toLowerCase();
+            valB = b.toLowerCase();
+          } else if (currentSort.key === 'show') {
+            valA = (settings.modelVisibilityOverrides && settings.modelVisibilityOverrides[a] !== false) ? 1 : 0;
+            valB = (settings.modelVisibilityOverrides && settings.modelVisibilityOverrides[b] !== false) ? 1 : 0;
+          } else if (currentSort.key === '1m') {
+            valA = (settings.model1mOverrides && settings.model1mOverrides[a] === true) ? 1 : 0;
+            valB = (settings.model1mOverrides && settings.model1mOverrides[b] === true) ? 1 : 0;
+          } else if (currentSort.key === 'effort') {
+            const effA = (settings.modelReasoningOverrides && settings.modelReasoningOverrides[a]) || '';
+            const effB = (settings.modelReasoningOverrides && settings.modelReasoningOverrides[b]) || '';
+            valA = effortRank[effA] ?? 0;
+            valB = effortRank[effB] ?? 0;
+          }
+          if (valA < valB) return currentSort.asc ? -1 : 1;
+          if (valA > valB) return currentSort.asc ? 1 : -1;
+          return 0;
+        });
       }
       
       const optDefault = lang === 'en' ? 'Default' : '預設';
@@ -2220,16 +2296,95 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         `;
         tbody.appendChild(tr);
       });
+
+      ['name', 'show', '1m', 'effort'].forEach(k => {
+        const iconEl = $(`sort-icon-${k}`);
+        if (iconEl) {
+          if (currentSort.key === k) {
+            iconEl.textContent = currentSort.asc ? '▲' : '▼';
+          } else {
+            iconEl.textContent = '↕';
+          }
+        }
+      });
     }
+
+    if ($('modelSearchInput')) {
+      $('modelSearchInput').oninput = (e) => {
+        searchQuery = e.target.value.trim().toLowerCase();
+        syncStateFromDOM();
+        if (loadedSettings) {
+          renderModelsTable(loadedSettings);
+        }
+      };
+      $('modelSearchInput').onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+        }
+      };
+    }
+
+    if ($('toggleAllShowBtn')) {
+      $('toggleAllShowBtn').onclick = () => {
+        syncStateFromDOM();
+        const checkboxes = document.querySelectorAll('.model-visibility');
+        if (checkboxes.length === 0) return;
+        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        checkboxes.forEach(cb => {
+          cb.checked = !allChecked;
+          if (loadedSettings && loadedSettings.modelVisibilityOverrides) {
+            loadedSettings.modelVisibilityOverrides[cb.dataset.model] = !allChecked;
+          }
+        });
+      };
+    }
+
+    if ($('toggleAll1mBtn')) {
+      $('toggleAll1mBtn').onclick = () => {
+        syncStateFromDOM();
+        const checkboxes = document.querySelectorAll('.model-1m');
+        if (checkboxes.length === 0) return;
+        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        checkboxes.forEach(cb => {
+          cb.checked = !allChecked;
+          if (loadedSettings && loadedSettings.model1mOverrides) {
+            loadedSettings.model1mOverrides[cb.dataset.model] = !allChecked;
+          }
+        });
+      };
+    }
+
+    document.querySelectorAll('.sortable-th').forEach(th => {
+      th.onclick = () => {
+        const sortKey = th.dataset.sort;
+        if (currentSort.key === sortKey) {
+          currentSort.asc = !currentSort.asc;
+        } else {
+          currentSort.key = sortKey;
+          currentSort.asc = true;
+        }
+        syncStateFromDOM();
+        if (loadedSettings) {
+          renderModelsTable(loadedSettings);
+        }
+      };
+    });
 
     $('loadBtn').onclick = load;
     // Save Logic
     $('saveAndLaunchBtn').onclick = () => {
       launchAfterSave = true;
+      $('settingsForm').requestSubmit();
     };
     $('saveOnlyBtn').onclick = () => {
       launchAfterSave = false;
       $('settingsForm').requestSubmit();
+    };
+
+    $('settingsForm').onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+      }
     };
 
     $('settingsForm').onsubmit = async (e) => {
@@ -2292,7 +2447,9 @@ pub async fn handle_admin_page() -> Html<&'static str> {
         $('apiKey').value = '';
         showToast(t('toast_save_success'));
         
-        if (launchAfterSave) {
+        const shouldLaunch = launchAfterSave;
+        launchAfterSave = false;
+        if (shouldLaunch) {
           try {
             const launchRes = await request('/rpc', {
               method: 'POST',
@@ -2397,6 +2554,7 @@ pub async fn handle_admin_page() -> Html<&'static str> {
   </script>
 </body>
 </html>"##,
+        ),
     )
 }
 
@@ -2415,10 +2573,49 @@ pub async fn update_admin_settings(
         Ok(settings) => settings,
         Err(response) => return response.into_response(),
     };
-    match apply_settings_update(&mut settings, input) {
-        Ok(settings) => (StatusCode::OK, Json(settings)).into_response(),
-        Err(response) => response.into_response(),
+    let updated_config = match apply_settings_update(&mut settings, input) {
+        Ok(res) => res,
+        Err(response) => return response.into_response(),
+    };
+
+    let port = settings.active_port.unwrap_or(crate::constants::DEFAULT_PORT);
+    let raw_api_key = free_claude_core::unprotect_runtime_api_key(settings.real_api_key.clone())
+        .await
+        .unwrap_or_default();
+
+    let save_input = free_claude_core::SaveConfigInput {
+        port,
+        base_url: settings.real_base_url.clone(),
+        api_key: raw_api_key,
+        auth_scheme: settings.real_auth_scheme.clone(),
+        enable_quota_check_mock: settings.enable_quota_check_mock,
+        enable_prefix_detection: settings.enable_prefix_detection,
+        enable_title_generation_skip: settings.enable_title_generation_skip,
+        enable_suggestion_mode_skip: settings.enable_suggestion_mode_skip,
+        enable_filepath_extraction_mock: settings.enable_filepath_extraction_mock,
+        enable_web_server_tools: settings.enable_web_server_tools,
+        web_fetch_allow_private_networks: settings.web_fetch_allow_private_networks,
+        reasoning_replay_mode: settings.reasoning_replay_mode.clone(),
+        transport_type: settings.transport_type.clone(),
+        web_fetch_allowed_schemes: settings.web_fetch_allowed_schemes.clone(),
+        theme_mode: settings.theme_mode.clone(),
+        language: settings.language.clone(),
+        model_reasoning_overrides: settings.model_reasoning_overrides.clone(),
+        model_1m_overrides: settings.model_1m_overrides.clone(),
+        model_visibility_overrides: settings.model_visibility_overrides.clone(),
+        real_model: settings.real_model.clone(),
+        real_model_sonnet: settings.real_model_sonnet.clone(),
+        real_model_opus: settings.real_model_opus.clone(),
+        real_model_haiku: settings.real_model_haiku.clone(),
+    };
+
+    if let Err(err) = free_claude_core::save_config_async(save_input).await {
+        tracing::error!("同步 3P Gateway 設定給 Claude Desktop 失敗: {err}");
+    } else {
+        tracing::info!("<- 已成功為 Claude Desktop 部署與套用 3P Gateway 設定！");
     }
+
+    (StatusCode::OK, Json(updated_config)).into_response()
 }
 
 pub async fn handle_admin_status(headers: HeaderMap) -> impl IntoResponse {
