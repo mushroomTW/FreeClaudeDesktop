@@ -1,3 +1,5 @@
+#![allow(linker_messages)]
+
 use freeclaude_proxy::{constants::DEFAULT_PORT, server};
 
 #[tokio::main]

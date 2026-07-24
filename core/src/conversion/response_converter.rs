@@ -1,6 +1,6 @@
 use crate::config::Settings;
 use crate::models::openai::{
-    InferenceModel, NormalizedModel, NormalizedModels, ProviderModel, ProviderModelsResponse,
+    InferenceModel, NormalizedModel, NormalizedModels, ProviderModel,
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -326,13 +326,25 @@ pub fn normalize_models_response_with_overrides(
     reasoning_overrides: &HashMap<String, String>,
     m1_overrides: &HashMap<String, bool>,
 ) -> Result<NormalizedModels, String> {
-    let parsed: ProviderModelsResponse =
-        serde_json::from_value(provider_response).map_err(|e| e.to_string())?;
-    let mut models: Vec<_> = parsed
-        .data
-        .into_iter()
-        .filter(|model| !provider_model_id(model).is_empty())
-        .collect();
+    let raw_data = provider_response
+        .get("data")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut models: Vec<ProviderModel> = Vec::with_capacity(raw_data.len());
+    for item in raw_data {
+        match serde_json::from_value::<ProviderModel>(item) {
+            Ok(model) => {
+                if !provider_model_id(&model).is_empty() {
+                    models.push(model);
+                }
+            }
+            Err(err) => {
+                tracing::warn!("[models parse] 跳過單一異常模型解析: {err}");
+            }
+        }
+    }
     models.sort_by(|a, b| {
         model_priority(a).cmp(&model_priority(b)).then_with(|| {
             let a_id = provider_model_id(a);

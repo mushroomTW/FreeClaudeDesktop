@@ -65,11 +65,8 @@ pub async fn fetch_models_list_typed(
     settings: &crate::Settings,
     api_key: &str,
 ) -> Result<Value, String> {
-    let model_info_url =
-        crate::conversion::response_converter::normalize_model_info_url(&settings.real_base_url)?;
-    if let Ok(value) = fetch_json(
-        crate::http_client(),
-        &model_info_url,
+    if let Ok(value) = fetch_models_list_async(
+        &settings.real_base_url,
         api_key,
         &settings.real_auth_scheme,
     )
