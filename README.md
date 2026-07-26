@@ -17,10 +17,13 @@ FreeClaudeDesktop is a cross-platform command-line launcher and local API proxy 
 
 - Runs a local Claude Desktop-compatible API proxy on `127.0.0.1:3000`.
 - Supports OpenAI-compatible and Anthropic-compatible upstream services.
-- Discovers models and supports model routing, reasoning settings, and streaming responses.
+- Discovers every model returned by the upstream API's `/v1/models` endpoint and makes them available in the Claude Desktop model picker, with configurable visibility.
+- Supports model routing, reasoning settings, and streaming responses.
 - Keeps an isolated Claude Desktop profile and supports re-syncing selected data from the official profile.
 - Provides a browser-based Web Admin interface in English and Traditional Chinese.
 - Supports Windows, macOS, and Linux.
+
+For the best Claude Desktop experience, use upstream models with multimodal input support and a context window of at least 200K tokens. Models with smaller context windows or text-only capabilities may still work, but images, long conversations, files, and tool-heavy workflows can be limited.
 
 ## Quick start
 
@@ -59,7 +62,7 @@ cargo build --release -p freeclaude -p freeclaude-proxy
 .\target\release\freeclaude.exe install
 ```
 
-`freeclaude install` uses the native proxy by default. Use `freeclaude install --runtime docker` if you explicitly want the Docker runtime.
+`freeclaude install` uses the native proxy and enables startup at login by default. Use `freeclaude install --runtime docker` if you explicitly want the Docker runtime, or add `--no-autostart` to either installation mode if you do not want automatic startup.
 
 ## pnpm global installation
 
@@ -91,10 +94,10 @@ cargo build --release -p freeclaude -p freeclaude-proxy
 
 ## CLI and local administration
 
-Build both binaries in a development checkout:
+Build all workspace binaries in a development checkout:
 
 ```bash
-cargo build -p freeclaude -p freeclaude-proxy
+cargo build --release
 ```
 
 Manage the native proxy:
@@ -130,7 +133,7 @@ freeclaude uninstall --yes
 freeclaude purge --yes
 ```
 
-Windows uses Task Scheduler, macOS uses a LaunchAgent, and Linux uses a systemd user service.
+Startup at login is enabled by default when running `freeclaude install`. Pass `--no-autostart` during installation to opt out. Windows uses Task Scheduler, macOS uses a LaunchAgent, and Linux uses a systemd user service.
 
 ## Companion daemon
 
@@ -154,7 +157,6 @@ freeclaude update --check
 
 ## Security
 
-- Never include API keys, session cookies, or full local configuration files in issues or logs.
 - The proxy is bound to loopback by default. Do not expose it publicly without designing appropriate authentication and network controls.
 - Review generated Claude Desktop configuration before distributing it.
 

@@ -13,17 +13,20 @@ pub fn install() -> io::Result<()> {
     Ok(())
 }
 
+/// 執行 `start` 對應的處理流程。
 pub fn start() -> io::Result<()> {
     compose(&["up", "--detach"])?;
     poll_healthz()?;
     Ok(())
 }
 
+/// 執行 `stop` 對應的處理流程。
 pub fn stop() -> io::Result<()> {
     compose(&["stop"])?;
     Ok(())
 }
 
+/// 執行 `uninstall` 對應的處理流程。
 pub fn uninstall(purge_image: bool) -> io::Result<()> {
     compose(&["down"])?;
     if purge_image {
@@ -32,6 +35,7 @@ pub fn uninstall(purge_image: bool) -> io::Result<()> {
     Ok(())
 }
 
+/// 執行 `update` 對應的處理流程。
 pub fn update() -> io::Result<()> {
     let file_path = compose_file()?;
     let content = std::fs::read_to_string(&file_path)?;
@@ -52,6 +56,7 @@ pub fn update() -> io::Result<()> {
     Ok(())
 }
 
+/// 執行 `status` 對應的處理流程。
 pub fn status() -> io::Result<String> {
     let output = compose_output(&["ps", "--format", "json"])?;
     let stdout_str = String::from_utf8_lossy(&output.stdout);
@@ -59,6 +64,7 @@ pub fn status() -> io::Result<String> {
     Ok(serde_json::to_string(&parsed).unwrap_or_else(|_| "[]".to_string()))
 }
 
+/// 執行 `compose` 對應的處理流程。
 fn compose(args: &[&str]) -> io::Result<std::process::Output> {
     let output = compose_output(args)?;
     if output.status.success() {
@@ -68,6 +74,7 @@ fn compose(args: &[&str]) -> io::Result<std::process::Output> {
     }
 }
 
+/// 執行 `compose_output` 對應的處理流程。
 fn compose_output(args: &[&str]) -> io::Result<std::process::Output> {
     let compose_file = compose_file()?;
     let compose_file_str = compose_file.to_string_lossy().into_owned();
@@ -76,10 +83,12 @@ fn compose_output(args: &[&str]) -> io::Result<std::process::Output> {
     run_command("docker", &all_args)
 }
 
+/// 執行 `docker` 對應的處理流程。
 fn docker(args: &[&str]) -> io::Result<std::process::Output> {
     run_command("docker", args)
 }
 
+/// 執行 `compose_file` 對應的處理流程。
 fn compose_file() -> io::Result<PathBuf> {
     if let Some(path) = std::env::var_os(COMPOSE_FILE_ENV) {
         let p = PathBuf::from(path);
@@ -103,6 +112,7 @@ fn compose_file() -> io::Result<PathBuf> {
     }
 }
 
+/// 執行 `command_failed` 對應的處理流程。
 fn command_failed(command: &str, output: &std::process::Output) -> io::Error {
     let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
     let detail = if detail.is_empty() {
@@ -114,6 +124,7 @@ fn command_failed(command: &str, output: &std::process::Output) -> io::Error {
 }
 
 #[cfg(test)]
+/// 讀取 `get_mock_status` 所需的資料。
 fn get_mock_status(success: bool) -> std::process::ExitStatus {
     if success {
         Command::new("rustc")
@@ -152,6 +163,7 @@ fn get_mock_status(success: bool) -> std::process::ExitStatus {
     }
 }
 
+/// 啟動或執行 `run_command` 流程。
 fn run_command(cmd_name: &str, args: &[&str]) -> io::Result<std::process::Output> {
     #[cfg(test)]
     {
@@ -204,6 +216,7 @@ fn run_command(cmd_name: &str, args: &[&str]) -> io::Result<std::process::Output
     cmd.output()
 }
 
+/// 執行 `poll_healthz` 對應的處理流程。
 fn poll_healthz() -> io::Result<()> {
     #[cfg(test)]
     {
@@ -304,6 +317,7 @@ fn poll_healthz() -> io::Result<()> {
     }
 }
 
+/// 解析 `parse_compose_ps` 所需的資料。
 fn parse_compose_ps(stdout: &str) -> serde_json::Value {
     let stdout = stdout.trim();
     if stdout.is_empty() {
@@ -345,6 +359,7 @@ fn parse_compose_ps(stdout: &str) -> serde_json::Value {
     serde_json::Value::Array(containers)
 }
 
+/// 解析 `extract_container_info` 所需的資料。
 fn extract_container_info(item: serde_json::Value) -> Option<serde_json::Value> {
     let obj = item.as_object()?;
 
@@ -382,6 +397,7 @@ mod tests {
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
+    /// 驗證 `command_failure_preserves_stderr` 的行為符合預期。
     fn command_failure_preserves_stderr() {
         let output = Command::new("rustc")
             .arg("--definitely-invalid-option")
@@ -392,6 +408,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `test_docker_errors_and_scenarios` 的行為符合預期。
     fn test_docker_errors_and_scenarios() {
         let _guard = TEST_MUTEX.lock().unwrap();
 
@@ -464,6 +481,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `test_parse_compose_ps_formats` 的行為符合預期。
     fn test_parse_compose_ps_formats() {
         let json_arr = r#"[
             {"Name": "freeclaude-proxy-1", "State": "running", "Health": "healthy"},

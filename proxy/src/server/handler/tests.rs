@@ -3,6 +3,7 @@ use super::*;
 static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[test]
+/// 驗證 `test_is_model_gone_or_invalid_error` 的行為符合預期。
 fn test_is_model_gone_or_invalid_error() {
     assert!(is_model_gone_or_invalid_error("model not found"));
     assert!(is_model_gone_or_invalid_error("invalid model name"));
@@ -13,6 +14,7 @@ fn test_is_model_gone_or_invalid_error() {
 }
 
 #[test]
+/// 驗證 `streaming_retry_is_allowed_only_before_output` 的行為符合預期。
 fn streaming_retry_is_allowed_only_before_output() {
     assert!(may_retry_stale_model(false, true, "model_not_found"));
     assert!(!may_retry_stale_model(true, true, "model_not_found"));
@@ -20,6 +22,100 @@ fn streaming_retry_is_allowed_only_before_output() {
 }
 
 #[test]
+/// 驗證只有格式受限的短連線探測會接受空白上游成功回應。
+fn short_connection_probe_requires_constrained_shape() {
+    assert!(is_short_connection_probe(
+        r#"{"model":"test","messages":[{"role":"user","content":"Hi"}],"max_tokens":1}"#
+    ));
+    assert!(!is_short_connection_probe(
+        r#"{"model":"test","messages":[{"role":"user","content":"Hi"}],"max_tokens":2}"#
+    ));
+    assert!(!is_short_connection_probe(
+        r#"{"model":"test","messages":[{"role":"user","content":"This is a normal user message that must not be swallowed."}],"max_tokens":1}"#
+    ));
+    assert!(!is_short_connection_probe(
+        r#"{"model":"test","messages":[{"role":"user","content":"Hi"}],"max_tokens":1,"tools":[]}"#
+    ));
+}
+
+#[tokio::test]
+/// 驗證探測請求遇到上游非 JSON 回應時會收到合法的 Claude 探測結果。
+async fn invalid_probe_response_is_replaced_with_probe_success() {
+    let request_body =
+        r#"{"model":"test","messages":[{"role":"user","content":"Hi"}],"max_tokens":1}"#;
+    let response = invalid_openai_response(
+        reqwest::StatusCode::OK,
+        "gateway temporarily returned plain text",
+        "上游 OpenAI 回應不是有效 JSON",
+        request_body,
+        "test",
+    );
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["type"], "message");
+    assert_eq!(body["model"], "test");
+}
+
+#[tokio::test]
+/// 驗證一般請求遇到上游非 JSON 回應時會收到 HTTP 502 與診斷資訊。
+async fn invalid_normal_response_returns_bad_gateway_diagnostics() {
+    let request_body = r#"{"model":"test","messages":[{"role":"user","content":"A normal request"}],"max_tokens":128}"#;
+    let response = invalid_openai_response(
+        reqwest::StatusCode::OK,
+        "gateway temporarily returned plain text",
+        "上游 OpenAI 回應不是有效 JSON",
+        request_body,
+        "test",
+    );
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = axum::body::to_bytes(response.into_body(), 8192)
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("不是有效的 OpenAI JSON")
+    );
+    assert_eq!(body["upstreamStatus"], 200);
+    assert_eq!(
+        body["responseBody"],
+        "gateway temporarily returned plain text"
+    );
+}
+
+#[tokio::test]
+/// 驗證診斷本文會限制長度，避免回傳過大的上游內容。
+async fn invalid_response_preview_is_bounded() {
+    let request_body = r#"{"model":"test","messages":[{"role":"user","content":"A normal request"}],"max_tokens":128}"#;
+    let response_body = "x".repeat(MAX_UPSTREAM_ERROR_PREVIEW_CHARS + 100);
+    let response = invalid_openai_response(
+        reqwest::StatusCode::OK,
+        &response_body,
+        "invalid JSON",
+        request_body,
+        "test",
+    );
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = axum::body::to_bytes(response.into_body(), 8192)
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        body["responseBody"].as_str().unwrap().chars().count(),
+        MAX_UPSTREAM_ERROR_PREVIEW_CHARS + 3
+    );
+}
+
+#[test]
+/// 驗證 `request_diagnostic_contains_no_user_content` 的行為符合預期。
 fn request_diagnostic_contains_no_user_content() {
     let body = r#"{"messages":[{"role":"user","content":"TOP SECRET prompt"}],"max_tokens":42,"stream":true}"#;
     let diagnostic = request_diagnostic(body).unwrap();
@@ -30,6 +126,7 @@ fn request_diagnostic_contains_no_user_content() {
 }
 
 #[test]
+/// 驗證 `test_to_public_config_excludes_plaintext_api_key` 的行為符合預期。
 fn test_to_public_config_excludes_plaintext_api_key() {
     let settings = Settings {
         real_api_key: "sk-test-123456789".to_string(),
@@ -49,6 +146,7 @@ fn test_to_public_config_excludes_plaintext_api_key() {
 }
 
 #[test]
+/// 驗證 `test_build_upstream_request_native_vs_openai` 的行為符合預期。
 fn test_build_upstream_request_native_vs_openai() {
     let client = reqwest::Client::new();
     let target_url = "https://api.anthropic.com/v1/messages";
@@ -108,6 +206,7 @@ fn test_build_upstream_request_native_vs_openai() {
 }
 
 #[tokio::test]
+/// 驗證 `test_companion_offline_fails` 的行為符合預期。
 async fn test_companion_offline_fails() {
     let _guard = TEST_LOCK.lock().await;
     let temp_dir = std::env::temp_dir().join(format!(
@@ -178,6 +277,7 @@ async fn test_companion_offline_fails() {
 }
 
 #[tokio::test]
+/// 驗證 `test_companion_forwarding_success` 的行為符合預期。
 async fn test_companion_forwarding_success() {
     let _guard = TEST_LOCK.lock().await;
     let temp_dir = std::env::temp_dir().join(format!(

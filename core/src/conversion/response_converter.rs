@@ -1,11 +1,10 @@
 use crate::config::Settings;
-use crate::models::openai::{
-    InferenceModel, NormalizedModel, NormalizedModels, ProviderModel,
-};
+use crate::models::openai::{InferenceModel, NormalizedModel, NormalizedModels, ProviderModel};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use url::Url;
 
+/// 判斷是否符合 `is_local_hostname` 的條件。
 fn is_local_hostname(hostname: &str) -> bool {
     matches!(hostname, "localhost" | "127.0.0.1" | "::1" | "[::1]")
 }
@@ -42,6 +41,7 @@ pub fn is_allowed_origin(origin: Option<&str>, port: u16) -> bool {
             || host.ends_with(".claude.com"))
 }
 
+/// 正規化 `normalize_gateway_url` 所處理的資料。
 fn normalize_gateway_url(base_url: &str, endpoint: &str) -> Result<String, String> {
     let mut target_url =
         Url::parse(base_url.trim()).map_err(|_| "Invalid Gateway Base URL".to_string())?;
@@ -67,14 +67,17 @@ fn normalize_gateway_url(base_url: &str, endpoint: &str) -> Result<String, Strin
     Ok(target_url.to_string())
 }
 
+/// 正規化 `normalize_messages_url` 所處理的資料。
 pub fn normalize_messages_url(base_url: &str) -> Result<String, String> {
     normalize_gateway_url(base_url, "messages")
 }
 
+/// 正規化 `normalize_models_url` 所處理的資料。
 pub fn normalize_models_url(base_url: &str) -> Result<String, String> {
     normalize_gateway_url(base_url, "models")
 }
 
+/// 正規化 `normalize_model_info_url` 所處理的資料。
 pub fn normalize_model_info_url(base_url: &str) -> Result<String, String> {
     let mut target_url =
         Url::parse(base_url.trim()).map_err(|_| "Invalid Gateway Base URL".to_string())?;
@@ -96,10 +99,12 @@ pub fn normalize_model_info_url(base_url: &str) -> Result<String, String> {
     Ok(target_url.to_string())
 }
 
+/// 正規化 `normalize_chat_completions_url` 所處理的資料。
 pub fn normalize_chat_completions_url(base_url: &str) -> Result<String, String> {
     normalize_gateway_url(base_url, "chat/completions")
 }
 
+/// 建立 `prepare_proxy_body` 所需的結果。
 pub fn prepare_proxy_body(body: &str, settings: &Settings) -> String {
     let mut data: Value = match serde_json::from_str(body) {
         Ok(data) => data,
@@ -132,6 +137,7 @@ pub struct StaleModelRewrite {
     pub fallback_model: String,
 }
 
+/// 轉換或更新 `rewrite_stale_model_request` 所處理的內容。
 pub fn rewrite_stale_model_request(
     proxy_body: &str,
     settings: &Settings,
@@ -169,6 +175,7 @@ pub fn rewrite_stale_model_request(
     })
 }
 
+/// 判斷是否符合 `is_free_model` 的條件。
 fn is_free_model(model: &ProviderModel) -> bool {
     model.id.ends_with(":free")
         || model
@@ -180,10 +187,12 @@ fn is_free_model(model: &ProviderModel) -> bool {
             .unwrap_or(false)
 }
 
+/// 執行 `model_priority` 對應的處理流程。
 fn model_priority(model: &ProviderModel) -> usize {
     if is_free_model(model) { 100 } else { 200 }
 }
 
+/// 執行 `provider_model_id` 對應的處理流程。
 fn provider_model_id(model: &ProviderModel) -> String {
     if model.id.is_empty() {
         model.model_name.clone().unwrap_or_default()
@@ -192,6 +201,7 @@ fn provider_model_id(model: &ProviderModel) -> String {
     }
 }
 
+/// 執行 `model_info_u64` 對應的處理流程。
 fn model_info_u64(model: &ProviderModel, key: &str) -> Option<u64> {
     model
         .model_info
@@ -200,6 +210,7 @@ fn model_info_u64(model: &ProviderModel, key: &str) -> Option<u64> {
         .and_then(Value::as_u64)
 }
 
+/// 執行 `override_reasoning_levels` 對應的處理流程。
 fn override_reasoning_levels(level: &str) -> Vec<String> {
     match level {
         "low" => vec!["none".to_string(), "low".to_string()],
@@ -210,6 +221,7 @@ fn override_reasoning_levels(level: &str) -> Vec<String> {
     }
 }
 
+/// 執行 `effective_reasoning_effort_levels` 對應的處理流程。
 fn effective_reasoning_effort_levels(
     model: &ProviderModel,
     overrides: &HashMap<String, String>,
@@ -221,6 +233,7 @@ fn effective_reasoning_effort_levels(
     reasoning_effort_levels(model)
 }
 
+/// 執行 `model_capabilities` 對應的處理流程。
 fn model_capabilities(model: &ProviderModel, overrides: &HashMap<String, String>) -> Value {
     if let Some(capabilities) = &model.capabilities {
         return capabilities.clone();
@@ -256,6 +269,7 @@ fn model_capabilities(model: &ProviderModel, overrides: &HashMap<String, String>
     })
 }
 
+/// 執行 `reasoning_effort_levels` 對應的處理流程。
 fn reasoning_effort_levels(model: &ProviderModel) -> Vec<String> {
     model
         .model_info
@@ -274,6 +288,7 @@ fn reasoning_effort_levels(model: &ProviderModel) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// 執行 `supports_reasoning_effort` 對應的處理流程。
 fn supports_reasoning_effort(model: &ProviderModel, overrides: &HashMap<String, String>) -> bool {
     let provider_id = provider_model_id(model);
     if let Some(level) = overrides.get(&provider_id) {
@@ -291,40 +306,45 @@ fn supports_reasoning_effort(model: &ProviderModel, overrides: &HashMap<String, 
             .any(|level| level != "none")
 }
 
+/// 執行 `model_alias` 對應的處理流程。
 fn model_alias(model: &ProviderModel, index: usize, overrides: &HashMap<String, String>) -> String {
     if supports_reasoning_effort(model, overrides) {
         let levels = effective_reasoning_effort_levels(model, overrides);
         if levels.iter().any(|level| level == "max") {
-            format!("claude-opus-4-8_{index}")
+            format!("claude-opus-4-8[{index}]")
         } else {
-            format!("claude-sonnet-4-6_{index}")
+            format!("claude-sonnet-4-6[{index}]")
         }
     } else {
-        format!("claude-haiku-4-5_{index}")
+        format!("claude-haiku-4-5[{index}]")
     }
 }
 
-fn display_name_with_1m_suffix(name: String, is_1m: bool) -> String {
-    if !is_1m {
-        return name;
-    }
-
-    let lower = name.trim_end().to_ascii_lowercase();
-    if lower.ends_with(" 1m") || lower.ends_with("-1m") || lower.ends_with("[1m]") {
-        name
-    } else {
-        format!("{name} 1M")
-    }
-}
-
+/// 正規化 `normalize_models_response` 所處理的資料。
 pub fn normalize_models_response(provider_response: Value) -> Result<NormalizedModels, String> {
     normalize_models_response_with_overrides(provider_response, &HashMap::new(), &HashMap::new())
 }
 
+/// 正規化 `normalize_models_response_with_overrides` 所處理的資料。
 pub fn normalize_models_response_with_overrides(
     provider_response: Value,
     reasoning_overrides: &HashMap<String, String>,
     m1_overrides: &HashMap<String, bool>,
+) -> Result<NormalizedModels, String> {
+    normalize_models_response_with_overrides_and_prefer1m(
+        provider_response,
+        reasoning_overrides,
+        m1_overrides,
+        &HashMap::new(),
+    )
+}
+
+/// 正規化 `normalize_models_response_with_overrides_and_prefer1m` 所處理的資料。
+pub fn normalize_models_response_with_overrides_and_prefer1m(
+    provider_response: Value,
+    reasoning_overrides: &HashMap<String, String>,
+    m1_overrides: &HashMap<String, bool>,
+    prefer1m_overrides: &HashMap<String, bool>,
 ) -> Result<NormalizedModels, String> {
     let raw_data = provider_response
         .get("data")
@@ -357,6 +377,7 @@ pub fn normalize_models_response_with_overrides(
     });
     models.dedup_by(|a, b| provider_model_id(a) == provider_model_id(b));
 
+    /// 執行 `model_base_name` 對應的處理流程。
     fn model_base_name(name: &str) -> &str {
         for suffix in ["-1m", "-1M", " 1m", " 1M"] {
             if let Some(base) = name.strip_suffix(suffix) {
@@ -420,6 +441,11 @@ pub fn normalize_models_response_with_overrides(
                 || raw_max_input
                     .map(|tokens| tokens >= 1_000_000)
                     .unwrap_or(false);
+            let prefer1m = is_1m
+                && prefer1m_overrides
+                    .get(&provider_model_id)
+                    .copied()
+                    .unwrap_or(false);
             let alias = model_alias(&model, index, reasoning_overrides);
             let max_input = if is_1m {
                 Some(raw_max_input.unwrap_or(200_000).max(1_000_000))
@@ -435,11 +461,7 @@ pub fn normalize_models_response_with_overrides(
                 .name
                 .clone()
                 .unwrap_or_else(|| provider_model_id.clone());
-            let display_name = display_name_with_1m_suffix(display_name, is_1m);
-
             let name = display_name.clone();
-            // 1M 能力只透過 `supports1m` 表達，避免 discovery 的模型 ID
-            // 與 Claude Desktop config 中的模型名稱不一致。
             let id = alias;
             if supports_reasoning {
                 reasoning_effort_routes.insert(id.clone(), effort_levels);
@@ -456,6 +478,7 @@ pub fn normalize_models_response_with_overrides(
                 max_tokens: max_output,
                 capabilities: model_capabilities(&model, reasoning_overrides),
                 supports1m: is_1m.then_some(true),
+                prefer1m: prefer1m.then_some(true),
             }
         })
         .collect();
@@ -531,6 +554,7 @@ fn days_from_civil(z: i64) -> Option<(i32, u32, u32)> {
     Some((y_final as i32, m, d))
 }
 
+/// 建立 `build_inference_models` 所需的結果。
 pub fn build_inference_models(models: &[NormalizedModel]) -> Vec<InferenceModel> {
     models
         .iter()
@@ -543,6 +567,7 @@ pub fn build_inference_models(models: &[NormalizedModel]) -> Vec<InferenceModel>
             max_tokens: model.max_tokens,
             capabilities: model.capabilities.clone(),
             supports1m: model.supports1m,
+            prefer1m: model.prefer1m,
             transport_type: crate::models::openai::default_transport_type(),
         })
         .collect()
@@ -570,8 +595,15 @@ pub fn apply_model_visibility(models: &mut NormalizedModels, overrides: &HashMap
     models.last_id = models.data.last().map(|model| model.id.clone());
 }
 
+/// 執行 `openai_to_anthropic_response` 對應的處理流程。
 pub fn openai_to_anthropic_response(openai_body: &str, req_model: &str) -> Result<Value, String> {
-    let data: Value = serde_json::from_str(openai_body).map_err(|e| e.to_string())?;
+    let normalized_body = openai_body.trim_start_matches('\u{feff}').trim();
+    if normalized_body.is_empty() {
+        return Err("上游 OpenAI 回應本文為空".to_string());
+    }
+
+    let data: Value = serde_json::from_str(normalized_body)
+        .map_err(|e| format!("上游 OpenAI 回應不是有效 JSON：{e}"))?;
 
     let first_choice = data
         .get("choices")

@@ -8,21 +8,25 @@ struct ModelsCache {
     auth_scheme: String,
     reasoning_overrides: std::collections::HashMap<String, String>,
     m1_overrides: std::collections::HashMap<String, bool>,
+    prefer1m_overrides: std::collections::HashMap<String, bool>,
     visibility_overrides: std::collections::HashMap<String, bool>,
     models: NormalizedModels,
 }
 
 static MODELS_CACHE: OnceLock<Mutex<Option<ModelsCache>>> = OnceLock::new();
 
+/// 執行 `models_cache` 對應的處理流程。
 fn models_cache() -> &'static Mutex<Option<ModelsCache>> {
     MODELS_CACHE.get_or_init(|| Mutex::new(None))
 }
 
+/// 儲存 `store_models_cache` 所處理的資料。
 pub fn store_models_cache(
     base_url: &str,
     auth_scheme: &str,
     reasoning_overrides: &std::collections::HashMap<String, String>,
     m1_overrides: &std::collections::HashMap<String, bool>,
+    prefer1m_overrides: &std::collections::HashMap<String, bool>,
     visibility_overrides: &std::collections::HashMap<String, bool>,
     models: &NormalizedModels,
 ) {
@@ -32,17 +36,20 @@ pub fn store_models_cache(
             auth_scheme: auth_scheme.to_string(),
             reasoning_overrides: reasoning_overrides.clone(),
             m1_overrides: m1_overrides.clone(),
+            prefer1m_overrides: prefer1m_overrides.clone(),
             visibility_overrides: visibility_overrides.clone(),
             models: models.clone(),
         });
     }
 }
 
+/// 讀取 `cached_models` 所需的資料。
 pub fn cached_models(
     base_url: &str,
     auth_scheme: &str,
     reasoning_overrides: &std::collections::HashMap<String, String>,
     m1_overrides: &std::collections::HashMap<String, bool>,
+    prefer1m_overrides: &std::collections::HashMap<String, bool>,
     visibility_overrides: &std::collections::HashMap<String, bool>,
 ) -> Option<NormalizedModels> {
     let cache = models_cache().lock().ok()?;
@@ -51,26 +58,25 @@ pub fn cached_models(
         && cache.auth_scheme == auth_scheme
         && &cache.reasoning_overrides == reasoning_overrides
         && &cache.m1_overrides == m1_overrides
+        && &cache.prefer1m_overrides == prefer1m_overrides
         && &cache.visibility_overrides == visibility_overrides)
         .then(|| cache.models.clone())
 }
 
+/// 清理或還原 `clear_models_cache` 所管理的資料。
 pub fn clear_models_cache() {
     if let Ok(mut cache) = models_cache().lock() {
         *cache = None;
     }
 }
 
+/// 擷取 `fetch_models_list_typed` 所需的資料。
 pub async fn fetch_models_list_typed(
     settings: &crate::Settings,
     api_key: &str,
 ) -> Result<Value, String> {
-    if let Ok(value) = fetch_models_list_async(
-        &settings.real_base_url,
-        api_key,
-        &settings.real_auth_scheme,
-    )
-    .await
+    if let Ok(value) =
+        fetch_models_list_async(&settings.real_base_url, api_key, &settings.real_auth_scheme).await
     {
         return Ok(value);
     }
@@ -87,6 +93,7 @@ pub async fn fetch_models_list_typed(
     serde_json::to_value(models).map_err(|error| error.to_string())
 }
 
+/// 擷取 `fetch_models_list_async` 所需的資料。
 pub async fn fetch_models_list_async(
     base_url: &str,
     api_key: &str,
@@ -102,6 +109,7 @@ pub async fn fetch_models_list_async(
     fetch_json(client, &url, api_key, auth_scheme).await
 }
 
+/// 擷取 `fetch_json` 所需的資料。
 async fn fetch_json(
     client: &reqwest::Client,
     url: &str,

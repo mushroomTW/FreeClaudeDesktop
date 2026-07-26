@@ -1,16 +1,39 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "要發布的版本標籤（例如 v0.1.2）"
+        required: true
+        type: string
+      publish_npm:
+        description: "同時發布 pnpm 套件"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
 
 jobs:
+  validate:
+    name: 驗證發布版本
+    runs-on: ubuntu-latest
+    steps:
+      - name: 驗證版本格式
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "版本必須使用 v 開頭的 SemVer 格式，例如 v0.1.2。"
+            exit 1
+          fi
+
   build:
     name: 建置 ${{ matrix.target }}
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
@@ -97,6 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+      RELEASE_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -107,20 +131,20 @@ jobs:
           merge-multiple: true
 
       - name: 設定 Node.js
-        if: github.ref_type == 'tag' && env.HAS_NPM_TOKEN == 'true'
+        if: inputs.publish_npm && env.HAS_NPM_TOKEN == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: 設定 pnpm
-        if: github.ref_type == 'tag' && env.HAS_NPM_TOKEN == 'true'
+        if: inputs.publish_npm && env.HAS_NPM_TOKEN == 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10.15.0
 
       - name: 發佈 pnpm 套件
-        if: github.ref_type == 'tag' && env.HAS_NPM_TOKEN == 'true'
+        if: inputs.publish_npm && env.HAS_NPM_TOKEN == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
@@ -145,11 +169,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if [[ "${{ github.ref_type }}" != "tag" ]]; then
-            echo "手動觸發只建置資產，不建立 Release。"
-            exit 0
-          fi
-          gh release create "${{ github.ref_name }}" dist/* \
-            --verify-tag \
-            --title "FreeClaudeDesktop ${{ github.ref_name }}" \
+          gh release create "$RELEASE_VERSION" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "FreeClaudeDesktop $RELEASE_VERSION" \
             --generate-notes

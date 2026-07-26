@@ -30,12 +30,17 @@ pub struct Settings {
     pub model_reasoning_overrides: HashMap<String, String>,
     #[serde(default)]
     pub model_1m_overrides: HashMap<String, bool>,
+    #[serde(default)]
+    pub model_1m_prefer_overrides: HashMap<String, bool>,
     /// 是否在 Claude Desktop 顯示各上游模型；未設定時預設顯示。
     #[serde(default)]
     pub model_visibility_overrides: HashMap<String, bool>,
     /// 寫入 Claude Desktop gateway config 的本機 proxy token
     #[serde(default = "default_proxy_auth_token")]
     pub proxy_auth_token: String,
+    /// Web 或桌面端指定的 Claude Desktop 執行檔路徑；為 None 時使用自動偵測。
+    #[serde(default)]
+    pub custom_claude_path: Option<String>,
     /// 當前啟用的代理埠號
     #[serde(default)]
     pub active_port: Option<u16>,
@@ -81,6 +86,7 @@ pub struct Settings {
     pub language: String,
 }
 
+/// 執行 `default_theme_mode` 對應的處理流程。
 pub fn default_theme_mode() -> String {
     "light".to_string()
 }
@@ -94,6 +100,7 @@ pub enum Language {
 }
 
 impl Language {
+    /// 執行 `as_str` 對應的處理流程。
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::En => "en",
@@ -101,6 +108,7 @@ impl Language {
         }
     }
 
+    /// 執行 `parse` 對應的處理流程。
     pub fn parse(s: &str) -> Self {
         match s {
             "zh-tw" => Self::ZhTw,
@@ -108,6 +116,7 @@ impl Language {
         }
     }
 
+    /// 執行 `tr` 對應的處理流程。
     pub fn tr(&self, key: &'static str) -> &'static str {
         match self {
             Self::En => match key {
@@ -151,7 +160,7 @@ impl Language {
                 }
                 "confirm_reset" => "Confirm Reset",
                 "cancel" => "Cancel",
-                "save_launch" => "Save & Launch ↵",
+                "save_launch" => "Launch ↵",
                 "save_only" => "Save Only",
                 "sync_from_official" => "Sync from Official",
                 "reset_mirror_profile" => "Reset Mirror",
@@ -216,7 +225,7 @@ impl Language {
                 "reset_confirm_msg" => "⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。",
                 "confirm_reset" => "確定重置",
                 "cancel" => "取消",
-                "save_launch" => "儲存並啟動 ↵",
+                "save_launch" => "啟動 ↵",
                 "save_only" => "僅儲存",
                 "sync_from_official" => "從原版同步",
                 "reset_mirror_profile" => "重置鏡像 Profile",
@@ -244,26 +253,32 @@ impl Language {
     }
 }
 
+/// 執行 `default_language` 對應的處理流程。
 pub fn default_language() -> String {
     "en".to_string()
 }
 
+/// 執行 `default_true` 對應的處理流程。
 pub fn default_true() -> bool {
     true
 }
 
+/// 執行 `default_false` 對應的處理流程。
 pub fn default_false() -> bool {
     false
 }
 
+/// 執行 `default_proxy_auth_token` 對應的處理流程。
 pub fn default_proxy_auth_token() -> String {
     crate::constants::PROXY_AUTH_TOKEN.to_string()
 }
 
+/// 執行 `default_web_fetch_schemes` 對應的處理流程。
 fn default_web_fetch_schemes() -> String {
     "http,https".to_string()
 }
 
+/// 建立 `generate_proxy_auth_token` 所需的結果。
 pub fn generate_proxy_auth_token() -> AppResult<String> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).map_err(|error| AppError::Crypto(error.to_string()))?;
@@ -278,6 +293,7 @@ pub fn generate_proxy_auth_token() -> AppResult<String> {
 }
 
 impl Default for Settings {
+    /// 建立此型別的預設值。
     fn default() -> Self {
         Self {
             real_base_url: String::new(),
@@ -292,8 +308,10 @@ impl Default for Settings {
             discovered_models: Vec::new(),
             model_reasoning_overrides: HashMap::new(),
             model_1m_overrides: HashMap::new(),
+            model_1m_prefer_overrides: HashMap::new(),
             model_visibility_overrides: HashMap::new(),
             proxy_auth_token: default_proxy_auth_token(),
+            custom_claude_path: None,
             active_port: None,
             transport_type: String::new(),
             reasoning_replay_mode: String::new(),
@@ -311,15 +329,18 @@ impl Default for Settings {
     }
 }
 
+/// 執行 `default_auth_scheme` 對應的處理流程。
 pub fn default_auth_scheme() -> String {
     "bearer".to_string()
 }
 
+/// 解析 `parse_json_text` 所需的資料。
 pub fn parse_json_text(text: &str) -> serde_json::Result<Value> {
     let clean = text.trim_start_matches('\u{feff}');
     serde_json::from_str(clean)
 }
 
+/// 轉換 `to_public_config` 對應的資料格式。
 pub fn to_public_config(settings: &Settings) -> Value {
     let has_key = unprotect_secret(&settings.real_api_key)
         .map(|key| !key.is_empty())
@@ -347,12 +368,14 @@ pub fn to_public_config(settings: &Settings) -> Value {
     Value::Object(map)
 }
 
+/// 執行 `settings_file` 對應的處理流程。
 pub fn settings_file() -> PathBuf {
     local_app_data()
         .join("FreeClaudeDesktop")
         .join("launcher_settings.json")
 }
 
+/// 讀取 `load_launcher_settings` 所需的資料。
 pub fn load_launcher_settings() -> AppResult<Option<Settings>> {
     let path = settings_file();
     if !path.exists() {
@@ -363,10 +386,12 @@ pub fn load_launcher_settings() -> AppResult<Option<Settings>> {
     Ok(Some(serde_json::from_value(value)?))
 }
 
+/// 讀取 `get_launcher_settings` 所需的資料。
 pub fn get_launcher_settings() -> Option<Settings> {
     load_launcher_settings().ok().flatten()
 }
 
+/// 儲存 `save_launcher_settings` 所處理的資料。
 pub fn save_launcher_settings(settings: &Settings) -> AppResult<()> {
     let path = settings_file();
     if let Some(parent) = path.parent() {
@@ -386,6 +411,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 驗證 `removed_feature_field_is_not_serialized` 的行為符合預期。
     fn removed_feature_field_is_not_serialized() {
         let mut value = serde_json::to_value(Settings::default()).unwrap();
         value["enableComputerMcpServer"] = serde_json::Value::Bool(true);

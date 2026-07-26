@@ -69,7 +69,7 @@ flowchart TD
     H --> R
 ```
 
-An alias is stable for the returned model-list position and uses an underscore index, such as `claude-opus-4-8_0`. A 1M-context capability changes the advertised context limit only; it does not select the alias family. Alias selection is determined by reasoning support: `max` maps to Opus, other supported reasoning levels map to Sonnet, and models without reasoning support map to Haiku.
+An alias is stable for the returned model-list position and uses a bracketed index, such as `claude-opus-4-8[0]`. A 1M-context capability is represented by `supports1m: true`; the model ID and display label remain clean. `prefer1m: true` makes the 1M variant the default picker selection when that entry is first, and has no effect without `supports1m`. Alias selection is determined by reasoning support: `max` maps to Opus, other supported reasoning levels map to Sonnet, and models without reasoning support map to Haiku.
 
 During request conversion, Claude `thinking.budget_tokens` is translated to a supported `reasoning_effort` level before the upstream request is sent. In response conversion, upstream reasoning is represented either as native Claude thinking blocks or as inline `<antThinking>` text, according to `reasoning_replay_mode`.
 

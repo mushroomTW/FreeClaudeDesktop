@@ -8,6 +8,7 @@ const KEYRING_USER: &str = "real_api_key";
 const DPAPI_PREFIX: &str = "dpapi:";
 const FALLBACK_PREFIX: &str = "fallback:";
 
+/// 執行 `keyring_entry` 對應的處理流程。
 fn keyring_entry() -> AppResult<keyring::Entry> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
         .map_err(|error| AppError::Crypto(error.to_string()))
@@ -72,11 +73,13 @@ pub fn unprotect_secret(stored: &str) -> AppResult<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
+/// 清理或還原 `unprotect_dpapi_secret` 所管理的資料。
 fn unprotect_dpapi_secret(_stored: &str) -> AppResult<String> {
     Ok(String::new())
 }
 
 #[cfg(target_os = "windows")]
+/// 清理或還原 `unprotect_dpapi_secret` 所管理的資料。
 fn unprotect_dpapi_secret(stored: &str) -> AppResult<String> {
     use winapi::um::dpapi::{CRYPTPROTECT_UI_FORBIDDEN, CryptUnprotectData};
     use winapi::um::winbase::LocalFree;
@@ -121,7 +124,9 @@ fn unprotect_dpapi_secret(stored: &str) -> AppResult<String> {
 }
 
 #[cfg(target_os = "windows")]
+/// 執行 `hex_decode` 對應的處理流程。
 fn hex_decode(text: &str) -> AppResult<Vec<u8>> {
+    /// 執行 `value` 對應的處理流程。
     fn value(byte: u8) -> Option<u8> {
         match byte {
             b'0'..=b'9' => Some(byte - b'0'),
@@ -151,6 +156,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 驗證 `test_fallback_crypto` 的行為符合預期。
     fn test_fallback_crypto() {
         let secret = "sk-ant-test-key-123";
         let fallback_stored = format!("{FALLBACK_PREFIX}{secret}");

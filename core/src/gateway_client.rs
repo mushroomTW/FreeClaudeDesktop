@@ -3,6 +3,7 @@ use async_openai::{Client, config::OpenAIConfig};
 use crate::{AppError, AppResult, Settings, unprotect_secret};
 
 pub trait GatewayClientFactory {
+    /// 執行 `gateway_client` 對應的處理流程。
     fn gateway_client(&self, settings: &Settings) -> AppResult<Client<OpenAIConfig>>;
 }
 
@@ -10,6 +11,7 @@ pub trait GatewayClientFactory {
 pub struct AsyncOpenAiGatewayFactory;
 
 impl GatewayClientFactory for AsyncOpenAiGatewayFactory {
+    /// 執行 `gateway_client` 對應的處理流程。
     fn gateway_client(&self, settings: &Settings) -> AppResult<Client<OpenAIConfig>> {
         if settings.transport_type == "anthropic_messages" {
             return Err(AppError::InvalidConfig(
@@ -26,6 +28,7 @@ impl GatewayClientFactory for AsyncOpenAiGatewayFactory {
     }
 }
 
+/// 執行 `openai_api_base` 對應的處理流程。
 pub fn openai_api_base(base_url: &str) -> AppResult<String> {
     let base_url = base_url.trim().trim_end_matches('/');
     if base_url.is_empty() {
@@ -46,6 +49,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 驗證 `accepts_openai_compatible_api_base` 的行為符合預期。
     fn accepts_openai_compatible_api_base() {
         assert_eq!(
             openai_api_base("https://gateway.example/v1/").unwrap(),

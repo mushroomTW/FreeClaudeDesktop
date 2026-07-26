@@ -5,6 +5,7 @@ use crate::models::claude::{
 };
 use serde_json::{Value, json};
 
+/// 執行 `thinking_budget_to_effort` 對應的處理流程。
 fn thinking_budget_to_effort(budget: u64) -> &'static str {
     if budget > 8192 {
         "max"
@@ -17,6 +18,7 @@ fn thinking_budget_to_effort(budget: u64) -> &'static str {
     }
 }
 
+/// 執行 `effort_rank` 對應的處理流程。
 fn effort_rank(effort: &str) -> Option<u8> {
     match effort {
         "none" => Some(0),
@@ -28,6 +30,7 @@ fn effort_rank(effort: &str) -> Option<u8> {
     }
 }
 
+/// 正規化 `clamp_reasoning_effort` 所處理的資料。
 fn clamp_reasoning_effort<'a>(requested: &str, supported: &'a [String]) -> Option<&'a str> {
     let requested_rank = effort_rank(requested)?;
     supported
@@ -74,13 +77,16 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
         }
     }
 
-    // 1. 精確匹配 routes (例如 "claude-sonnet-4-6_0" 或 "claude-sonnet-4-6_0[1m]")
+    // 1. 精確匹配 routes (例如 "claude-sonnet-4-6[87]" 或 "claude-sonnet-4-6[87][1m]")
     if let Some(mapped) = settings.real_model_routes.get(requested_model) {
         return Some(mapped.clone());
     }
 
-    let clean_model = requested_model.replace("[1m]", "").replace("[1M]", "");
-    if let Some(mapped) = settings.real_model_routes.get(&clean_model) {
+    let clean_model = requested_model
+        .strip_suffix("[1m]")
+        .or_else(|| requested_model.strip_suffix("[1M]"))
+        .unwrap_or(requested_model);
+    if let Some(mapped) = settings.real_model_routes.get(clean_model) {
         return Some(mapped.clone());
     }
 
@@ -90,7 +96,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
         .iter()
         .any(|m| m == requested_model || m == &clean_model)
     {
-        return Some(clean_model);
+        return Some(clean_model.to_string());
     }
 
     if let Some(start) = clean_model.find('[') {
@@ -148,12 +154,13 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     // 5. 安全兜底：如果請求的模型名稱看起來像是一個本地的 alias (含有中括號)，
     //    但我們竟然無法將其映射到任何真實模型，則絕對不能原樣發送（因為上游必定報 400）。
     //    此時我們強制將其映射為我們所知道的任何一個可用上游模型。
-    let is_indexed_claude_alias =
+    let is_indexed_claude_alias = ["-", "_"].iter().any(|separator| {
         requested_model
-            .rsplit_once('_')
+            .rsplit_once(separator)
             .is_some_and(|(prefix, index)| {
                 prefix.starts_with("claude-") && index.parse::<usize>().is_ok()
-            });
+            })
+    });
     if (requested_model.contains('[') && requested_model.contains(']')) || is_indexed_claude_alias {
         // (1) 優先使用 routes 裡的真實模型；取字典序最小者確保決定性，
         //     避免 HashMap 迭代順序造成每次兜底選到不同模型。
@@ -181,6 +188,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     None
 }
 
+/// 執行 `anthropic_to_openai_request` 對應的處理流程。
 pub fn anthropic_to_openai_request(
     body: &str,
     settings: &Settings,

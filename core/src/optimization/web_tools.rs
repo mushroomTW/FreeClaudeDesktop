@@ -31,6 +31,7 @@ pub struct WebFetchEgressPolicy {
 }
 
 impl Default for WebFetchEgressPolicy {
+    /// 建立此型別的預設值。
     fn default() -> Self {
         Self {
             allow_schemes: default_web_fetch_schemes(),
@@ -40,12 +41,14 @@ impl Default for WebFetchEgressPolicy {
     }
 }
 
+/// 執行 `default_web_fetch_schemes` 對應的處理流程。
 fn default_web_fetch_schemes() -> HashSet<String> {
     let mut set = HashSet::new();
     set.insert("https".to_string());
     set
 }
 
+/// 執行 `policy_from_settings` 對應的處理流程。
 pub fn policy_from_settings(settings: &crate::config::Settings) -> WebFetchEgressPolicy {
     WebFetchEgressPolicy {
         allow_schemes: settings
@@ -134,6 +137,7 @@ fn is_private_address(host: &str) -> bool {
     false
 }
 
+/// 判斷是否符合 `is_public_ip` 的條件。
 fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => is_public_ipv4(ip),
@@ -152,6 +156,7 @@ fn is_public_ip(ip: IpAddr) -> bool {
     }
 }
 
+/// 判斷是否符合 `is_public_ipv4` 的條件。
 fn is_public_ipv4(ip: Ipv4Addr) -> bool {
     let [a, b, c, _] = ip.octets();
     !ip.is_private()
@@ -169,6 +174,7 @@ fn is_public_ipv4(ip: Ipv4Addr) -> bool {
         && a < 240
 }
 
+/// 解析並選出 `resolve_target` 的結果。
 async fn resolve_target(
     policy: &WebFetchEgressPolicy,
     url: url::Url,
@@ -211,6 +217,7 @@ pub fn is_web_server_tool(tool_name: &str) -> bool {
     name == "web_fetch" || name == "web_search"
 }
 
+/// 解析 `extract_latest_web_tool_call` 所需的資料。
 pub fn extract_latest_web_tool_call(body_str: &str) -> Option<(String, String, Value)> {
     let body: Value = serde_json::from_str(body_str).ok()?;
     let messages = body.get("messages").and_then(Value::as_array)?;
@@ -236,6 +243,7 @@ pub fn extract_latest_web_tool_call(body_str: &str) -> Option<(String, String, V
     None
 }
 
+/// 執行 `execute_web_tool` 對應的處理流程。
 pub async fn execute_web_tool(
     policy: &WebFetchEgressPolicy,
     tool_name: &str,
@@ -248,6 +256,7 @@ pub async fn execute_web_tool(
     }
 }
 
+/// 執行 `execute_web_fetch` 對應的處理流程。
 async fn execute_web_fetch(policy: &WebFetchEgressPolicy, input: &Value) -> String {
     let Some(url) = extract_web_fetch_url(input) else {
         return "web_fetch 缺少 url 參數。".to_string();
@@ -258,6 +267,7 @@ async fn execute_web_fetch(policy: &WebFetchEgressPolicy, input: &Value) -> Stri
     fetch_url(policy, &url).await
 }
 
+/// 執行 `execute_web_search` 對應的處理流程。
 async fn execute_web_search(policy: &WebFetchEgressPolicy, input: &Value) -> String {
     let Some(query) = input
         .get("query")
@@ -273,6 +283,7 @@ async fn execute_web_search(policy: &WebFetchEgressPolicy, input: &Value) -> Str
     fetch_url(policy, &url).await
 }
 
+/// 擷取 `fetch_url` 所需的資料。
 async fn fetch_url(policy: &WebFetchEgressPolicy, url: &str) -> String {
     let mut current = match url::Url::parse(url) {
         Ok(url) => url,
@@ -335,6 +346,7 @@ async fn fetch_url(policy: &WebFetchEgressPolicy, url: &str) -> String {
     unreachable!()
 }
 
+/// 執行 `collect_limited` 對應的處理流程。
 async fn collect_limited(response: reqwest::Response) -> Result<Vec<u8>, String> {
     use futures::StreamExt;
 
@@ -350,6 +362,7 @@ async fn collect_limited(response: reqwest::Response) -> Result<Vec<u8>, String>
     Ok(body)
 }
 
+/// 正規化 `strip_html_tags` 所處理的資料。
 fn strip_html_tags(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut in_tag = false;
@@ -364,6 +377,7 @@ fn strip_html_tags(text: &str) -> String {
     out
 }
 
+/// 執行 `truncate_chars` 對應的處理流程。
 fn truncate_chars(text: &str, max_chars: usize) -> String {
     let mut iter = text.chars();
     let truncated: String = iter.by_ref().take(max_chars).collect();
@@ -379,6 +393,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 驗證 `test_private_address` 的行為符合預期。
     fn test_private_address() {
         assert!(is_private_address("localhost"));
         assert!(is_private_address("127.0.0.1"));
@@ -389,6 +404,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `test_validate_url` 的行為符合預期。
     fn test_validate_url() {
         let policy = WebFetchEgressPolicy::default();
         assert!(validate_url(&policy, "https://example.com").is_ok());
@@ -406,6 +422,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 驗證 `test_web_search_requires_query` 的行為符合預期。
     async fn test_web_search_requires_query() {
         let policy = WebFetchEgressPolicy::default();
         let text = execute_web_tool(&policy, "web_search", &serde_json::json!({}))
@@ -416,17 +433,20 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `test_strip_html_tags` 的行為符合預期。
     fn test_strip_html_tags() {
         assert_eq!(strip_html_tags("<h1>Hello</h1><p>World</p>"), "HelloWorld");
     }
 
     #[test]
+    /// 驗證 `blocks_ipv4_mapped_private_ipv6` 的行為符合預期。
     fn blocks_ipv4_mapped_private_ipv6() {
         let ip: IpAddr = "::ffff:127.0.0.1".parse().unwrap();
         assert!(!is_public_ip(ip));
     }
 
     #[test]
+    /// 驗證 `blocks_documentation_and_benchmark_ranges` 的行為符合預期。
     fn blocks_documentation_and_benchmark_ranges() {
         for raw in ["192.0.2.1", "198.51.100.1", "203.0.113.1", "198.18.0.1"] {
             assert!(!is_public_ip(raw.parse().unwrap()), "{raw}");
@@ -434,6 +454,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 驗證 `stops_reading_after_two_mibibytes` 的行為符合預期。
     async fn stops_reading_after_two_mibibytes() {
         let app = axum::Router::new().route(
             "/",
@@ -452,6 +473,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 驗證 `accepts_exactly_two_mibibytes` 的行為符合預期。
     async fn accepts_exactly_two_mibibytes() {
         let app = axum::Router::new().route(
             "/",
@@ -471,6 +493,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 驗證 `rejects_private_redirect_target_before_connecting` 的行為符合預期。
     async fn rejects_private_redirect_target_before_connecting() {
         let policy = WebFetchEgressPolicy {
             allow_schemes: ["http".to_string()].into_iter().collect(),

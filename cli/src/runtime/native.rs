@@ -5,10 +5,12 @@ use std::process::{Command, Stdio};
 
 use free_claude_core::platform::common::local_app_data;
 
+/// 執行 `pid_file` 對應的處理流程。
 pub fn pid_file() -> PathBuf {
     local_app_data().join("FreeClaudeDesktop").join("proxy.pid")
 }
 
+/// 執行 `proxy_binary_path` 對應的處理流程。
 pub fn proxy_binary_path() -> io::Result<PathBuf> {
     let executable = std::env::current_exe()?;
     let directory = executable
@@ -25,6 +27,7 @@ pub fn proxy_binary_path() -> io::Result<PathBuf> {
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+/// 啟動或執行 `start_proxy` 流程。
 pub fn start_proxy(port: u16) -> io::Result<u32> {
     if let Some(parent) = pid_file().parent() {
         fs::create_dir_all(parent)?;
@@ -51,6 +54,7 @@ pub fn start_proxy(port: u16) -> io::Result<u32> {
     Ok(child.id())
 }
 
+/// 停止或停用 `stop_proxy` 流程。
 pub fn stop_proxy() -> io::Result<()> {
     let path = pid_file();
     let pid = fs::read_to_string(&path)?
@@ -74,12 +78,14 @@ pub fn stop_proxy() -> io::Result<()> {
     Ok(())
 }
 
+/// 執行 `companion_pid_file` 對應的處理流程。
 pub fn companion_pid_file() -> PathBuf {
     local_app_data()
         .join("FreeClaudeDesktop")
         .join("companion.pid")
 }
 
+/// 啟動或執行 `start_companion` 流程。
 pub fn start_companion(port: u16) -> io::Result<u32> {
     if let Some(parent) = companion_pid_file().parent() {
         fs::create_dir_all(parent)?;
@@ -100,6 +106,7 @@ pub fn start_companion(port: u16) -> io::Result<u32> {
     Ok(child.id())
 }
 
+/// 停止或停用 `stop_companion` 流程。
 pub fn stop_companion() -> io::Result<()> {
     let path = companion_pid_file();
     if !path.is_file() {
@@ -133,6 +140,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 驗證 `pid_file_is_scoped_to_application_directory` 的行為符合預期。
     fn pid_file_is_scoped_to_application_directory() {
         assert!(pid_file().ends_with(PathBuf::from("FreeClaudeDesktop").join("proxy.pid")));
     }

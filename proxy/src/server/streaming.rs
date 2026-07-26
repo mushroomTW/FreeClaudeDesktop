@@ -58,6 +58,7 @@ pub fn start_sse_stream_conversion(
     rx
 }
 
+/// 轉換或更新 `convert_stream_inner` 所處理的內容。
 async fn convert_stream_inner(
     response: reqwest::Response,
     req_model: String,
@@ -513,6 +514,7 @@ async fn convert_stream_inner(
     Ok(())
 }
 
+/// 執行 `finish_thinking_block` 對應的處理流程。
 async fn finish_thinking_block(
     block_idx: u64,
     tx: &mpsc::Sender<Result<Bytes, std::convert::Infallible>>,
@@ -531,6 +533,7 @@ async fn finish_thinking_block(
         .await;
 }
 
+/// 執行 `finish_active_tools` 對應的處理流程。
 async fn finish_active_tools(
     active_tools: &HashMap<u64, ToolCallState>,
     base_block_idx: u64,

@@ -10,6 +10,7 @@ use std::path::PathBuf;
 #[cfg(target_os = "windows")]
 const SERVICE_NAME: &str = "FreeClaudeDesktop";
 
+/// 執行 `enable` 對應的處理流程。
 pub fn enable() -> io::Result<()> {
     #[cfg(target_os = "windows")]
     {
@@ -59,6 +60,7 @@ pub fn enable() -> io::Result<()> {
     }
 }
 
+/// 執行 `disable` 對應的處理流程。
 pub fn disable() -> io::Result<()> {
     #[cfg(target_os = "windows")]
     {
@@ -89,6 +91,7 @@ pub fn disable() -> io::Result<()> {
     }
 }
 
+/// 判斷是否符合 `is_enabled` 的條件。
 pub fn is_enabled() -> io::Result<bool> {
     #[cfg(target_os = "windows")]
     {
@@ -107,6 +110,7 @@ pub fn is_enabled() -> io::Result<bool> {
     }
 }
 
+/// 執行 `run` 對應的處理流程。
 fn run(command: &mut Command) -> io::Result<()> {
     let status = command.status()?;
     if status.success() {
@@ -117,6 +121,7 @@ fn run(command: &mut Command) -> io::Result<()> {
 }
 
 #[cfg(target_os = "macos")]
+/// 啟動或執行 `launch_agent_path` 流程。
 fn launch_agent_path() -> io::Result<PathBuf> {
     Ok(env::var_os("HOME")
         .map(PathBuf::from)
@@ -125,6 +130,7 @@ fn launch_agent_path() -> io::Result<PathBuf> {
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
+/// 執行 `systemd_unit_path` 對應的處理流程。
 fn systemd_unit_path() -> io::Result<PathBuf> {
     let base = env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -142,6 +148,7 @@ mod tests {
     }
 
     impl Drop for AutostartTestGuard {
+        /// 執行 `drop` 對應的處理流程。
         fn drop(&mut self) {
             if self.was_enabled {
                 let _ = enable();
@@ -153,12 +160,14 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
+    /// 驗證 `service_name_is_stable` 的行為符合預期。
     fn service_name_is_stable() {
         assert_eq!(SERVICE_NAME, "FreeClaudeDesktop");
     }
 
     #[test]
     #[ignore = "會修改使用者的自動啟動設定，請在本機手動執行"]
+    /// 驗證 `test_autostart_integration` 的行為符合預期。
     fn test_autostart_integration() {
         let was_enabled = is_enabled().unwrap_or(false);
         let _guard = AutostartTestGuard { was_enabled };

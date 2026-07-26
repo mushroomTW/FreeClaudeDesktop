@@ -14,12 +14,14 @@ pub use free_claude_core::{
     is_authorized_proxy_request, is_valid_proxy_authorization, is_valid_proxy_bearer,
 };
 
+/// 執行 `app_url` 對應的處理流程。
 pub fn app_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
 
 pub(crate) use free_claude_core::{apply_gateway_auth, http_client};
 
+/// 執行 `init_logging` 對應的處理流程。
 pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::{EnvFilter, Registry, fmt, prelude::*};
 
@@ -53,6 +55,7 @@ pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     Some(guard)
 }
 
+/// 停止或停用 `shutdown_signal` 流程。
 async fn shutdown_signal(mut rx: tokio::sync::watch::Receiver<bool>) {
     while !*rx.borrow() {
         if rx.changed().await.is_err() {
@@ -71,10 +74,12 @@ pub struct ServerHandle {
 }
 
 impl ServerHandle {
+    /// 執行 `port` 對應的處理流程。
     pub fn port(&self) -> u16 {
         self.port
     }
 
+    /// 停止或停用 `shutdown_and_join` 流程。
     pub fn shutdown_and_join(mut self) -> Result<(), ServerError> {
         let _ = self.shutdown.send(true);
         self.thread
@@ -85,6 +90,7 @@ impl ServerHandle {
     }
 }
 
+/// 啟動或執行 `start_server_background` 流程。
 pub fn start_server_background(port: u16) -> Result<ServerHandle, ServerError> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", port))?;
     listener.set_nonblocking(true)?;
@@ -104,6 +110,7 @@ pub fn start_server_background(port: u16) -> Result<ServerHandle, ServerError> {
     })
 }
 
+/// 啟動或執行 `run_server` 流程。
 pub async fn run_server(port: u16) -> Result<(), ServerError> {
     let addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -111,6 +118,7 @@ pub async fn run_server(port: u16) -> Result<(), ServerError> {
     serve(listener, port, rx).await
 }
 
+/// 執行 `serve` 對應的處理流程。
 async fn serve(
     listener: tokio::net::TcpListener,
     port: u16,
@@ -134,6 +142,7 @@ mod gateway_auth_tests {
     use super::*;
     use free_claude_core::AppError;
 
+    /// 執行 `headers` 對應的處理流程。
     fn headers(scheme: &str, url: &str) -> reqwest::header::HeaderMap {
         apply_gateway_auth(reqwest::Client::new().get(url), scheme, "secret", url)
             .unwrap()
@@ -144,6 +153,7 @@ mod gateway_auth_tests {
     }
 
     #[test]
+    /// 驗證 `auto_uses_x_api_key_for_anthropic` 的行為符合預期。
     fn auto_uses_x_api_key_for_anthropic() {
         let headers = headers("auto", "https://api.anthropic.com/v1/models");
         assert_eq!(headers["x-api-key"], "secret");
@@ -151,6 +161,7 @@ mod gateway_auth_tests {
     }
 
     #[test]
+    /// 驗證 `x_api_key_uses_named_header` 的行為符合預期。
     fn x_api_key_uses_named_header() {
         assert_eq!(
             headers("x-api-key", "https://example.com/v1/models")["x-api-key"],
@@ -159,6 +170,7 @@ mod gateway_auth_tests {
     }
 
     #[test]
+    /// 驗證 `bearer_uses_authorization_header` 的行為符合預期。
     fn bearer_uses_authorization_header() {
         assert_eq!(
             headers("bearer", "https://example.com/v1/models")[reqwest::header::AUTHORIZATION],
@@ -167,6 +179,7 @@ mod gateway_auth_tests {
     }
 
     #[test]
+    /// 驗證 `sso_uses_authorization_header` 的行為符合預期。
     fn sso_uses_authorization_header() {
         assert_eq!(
             headers("sso", "https://example.com/v1/models")[reqwest::header::AUTHORIZATION],
@@ -175,6 +188,7 @@ mod gateway_auth_tests {
     }
 
     #[test]
+    /// 驗證 `auto_uses_bearer_for_other_hosts` 的行為符合預期。
     fn auto_uses_bearer_for_other_hosts() {
         assert_eq!(
             headers("auto", "https://example.com/v1/models")[reqwest::header::AUTHORIZATION],
@@ -183,6 +197,7 @@ mod gateway_auth_tests {
     }
 
     #[test]
+    /// 驗證 `invalid_scheme_is_rejected` 的行為符合預期。
     fn invalid_scheme_is_rejected() {
         let result = apply_gateway_auth(
             reqwest::Client::new().get("https://example.com"),
@@ -199,6 +214,7 @@ mod lifecycle_tests {
     use super::*;
 
     #[test]
+    /// 驗證 `occupied_port_is_reported_before_return` 的行為符合預期。
     fn occupied_port_is_reported_before_return() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -206,6 +222,7 @@ mod lifecycle_tests {
     }
 
     #[test]
+    /// 驗證 `shutdown_joins_server_and_releases_port` 的行為符合預期。
     fn shutdown_joins_server_and_releases_port() {
         let server = start_server_background(0).unwrap();
         let port = server.port();

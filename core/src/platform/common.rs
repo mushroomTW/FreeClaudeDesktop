@@ -13,6 +13,7 @@ pub fn local_app_data() -> PathBuf {
 }
 
 #[cfg(target_os = "macos")]
+/// 執行 `local_app_data` 對應的處理流程。
 pub fn local_app_data() -> PathBuf {
     env::var_os("HOME")
         .map(|p| PathBuf::from(p).join("Library").join("Application Support"))
@@ -20,6 +21,7 @@ pub fn local_app_data() -> PathBuf {
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+/// 執行 `local_app_data` 對應的處理流程。
 pub fn local_app_data() -> PathBuf {
     env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -55,6 +57,7 @@ pub fn is_system_dark_mode() -> bool {
 }
 
 #[cfg(target_os = "macos")]
+/// 判斷是否符合 `is_system_dark_mode` 的條件。
 pub fn is_system_dark_mode() -> bool {
     use std::process::Command;
     let output = Command::new("defaults")
@@ -71,6 +74,7 @@ pub fn is_system_dark_mode() -> bool {
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+/// 判斷是否符合 `is_system_dark_mode` 的條件。
 pub fn is_system_dark_mode() -> bool {
     use std::process::Command;
     let output = Command::new("gsettings")

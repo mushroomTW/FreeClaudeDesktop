@@ -39,6 +39,7 @@ pub fn parse_shell_command_prefix(command: &str) -> String {
     first.to_string()
 }
 
+/// 正規化 `strip_env_assignments` 所處理的資料。
 pub(crate) fn strip_env_assignments<'a>(parts: &[&'a str]) -> Vec<&'a str> {
     let mut start = 0;
     for (i, part) in parts.iter().enumerate() {
@@ -51,10 +52,12 @@ pub(crate) fn strip_env_assignments<'a>(parts: &[&'a str]) -> Vec<&'a str> {
     parts[start..].to_vec()
 }
 
+/// 判斷是否符合 `is_env_name_char` 的條件。
 fn is_env_name_char(ch: char) -> bool {
     ch == '_' || ch.is_ascii_alphanumeric()
 }
 
+/// 判斷是否符合 `is_env_assignment` 的條件。
 pub(crate) fn is_env_assignment(part: &str) -> bool {
     let Some((name, _)) = part.split_once('=') else {
         return false;
@@ -71,6 +74,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 驗證 `test_parse_git_commit` 的行為符合預期。
     fn test_parse_git_commit() {
         assert_eq!(
             parse_shell_command_prefix("git commit -m 'hello'"),
@@ -79,6 +83,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `test_parse_docker_build` 的行為符合預期。
     fn test_parse_docker_build() {
         assert_eq!(
             parse_shell_command_prefix("docker build -t myapp ."),
@@ -88,6 +93,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `test_env_vars` 的行為符合預期。
     fn test_env_vars() {
         assert_eq!(
             parse_shell_command_prefix("ENV=prod npm install"),
@@ -96,6 +102,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `test_command_injection` 的行為符合預期。
     fn test_command_injection() {
         assert_eq!(
             parse_shell_command_prefix("`rm -rf /`"),
