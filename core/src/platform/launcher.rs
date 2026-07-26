@@ -10,16 +10,19 @@ use crate::common::local_app_data;
 use crate::error::{AppError, AppResult};
 use crate::platform::atomic_file::{PendingWrite, write_transaction};
 
+/// 執行 `mirror_profile_dir` 對應的處理流程。
 pub fn mirror_profile_dir() -> PathBuf {
     local_app_data()
         .join("FreeClaudeDesktop")
         .join("claude_profile")
 }
 
+/// 執行 `official_app_data_dir` 對應的處理流程。
 pub fn official_app_data_dir() -> PathBuf {
     app_data_roaming_dir().join("Claude")
 }
 
+/// 建立 `copy_dir_all` 所需的結果。
 pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
     let src = src.as_ref();
     let dst = dst.as_ref();
@@ -45,6 +48,7 @@ pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Re
     Ok(())
 }
 
+/// 執行 `ensure_mirror_profile_initialized` 對應的處理流程。
 pub fn ensure_mirror_profile_initialized() -> AppResult<()> {
     let mirror = mirror_profile_dir();
     if !mirror.exists() {
@@ -63,6 +67,7 @@ pub fn ensure_mirror_profile_initialized() -> AppResult<()> {
     Ok(())
 }
 
+/// 轉換或更新 `resync_from_official` 所處理的內容。
 pub fn resync_from_official() -> AppResult<()> {
     let official = official_app_data_dir();
     let mirror = mirror_profile_dir();
@@ -79,6 +84,7 @@ pub fn resync_from_official() -> AppResult<()> {
     Ok(())
 }
 
+/// 清理或還原 `reset_mirror_profile` 所管理的資料。
 pub fn reset_mirror_profile() -> AppResult<()> {
     let mirror = mirror_profile_dir();
     let backup = mirror.with_file_name(format!(
@@ -105,6 +111,7 @@ pub fn reset_mirror_profile() -> AppResult<()> {
     result
 }
 
+/// 執行 `user_data_dir` 對應的處理流程。
 pub fn user_data_dir() -> PathBuf {
     if let Ok(dir) = env::var("CLAUDE_USER_DATA_DIR")
         && !dir.trim().is_empty()
@@ -114,15 +121,18 @@ pub fn user_data_dir() -> PathBuf {
     mirror_profile_dir()
 }
 
+/// 執行 `config_lib_dir` 對應的處理流程。
 pub fn config_lib_dir() -> PathBuf {
     user_data_dir().join("configLibrary")
 }
 
+/// 執行 `meta_file` 對應的處理流程。
 pub fn meta_file() -> PathBuf {
     config_lib_dir().join("_meta.json")
 }
 
 #[cfg(target_os = "windows")]
+/// 執行 `known_claude_paths` 對應的處理流程。
 pub fn known_claude_paths() -> Vec<PathBuf> {
     let local = local_app_data();
     let program_files =
@@ -163,6 +173,7 @@ pub fn known_claude_paths() -> Vec<PathBuf> {
 }
 
 #[cfg(target_os = "macos")]
+/// 執行 `known_claude_paths` 對應的處理流程。
 pub fn known_claude_paths() -> Vec<PathBuf> {
     let home = env::var_os("HOME")
         .map(PathBuf::from)
@@ -178,6 +189,7 @@ pub fn known_claude_paths() -> Vec<PathBuf> {
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+/// 執行 `known_claude_paths` 對應的處理流程。
 pub fn known_claude_paths() -> Vec<PathBuf> {
     vec![
         PathBuf::from("/usr/bin/claude-desktop"),
@@ -187,6 +199,7 @@ pub fn known_claude_paths() -> Vec<PathBuf> {
     ]
 }
 
+/// 驗證 `validate_launch_path` 所需的條件。
 pub fn validate_launch_path(target_path: &Path) -> AppResult<PathBuf> {
     if target_path.as_os_str().is_empty() {
         return Err(AppError::Launcher(
@@ -214,6 +227,7 @@ pub fn validate_launch_path(target_path: &Path) -> AppResult<PathBuf> {
     Ok(target_path.to_path_buf())
 }
 
+/// 儲存 `write_config_to_all_paths` 所處理的資料。
 pub fn write_config_to_all_paths(file_name: &str, content: &str) -> AppResult<()> {
     let mut writes = Vec::new();
     for dir in config_library_dirs() {
@@ -227,6 +241,7 @@ pub fn write_config_to_all_paths(file_name: &str, content: &str) -> AppResult<()
     Ok(())
 }
 
+/// 執行 `config_library_dirs` 對應的處理流程。
 fn config_library_dirs() -> Vec<PathBuf> {
     #[cfg(target_os = "windows")]
     let mut dirs = vec![config_lib_dir()];
@@ -267,6 +282,7 @@ fn config_library_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// 執行 `upsert_managed_meta_entry` 對應的處理流程。
 pub fn upsert_managed_meta_entry(mut meta: Value) -> Value {
     if !meta.is_object() {
         meta = json!({});
@@ -293,6 +309,7 @@ pub fn upsert_managed_meta_entry(mut meta: Value) -> Value {
     meta
 }
 
+/// 清理或還原 `remove_managed_meta_entry` 所管理的資料。
 pub fn remove_managed_meta_entry(mut meta: Value) -> Value {
     if let Some(obj) = meta.as_object_mut() {
         let was_applied = obj.get("appliedId").and_then(Value::as_str) == Some(CONFIG_ID);
@@ -316,6 +333,7 @@ pub fn remove_managed_meta_entry(mut meta: Value) -> Value {
     meta
 }
 
+/// 儲存 `write_managed_meta_to_all_paths` 所處理的資料。
 pub fn write_managed_meta_to_all_paths() -> AppResult<()> {
     let mut writes = Vec::new();
     for dir in config_library_dirs() {
@@ -334,6 +352,7 @@ pub fn write_managed_meta_to_all_paths() -> AppResult<()> {
     Ok(())
 }
 
+/// 清理或還原 `remove_managed_config_from_all_paths` 所管理的資料。
 fn remove_managed_config_from_all_paths() -> AppResult<()> {
     let mut writes = Vec::new();
     let mut configs = Vec::new();
@@ -359,6 +378,7 @@ fn remove_managed_config_from_all_paths() -> AppResult<()> {
 }
 
 #[cfg(target_os = "windows")]
+/// 執行 `powershell_output` 對應的處理流程。
 fn powershell_output(script: &str) -> Option<String> {
     let mut cmd = Command::new("powershell");
     cmd.args(["-NoProfile", "-Command", script]);
@@ -372,6 +392,7 @@ fn powershell_output(script: &str) -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
+/// 讀取 `get_claude_appx_package_family_name` 所需的資料。
 fn get_claude_appx_package_family_name() -> Option<String> {
     powershell_output(
         "Get-AppxPackage -Name *Claude* | Select-Object -ExpandProperty PackageFamilyName",
@@ -379,12 +400,14 @@ fn get_claude_appx_package_family_name() -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
+/// 讀取 `get_claude_appx_application_id` 所需的資料。
 fn get_claude_appx_application_id() -> String {
     powershell_output("$app = Get-AppxPackage -Name *Claude*; if ($app) { $manifestPath = Join-Path $app.InstallLocation 'AppxManifest.xml'; if (Test-Path $manifestPath) { [xml]$xml = Get-Content $manifestPath; $xml.Package.Applications.Application.Id } }")
         .unwrap_or_else(|| "Claude".to_string())
 }
 
 #[cfg(target_os = "windows")]
+/// 解析並選出 `detect_claude_path` 的結果。
 pub fn detect_claude_path() -> Option<PathBuf> {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<PathBuf>>> =
         std::sync::OnceLock::new();
@@ -433,6 +456,7 @@ pub fn detect_claude_path() -> Option<PathBuf> {
 }
 
 #[cfg(not(target_os = "windows"))]
+/// 解析並選出 `detect_claude_path` 的結果。
 pub fn detect_claude_path() -> Option<PathBuf> {
     for path in known_claude_paths() {
         if path.exists() {
@@ -454,6 +478,7 @@ pub fn detect_claude_path() -> Option<PathBuf> {
     None
 }
 
+/// 執行 `kill_claude_processes` 對應的處理流程。
 pub fn kill_claude_processes() {
     #[cfg(target_os = "windows")]
     {
@@ -471,6 +496,7 @@ pub fn kill_claude_processes() {
 }
 
 #[cfg(target_os = "windows")]
+/// 啟動或執行 `launch_claude` 流程。
 pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
     kill_claude_processes();
     ensure_mirror_profile_initialized()?;
@@ -509,6 +535,7 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
 }
 
 #[cfg(not(target_os = "windows"))]
+/// 啟動或執行 `launch_claude` 流程。
 pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
     kill_claude_processes();
     ensure_mirror_profile_initialized()?;
@@ -532,6 +559,7 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
         .map_err(|error| AppError::Launcher(error.to_string()))
 }
 
+/// 清理或還原 `restore_official_config` 所管理的資料。
 pub fn restore_official_config() -> AppResult<()> {
     kill_claude_processes();
     remove_managed_config_from_all_paths()?;
@@ -575,21 +603,7 @@ pub fn purge_application_data() -> AppResult<()> {
 
 pub use crate::constants::CONFIG_ID;
 
-fn claude_config_model_name(name: &str) -> (&str, bool) {
-    name.strip_suffix("[1m]")
-        .or_else(|| name.strip_suffix("[1M]"))
-        .map(|base| (base, true))
-        .unwrap_or((name, false))
-}
-
-fn strip_display_1m_suffix(name: &str) -> &str {
-    name.strip_suffix(" 1M")
-        .or_else(|| name.strip_suffix(" 1m"))
-        .or_else(|| name.strip_suffix("-1M"))
-        .or_else(|| name.strip_suffix("-1m"))
-        .unwrap_or(name)
-}
-
+/// 執行 `claude_config` 對應的處理流程。
 pub fn claude_config(
     port: u16,
     inference_models: &[crate::models::openai::InferenceModel],
@@ -619,8 +633,6 @@ pub fn claude_config(
         let models_val: Vec<Value> = inference_models
             .iter()
             .map(|m| {
-                let (config_name, has_1m_suffix) = claude_config_model_name(&m.name);
-                let supports_1m = has_1m_suffix || m.supports1m == Some(true);
                 let label = if m.label_override.is_empty() {
                     &m.display_name
                 } else {
@@ -632,12 +644,15 @@ pub fn claude_config(
                     &m.display_name
                 };
                 let mut item = json!({
-                    "name": config_name,
-                    "labelOverride": if supports_1m { strip_display_1m_suffix(label) } else { label },
-                    "displayName": if supports_1m { strip_display_1m_suffix(display) } else { display }
+                    "name": &m.name,
+                    "labelOverride": label,
+                    "displayName": display
                 });
-                if supports_1m {
-                    item["supports1m"] = json!(true);
+                if m.supports1m == Some(true) {
+                    item["supports1m"] = serde_json::json!(true);
+                }
+                if m.supports1m == Some(true) && m.prefer1m == Some(true) {
+                    item["prefer1m"] = serde_json::json!(true);
                 }
                 item
             })
@@ -648,6 +663,7 @@ pub fn claude_config(
     config
 }
 
+/// 轉換或更新 `update_applied_claude_config` 所處理的內容。
 pub fn update_applied_claude_config(
     port: u16,
     inference_models: &[crate::models::openai::InferenceModel],
@@ -657,6 +673,7 @@ pub fn update_applied_claude_config(
     }
 }
 
+/// 執行 `try_update_applied_claude_config` 對應的處理流程。
 pub fn try_update_applied_claude_config(
     port: u16,
     inference_models: &[crate::models::openai::InferenceModel],
@@ -668,11 +685,13 @@ pub fn try_update_applied_claude_config(
     write_config_to_all_paths(&format!("{CONFIG_ID}.json"), &content)
 }
 
+/// 轉換或更新 `update_config_port` 所處理的內容。
 pub fn update_config_port(port: u16) -> AppResult<()> {
     apply_anthropic_base_url_env(port)?;
     update_gateway_port_in_all_paths(port)
 }
 
+/// 執行 `with_gateway_port` 對應的處理流程。
 fn with_gateway_port(mut config: Value, port: u16) -> Value {
     if let Some(obj) = config.as_object_mut() {
         obj.insert(
@@ -683,6 +702,7 @@ fn with_gateway_port(mut config: Value, port: u16) -> Value {
     config
 }
 
+/// 轉換或更新 `update_gateway_port_in_all_paths` 所處理的內容。
 fn update_gateway_port_in_all_paths(port: u16) -> AppResult<()> {
     let mut writes = Vec::new();
     for dir in config_library_dirs() {
@@ -699,6 +719,7 @@ fn update_gateway_port_in_all_paths(port: u16) -> AppResult<()> {
     Ok(())
 }
 
+/// 執行 `claude_home_dir` 對應的處理流程。
 pub fn claude_home_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -714,6 +735,7 @@ pub fn claude_home_dir() -> PathBuf {
     }
 }
 
+/// 執行 `claude_settings_json_path` 對應的處理流程。
 pub fn claude_settings_json_path() -> PathBuf {
     claude_home_dir().join(".claude").join("settings.json")
 }
@@ -725,6 +747,7 @@ const MANAGED_CLAUDE_ENV_KEYS: [&str; 3] = [
 ];
 const PREVIOUS_CLAUDE_SETTINGS_KEY: &str = "freeClaudeDesktopPreviousSettings";
 
+/// 執行 `previous_setting_entry` 對應的處理流程。
 fn previous_setting_entry(value: Option<&Value>) -> Value {
     json!({
         "present": value.is_some(),
@@ -732,6 +755,7 @@ fn previous_setting_entry(value: Option<&Value>) -> Value {
     })
 }
 
+/// 清理或還原 `restore_previous_setting` 所管理的資料。
 fn restore_previous_setting(obj: &mut serde_json::Map<String, Value>, key: &str, previous: &Value) {
     if previous
         .get("present")
@@ -747,6 +771,7 @@ fn restore_previous_setting(obj: &mut serde_json::Map<String, Value>, key: &str,
     }
 }
 
+/// 轉換或更新 `apply_anthropic_base_url_env` 所處理的內容。
 pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
     let path = claude_settings_json_path();
     let mut data: Value = if path.exists() {
@@ -814,6 +839,7 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
     Ok(())
 }
 
+/// 清理或還原 `remove_anthropic_base_url_env` 所管理的資料。
 pub fn remove_anthropic_base_url_env() -> AppResult<()> {
     let path = claude_settings_json_path();
     if path.exists() {
@@ -864,6 +890,7 @@ pub fn remove_anthropic_base_url_env() -> AppResult<()> {
     Ok(())
 }
 
+/// 執行 `app_data_roaming_dir` 對應的處理流程。
 pub fn app_data_roaming_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -885,10 +912,12 @@ pub fn app_data_roaming_dir() -> PathBuf {
     }
 }
 
+/// 執行 `mcp_config_paths` 對應的處理流程。
 pub fn mcp_config_paths() -> Vec<PathBuf> {
     vec![mirror_profile_dir().join("claude_desktop_config.json")]
 }
 
+/// 正規化 `clean_json_text` 所處理的資料。
 pub fn clean_json_text(input: &str) -> String {
     let text = input.strip_prefix("\u{feff}").unwrap_or(input);
     let mut out = String::with_capacity(text.len());
@@ -989,10 +1018,12 @@ pub fn clean_json_text(input: &str) -> String {
     cleaned
 }
 
+/// 讀取 `read_json_config` 所需的資料。
 pub fn read_json_config(path: &Path) -> Option<Value> {
     read_json_config_result(path).ok().flatten()
 }
 
+/// 讀取 `read_json_config_result` 所需的資料。
 fn read_json_config_result(path: &Path) -> AppResult<Option<Value>> {
     if !path.exists() {
         return Ok(None);
@@ -1003,10 +1034,12 @@ fn read_json_config_result(path: &Path) -> AppResult<Option<Value>> {
     Ok(Some(value))
 }
 
+/// 執行 `collect_all_mcp_servers` 對應的處理流程。
 pub fn collect_all_mcp_servers() -> serde_json::Map<String, Value> {
     collect_all_mcp_servers_result().unwrap_or_default()
 }
 
+/// 執行 `collect_all_mcp_servers_result` 對應的處理流程。
 pub fn collect_all_mcp_servers_result() -> AppResult<serde_json::Map<String, Value>> {
     let mut merged = serde_json::Map::new();
     let mut search_paths = mcp_config_paths();
@@ -1026,6 +1059,7 @@ pub fn collect_all_mcp_servers_result() -> AppResult<serde_json::Map<String, Val
     Ok(merged)
 }
 
+/// 建立 `merge_mcp_servers` 所需的結果。
 pub fn merge_mcp_servers(mut data: Value, all_servers: &serde_json::Map<String, Value>) -> Value {
     if !data.is_object() {
         data = json!({});
@@ -1048,6 +1082,7 @@ pub fn merge_mcp_servers(mut data: Value, all_servers: &serde_json::Map<String, 
     data
 }
 
+/// 正規化 `strip_removed_computer_mcp` 所處理的資料。
 pub(crate) fn strip_removed_computer_mcp(mut data: Value) -> Value {
     let Some(root) = data.as_object_mut() else {
         return data;
@@ -1064,6 +1099,7 @@ pub(crate) fn strip_removed_computer_mcp(mut data: Value) -> Value {
 
 const PREVIOUS_DEPLOYMENT_MODE_KEY: &str = "freeClaudeDesktopPreviousDeploymentMode";
 
+/// 轉換或更新 `apply_managed_deployment_mode` 所處理的內容。
 pub fn apply_managed_deployment_mode(mut data: Value) -> Value {
     if !data.is_object() {
         data = json!({});
@@ -1081,6 +1117,7 @@ pub fn apply_managed_deployment_mode(mut data: Value) -> Value {
     data
 }
 
+/// 清理或還原 `restore_managed_deployment_mode` 所管理的資料。
 pub fn restore_managed_deployment_mode(mut data: Value) -> Value {
     if let Some(obj) = data.as_object_mut() {
         if let Some(previous) = obj.remove(PREVIOUS_DEPLOYMENT_MODE_KEY) {
@@ -1099,6 +1136,7 @@ pub fn restore_managed_deployment_mode(mut data: Value) -> Value {
     data
 }
 
+/// 轉換或更新 `apply_3p_deployment_mode` 所處理的內容。
 pub fn apply_3p_deployment_mode() -> AppResult<()> {
     let all_mcp_servers = collect_all_mcp_servers_result()?;
     let mut writes = Vec::new();
@@ -1128,6 +1166,7 @@ pub fn apply_3p_deployment_mode() -> AppResult<()> {
     Ok(())
 }
 
+/// 清理或還原 `restore_1p_deployment_mode` 所管理的資料。
 pub fn restore_1p_deployment_mode() -> AppResult<()> {
     let all_mcp_servers = collect_all_mcp_servers_result()?;
     let mut writes = Vec::new();

@@ -1,10 +1,12 @@
 use free_claude_core::AdminRpcRequest;
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+use std::path::Path;
 use std::time::Duration;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
+/// 執行 `companion_daemon` 對應的處理流程。
 pub async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
     let port = std::env::var("FREECLAUDE_PROXY_PORT")
         .unwrap_or_else(|_| "3000".to_string())
@@ -62,6 +64,7 @@ pub async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+/// 處理 `handle_message` 對應的請求。
 async fn handle_message(text: &str) -> Result<Value, String> {
     let req_val: Value = serde_json::from_str(text).map_err(|e| format!("Invalid JSON: {}", e))?;
     let request_id = req_val
@@ -81,6 +84,7 @@ async fn handle_message(text: &str) -> Result<Value, String> {
     }
 }
 
+/// 處理 `handle_rpc_logic` 對應的請求。
 async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
     let settings = free_claude_core::get_launcher_settings().ok_or("Launcher not configured")?;
     let rpc_req: AdminRpcRequest =
@@ -97,7 +101,8 @@ async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
             json!({ "path": path.map(|p| p.display().to_string()) })
         }
         AdminRpcRequest::LaunchClaude => {
-            let path = free_claude_core::launch_claude(None).map_err(|e| e.to_string())?;
+            let custom_path = settings.custom_claude_path.as_deref().map(Path::new);
+            let path = free_claude_core::launch_claude(custom_path).map_err(|e| e.to_string())?;
             json!({ "path": path.display().to_string() })
         }
         AdminRpcRequest::RestoreSettings => {
@@ -143,6 +148,7 @@ mod tests {
     use serde_json::json;
 
     #[tokio::test]
+    /// 驗證 `test_handle_message_success_or_expected_failure` 的行為符合預期。
     async fn test_handle_message_success_or_expected_failure() {
         let input = json!({
             "requestId": "test-req-123",
@@ -159,6 +165,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 驗證 `test_handle_message_invalid_json` 的行為符合預期。
     async fn test_handle_message_invalid_json() {
         let input = "invalid json";
         let res = handle_message(input).await;
@@ -166,6 +173,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 驗證 `test_handle_message_missing_request_id` 的行為符合預期。
     async fn test_handle_message_missing_request_id() {
         let input = json!({
             "token": "some-token",

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// 執行 `default_capabilities` 對應的處理流程。
 fn default_capabilities() -> Value {
     serde_json::json!({
         "thinking": {
@@ -47,6 +48,8 @@ pub struct NormalizedModel {
     pub capabilities: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supports1m: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefer1m: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -63,6 +66,8 @@ pub struct InferenceModel {
     pub capabilities: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supports1m: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefer1m: Option<bool>,
     /// 傳輸類型: "openai_chat_completions" 或 "anthropic_messages"
     #[serde(
         default = "default_transport_type",
@@ -71,6 +76,7 @@ pub struct InferenceModel {
     pub transport_type: Option<String>,
 }
 
+/// 執行 `default_transport_type` 對應的處理流程。
 pub fn default_transport_type() -> Option<String> {
     Some("openai_chat_completions".to_string())
 }
@@ -121,6 +127,7 @@ pub struct Pricing {
     pub completion: Option<f64>,
 }
 
+/// 解析 `deserialize_price` 所需的資料。
 fn deserialize_price<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -130,10 +137,12 @@ where
     impl<'de> serde::de::Visitor<'de> for PriceVisitor {
         type Value = Option<f64>;
 
+        /// 執行 `expecting` 對應的處理流程。
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
             formatter.write_str("a string or a number representing a price")
         }
 
+        /// 執行 `visit_none` 對應的處理流程。
         fn visit_none<E>(self) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -141,6 +150,7 @@ where
             Ok(None)
         }
 
+        /// 執行 `visit_some` 對應的處理流程。
         fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
         where
             D: serde::Deserializer<'de>,
@@ -148,6 +158,7 @@ where
             deserializer.deserialize_any(self)
         }
 
+        /// 執行 `visit_str` 對應的處理流程。
         fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -158,6 +169,7 @@ where
             Ok(value.trim().parse::<f64>().ok())
         }
 
+        /// 執行 `visit_f64` 對應的處理流程。
         fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -165,6 +177,7 @@ where
             Ok(Some(value))
         }
 
+        /// 執行 `visit_u64` 對應的處理流程。
         fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -172,6 +185,7 @@ where
             Ok(Some(value as f64))
         }
 
+        /// 執行 `visit_i64` 對應的處理流程。
         fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -183,6 +197,7 @@ where
     deserializer.deserialize_option(PriceVisitor)
 }
 
+/// 解析 `deserialize_u64_or_none` 所需的資料。
 pub(crate) fn deserialize_u64_or_none<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -192,10 +207,12 @@ where
     impl<'de> serde::de::Visitor<'de> for U64Visitor {
         type Value = Option<u64>;
 
+        /// 執行 `expecting` 對應的處理流程。
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
             formatter.write_str("an integer, float or string representing an integer")
         }
 
+        /// 執行 `visit_none` 對應的處理流程。
         fn visit_none<E>(self) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -203,6 +220,7 @@ where
             Ok(None)
         }
 
+        /// 執行 `visit_some` 對應的處理流程。
         fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
         where
             D: serde::Deserializer<'de>,
@@ -210,6 +228,7 @@ where
             deserializer.deserialize_any(self)
         }
 
+        /// 執行 `visit_str` 對應的處理流程。
         fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -217,6 +236,7 @@ where
             Ok(value.trim().parse::<u64>().ok())
         }
 
+        /// 執行 `visit_u64` 對應的處理流程。
         fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -224,6 +244,7 @@ where
             Ok(Some(value))
         }
 
+        /// 執行 `visit_i64` 對應的處理流程。
         fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -231,11 +252,16 @@ where
             Ok(if value >= 0 { Some(value as u64) } else { None })
         }
 
+        /// 執行 `visit_f64` 對應的處理流程。
         fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
         {
-            Ok(if value >= 0.0 { Some(value as u64) } else { None })
+            Ok(if value >= 0.0 {
+                Some(value as u64)
+            } else {
+                None
+            })
         }
     }
 

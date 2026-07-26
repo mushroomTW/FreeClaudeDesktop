@@ -89,6 +89,7 @@ enum AutostartCommand {
 }
 
 #[tokio::main]
+/// 啟動程式並執行主要流程。
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
@@ -108,10 +109,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+/// 執行 `companion_daemon` 對應的處理流程。
 async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
     crate::companion_daemon::companion_daemon().await
 }
 
+/// 執行 `install` 對應的處理流程。
 async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     let port = proxy_port()?;
     if matches!(args.runtime, Runtime::Docker) {
@@ -140,6 +143,7 @@ async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+/// 執行 `start` 對應的處理流程。
 async fn start(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
     let port = proxy_port()?;
     match runtime {
@@ -158,6 +162,7 @@ async fn start(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+/// 執行 `stop` 對應的處理流程。
 fn stop(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
     let _ = crate::runtime::native::stop_companion();
     match runtime {
@@ -170,6 +175,7 @@ fn stop(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+/// 執行 `update` 對應的處理流程。
 async fn update(args: UpdateArgs) -> Result<(), Box<dyn std::error::Error>> {
     let check = check_for_update().await?;
     println!("{}", serde_json::to_string_pretty(&check)?);
@@ -194,6 +200,7 @@ struct UpdateCheck {
     release_url: String,
 }
 
+/// 驗證 `check_for_update` 所需的條件。
 async fn check_for_update() -> Result<UpdateCheck, Box<dyn std::error::Error>> {
     #[derive(serde::Deserialize)]
     struct Release {
@@ -220,7 +227,9 @@ async fn check_for_update() -> Result<UpdateCheck, Box<dyn std::error::Error>> {
     })
 }
 
+/// 執行 `version_is_newer` 對應的處理流程。
 fn version_is_newer(candidate: &str, current: &str) -> bool {
+    /// 執行 `parts` 對應的處理流程。
     fn parts(value: &str) -> Option<[u64; 3]> {
         let mut parts = value.split('.').map(str::parse::<u64>);
         Some([
@@ -235,6 +244,7 @@ fn version_is_newer(candidate: &str, current: &str) -> bool {
     }
 }
 
+/// 執行 `uninstall` 對應的處理流程。
 fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     if !args.yes {
         return Err("uninstall 會停止服務並還原 Claude 設定；請加入 --yes 確認".into());
@@ -268,6 +278,7 @@ fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 執行 `manage_autostart` 對應的處理流程。
 fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         AutostartCommand::Enable => {
@@ -290,6 +301,7 @@ fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
+/// 啟動或執行 `open_admin` 流程。
 fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
     let port = free_claude_core::get_launcher_settings()
         .and_then(|settings| settings.active_port)
@@ -313,18 +325,21 @@ fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 啟動或執行 `launch_claude` 流程。
 fn launch_claude() -> Result<(), Box<dyn std::error::Error>> {
     let path = free_claude_core::launch_claude(None)?;
     println!("Claude 已啟動：{}", path.display());
     Ok(())
 }
 
+/// 清理或還原 `restore_settings` 所管理的資料。
 fn restore_settings() -> Result<(), Box<dyn std::error::Error>> {
     free_claude_core::restore_official_config()?;
     println!("Claude 官方設定已還原");
     Ok(())
 }
 
+/// 執行 `purge` 對應的處理流程。
 fn purge(args: PurgeArgs) -> Result<(), Box<dyn std::error::Error>> {
     if !args.yes {
         return Err("purge 會停止服務、還原 Claude 設定並刪除所有 FreeClaudeDesktop 資料；請加入 --yes 確認".into());
@@ -341,6 +356,7 @@ fn purge(args: PurgeArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 執行 `proxy_port` 對應的處理流程。
 fn proxy_port() -> Result<u16, Box<dyn std::error::Error>> {
     Ok(std::env::var("FREECLAUDE_PROXY_PORT")
         .unwrap_or_else(|_| "3000".to_string())
@@ -356,6 +372,7 @@ fn ensure_docker_default_port(port: u16) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+/// 啟動或執行 `start_proxy` 流程。
 async fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
     let port = proxy_port()?;
     let healthz_url = format!("http://127.0.0.1:{port}/healthz");
@@ -376,12 +393,14 @@ async fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
     Err("Proxy 未在 5 秒內通過健康檢查".into())
 }
 
+/// 停止或停用 `stop_proxy` 流程。
 fn stop_proxy() -> Result<(), Box<dyn std::error::Error>> {
     crate::runtime::native::stop_proxy()?;
     println!("Proxy 已停止");
     Ok(())
 }
 
+/// 執行 `print_status` 對應的處理流程。
 async fn print_status(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
     match runtime {
         Runtime::Native => print_proxy_status().await,
@@ -396,6 +415,7 @@ async fn print_status(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>
     }
 }
 
+/// 執行 `print_proxy_status` 對應的處理流程。
 async fn print_proxy_status() -> Result<(), Box<dyn std::error::Error>> {
     let proxy_url = std::env::var("FREECLAUDE_PROXY_URL").unwrap_or_else(|_| {
         let port = proxy_port().unwrap_or(3000);
@@ -430,6 +450,7 @@ async fn print_proxy_status() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 執行 `proxy_is_healthy` 對應的處理流程。
 async fn proxy_is_healthy(healthz_url: &str) -> bool {
     let Ok(client) = reqwest::Client::builder()
         .timeout(Duration::from_millis(500))
@@ -448,6 +469,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 驗證 `parses_documented_command_tree` 的行為符合預期。
     fn parses_documented_command_tree() {
         let cli = Cli::try_parse_from(["freeclaude", "install", "--runtime", "docker"])
             .expect("install 應可解析");
@@ -468,6 +490,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `uninstall_requires_explicit_confirmation` 的行為符合預期。
     fn uninstall_requires_explicit_confirmation() {
         let args = UninstallArgs {
             runtime: Runtime::Native,
@@ -478,6 +501,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `install_defaults_to_native_runtime` 的行為符合預期。
     fn install_defaults_to_native_runtime() {
         let args = InstallArgs {
             runtime: Runtime::Native,
@@ -487,6 +511,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `detects_newer_three_part_versions` 的行為符合預期。
     fn detects_newer_three_part_versions() {
         assert!(version_is_newer("0.2.0", "0.1.9"));
         assert!(!version_is_newer("0.1.1", "0.1.1"));
@@ -494,6 +519,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `docker_runtime_rejects_non_default_proxy_port` 的行為符合預期。
     fn docker_runtime_rejects_non_default_proxy_port() {
         assert!(ensure_docker_default_port(3000).is_ok());
         assert!(ensure_docker_default_port(3001).is_err());

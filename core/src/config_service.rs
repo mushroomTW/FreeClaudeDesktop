@@ -1,10 +1,11 @@
 use crate::conversion::response_converter::{
     apply_model_visibility, build_inference_models, normalize_messages_url,
-    normalize_models_response_with_overrides,
+    normalize_models_response_with_overrides_and_prefer1m,
 };
 use crate::crypto::{protect_secret, unprotect_secret};
 use crate::{AppError, AppResult, Settings};
 use std::collections::HashMap;
+use url::Url;
 
 #[derive(Clone, Debug)]
 pub struct SaveConfigInput {
@@ -26,7 +27,9 @@ pub struct SaveConfigInput {
     pub language: String,
     pub model_reasoning_overrides: HashMap<String, String>,
     pub model_1m_overrides: HashMap<String, bool>,
+    pub model_1m_prefer_overrides: HashMap<String, bool>,
     pub model_visibility_overrides: HashMap<String, bool>,
+    pub custom_claude_path: Option<Option<String>>,
     pub real_model: Option<String>,
     pub real_model_sonnet: Option<String>,
     pub real_model_opus: Option<String>,
@@ -38,6 +41,7 @@ pub struct SaveConfigOutput {
     pub discovered_models: Vec<String>,
 }
 
+/// 啟動或執行 `run_config_io` 流程。
 pub async fn run_config_io<T, F>(operation: F) -> AppResult<T>
 where
     T: Send + 'static,
@@ -48,18 +52,22 @@ where
         .map_err(|error| AppError::Launcher(error.to_string()))?
 }
 
+/// 讀取 `load_runtime_settings` 所需的資料。
 pub async fn load_runtime_settings() -> AppResult<Option<Settings>> {
     run_config_io(crate::config::load_launcher_settings).await
 }
 
+/// 清理或還原 `unprotect_runtime_api_key` 所管理的資料。
 pub async fn unprotect_runtime_api_key(stored: String) -> AppResult<String> {
     run_config_io(move || unprotect_secret(&stored)).await
 }
 
+/// 解析並選出 `resolve_api_key` 的結果。
 fn resolve_api_key(api_key: &str, existing: Option<&Settings>) -> AppResult<String> {
     resolve_api_key_with(api_key, existing, unprotect_secret)
 }
 
+/// 解析並選出 `resolve_api_key_with` 的結果。
 fn resolve_api_key_with(
     api_key: &str,
     existing: Option<&Settings>,
@@ -75,14 +83,77 @@ fn resolve_api_key_with(
     }
 }
 
+/// 為 OpenRouter 網址建立官方的目前金鑰驗證端點。
+fn openrouter_key_validation_url(base_url: &str) -> Option<String> {
+    let parsed = Url::parse(base_url).ok()?;
+    if !matches!(
+        parsed.host_str(),
+        Some("openrouter.ai") | Some("www.openrouter.ai")
+    ) {
+        return None;
+    }
+    let host = parsed.host_str()?;
+    let port = parsed
+        .port()
+        .map(|port| format!(":{port}"))
+        .unwrap_or_default();
+    Some(format!("{}://{host}{port}/api/v1/key", parsed.scheme()))
+}
+
+/// 使用 OpenRouter 官方端點確認目前設定的 API key 可被接受。
+async fn validate_openrouter_api_key(
+    base_url: &str,
+    api_key: &str,
+    auth_scheme: &str,
+) -> AppResult<()> {
+    let Some(url) = openrouter_key_validation_url(base_url) else {
+        return Ok(());
+    };
+    if api_key.is_empty() {
+        return Err(AppError::InvalidConfig(
+            "OpenRouter API key 不可為空".to_string(),
+        ));
+    }
+
+    let request =
+        crate::apply_gateway_auth(crate::http_client().get(&url), auth_scheme, api_key, &url)?;
+    let response = request
+        .send()
+        .await
+        .map_err(|error| AppError::Proxy(error.to_string()))?;
+    if response.status().is_success() {
+        return Ok(());
+    }
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    let message = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("error")
+                .and_then(|error| error.get("message"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "OpenRouter 拒絕此憑證".to_string());
+    Err(AppError::InvalidConfig(format!(
+        "OpenRouter API key 驗證失敗（HTTP {}）：{message}",
+        status.as_u16()
+    )))
+}
+
+/// 儲存 `save_config_async` 所處理的資料。
 pub async fn save_config_async(input: SaveConfigInput) -> AppResult<SaveConfigOutput> {
     save_or_refresh(input, false).await
 }
 
+/// 執行 `refresh_models_async` 對應的處理流程。
 pub async fn refresh_models_async(input: SaveConfigInput) -> AppResult<SaveConfigOutput> {
     save_or_refresh(input, true).await
 }
 
+/// 儲存 `save_or_refresh` 所處理的資料。
 async fn save_or_refresh(
     input: SaveConfigInput,
     require_models: bool,
@@ -105,6 +176,8 @@ async fn save_or_refresh(
     let real_api_key =
         run_config_io(move || resolve_api_key(&api_key_input, key_existing.as_ref())).await?;
 
+    validate_openrouter_api_key(&base_url, &real_api_key, &input.auth_scheme).await?;
+
     let mut normalized = match crate::models_cache::fetch_models_list_async(
         &base_url,
         &real_api_key,
@@ -112,10 +185,11 @@ async fn save_or_refresh(
     )
     .await
     {
-        Ok(raw) => match normalize_models_response_with_overrides(
+        Ok(raw) => match normalize_models_response_with_overrides_and_prefer1m(
             raw,
             &input.model_reasoning_overrides,
             &input.model_1m_overrides,
+            &input.model_1m_prefer_overrides,
         ) {
             Ok(models) => Some(models),
             Err(error) if require_models => return Err(AppError::InvalidConfig(error)),
@@ -175,6 +249,7 @@ async fn save_or_refresh(
     let cache_auth_scheme = input.auth_scheme.clone();
     let cache_reasoning = input.model_reasoning_overrides.clone();
     let cache_m1 = input.model_1m_overrides.clone();
+    let cache_prefer_1m = input.model_1m_prefer_overrides.clone();
     let cache_visibility = input.model_visibility_overrides.clone();
 
     run_config_io(move || {
@@ -206,8 +281,14 @@ async fn save_or_refresh(
             discovered_models,
             model_reasoning_overrides: input.model_reasoning_overrides,
             model_1m_overrides: input.model_1m_overrides,
+            model_1m_prefer_overrides: input.model_1m_prefer_overrides,
             model_visibility_overrides: input.model_visibility_overrides,
             proxy_auth_token: proxy_auth_token.clone(),
+            custom_claude_path: input.custom_claude_path.unwrap_or_else(|| {
+                existing
+                    .as_ref()
+                    .and_then(|settings| settings.custom_claude_path.clone())
+            }),
             active_port: Some(input.port),
             transport_type: input.transport_type,
             reasoning_replay_mode: input.reasoning_replay_mode,
@@ -246,6 +327,7 @@ async fn save_or_refresh(
             &cache_auth_scheme,
             &cache_reasoning,
             &cache_m1,
+            &cache_prefer_1m,
             &cache_visibility,
             &models,
         );
@@ -259,6 +341,7 @@ mod tests {
     use crate::{AppError, Settings};
 
     #[tokio::test(flavor = "current_thread")]
+    /// 驗證 `config_io_runs_on_blocking_pool` 的行為符合預期。
     async fn config_io_runs_on_blocking_pool() {
         let runtime_thread = std::thread::current().id();
         let io_thread = run_config_io(|| Ok(std::thread::current().id()))
@@ -268,6 +351,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 驗證 `config_io_propagates_operation_errors` 的行為符合預期。
     async fn config_io_propagates_operation_errors() {
         let result =
             run_config_io(|| -> AppResult<()> { Err(AppError::InvalidConfig("sentinel".into())) })
@@ -279,6 +363,20 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 OpenRouter 網址會對應至官方目前金鑰端點。
+    fn openrouter_urls_use_current_key_validation_endpoint() {
+        assert_eq!(
+            openrouter_key_validation_url("https://openrouter.ai/api/v1"),
+            Some("https://openrouter.ai/api/v1/key".to_string())
+        );
+        assert_eq!(
+            openrouter_key_validation_url("https://gateway.example/v1"),
+            None
+        );
+    }
+
+    #[test]
+    /// 驗證 `blank_key_propagates_existing_key_decryption_error` 的行為符合預期。
     fn blank_key_propagates_existing_key_decryption_error() {
         let existing = Settings::default();
         let result = resolve_api_key_with("", Some(&existing), |_| {
@@ -288,7 +386,9 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `async_config_api_owns_its_input_and_output` 的行為符合預期。
     fn async_config_api_owns_its_input_and_output() {
+        /// 執行 `assert_send_static` 對應的處理流程。
         fn assert_send_static<T: Send + 'static>() {}
         assert_send_static::<SaveConfigInput>();
         assert_send_static::<SaveConfigOutput>();

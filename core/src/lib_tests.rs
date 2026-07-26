@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 
 #[test]
 #[allow(clippy::type_complexity)]
+/// 驗證 `save_config_keeps_legacy_function_signature` 的行為符合預期。
 fn save_config_keeps_legacy_function_signature() {
     let _: fn(
         u16,
@@ -33,6 +34,7 @@ fn save_config_keeps_legacy_function_signature() {
 }
 
 #[test]
+/// 驗證 `normalizes_provider_urls_to_messages_endpoint` 的行為符合預期。
 fn normalizes_provider_urls_to_messages_endpoint() {
     assert_eq!(
         normalize_messages_url("https://openrouter.ai/api").unwrap(),
@@ -46,6 +48,7 @@ fn normalizes_provider_urls_to_messages_endpoint() {
 }
 
 #[test]
+/// 驗證 `rewrites_model_from_saved_routes` 的行為符合預期。
 fn rewrites_model_from_saved_routes() {
     let mut routes = HashMap::new();
     routes.insert(
@@ -69,28 +72,29 @@ fn rewrites_model_from_saved_routes() {
 }
 
 #[test]
-fn rewrites_model_from_saved_routes_underscore_key() {
-    // Claude Desktop receives model IDs like "claude-opus-4-8_0" (underscore suffix for index).
-    // The routes map must use the same underscore format as keys, otherwise lookup fails and the
+/// 驗證 `rewrites_model_from_saved_routes_bracket_index_key` 的行為符合預期。
+fn rewrites_model_from_saved_routes_bracket_index_key() {
+    // Claude Desktop receives model IDs like "claude-opus-4-8[0]".
+    // The routes map must use the same bracket index format as keys, otherwise lookup fails and the
     // unmapped alias gets forwarded to LiteLLM, causing "Invalid model name" errors.
     let mut routes = HashMap::new();
     routes.insert(
-        "claude-opus-4-8_0".to_string(),
+        "claude-opus-4-8[0]".to_string(),
         "deepseek-v4-flash".to_string(),
     );
-    routes.insert("claude-opus-4-8_3".to_string(), "glm-5.1".to_string());
+    routes.insert("claude-opus-4-8[3]".to_string(), "glm-5.1".to_string());
     let settings = Settings {
         real_model_routes: routes,
         ..Settings::default()
     };
 
-    let body = prepare_proxy_body(r#"{"model":"claude-opus-4-8_0","messages":[]}"#, &settings);
+    let body = prepare_proxy_body(r#"{"model":"claude-opus-4-8[0]","messages":[]}"#, &settings);
     assert_eq!(
         serde_json::from_str::<Value>(&body).unwrap()["model"],
         "deepseek-v4-flash"
     );
 
-    let body2 = prepare_proxy_body(r#"{"model":"claude-opus-4-8_3","messages":[]}"#, &settings);
+    let body2 = prepare_proxy_body(r#"{"model":"claude-opus-4-8[3]","messages":[]}"#, &settings);
     assert_eq!(
         serde_json::from_str::<Value>(&body2).unwrap()["model"],
         "glm-5.1"
@@ -98,13 +102,17 @@ fn rewrites_model_from_saved_routes_underscore_key() {
 }
 
 #[test]
+/// 驗證 `prepare_proxy_body_falls_back_for_unmapped_local_alias` 的行為符合預期。
 fn prepare_proxy_body_falls_back_for_unmapped_local_alias() {
     let settings = Settings {
         real_model_haiku: Some("nemotron-3-super-120b".to_string()),
         ..Settings::default()
     };
 
-    let body = prepare_proxy_body(r#"{"model":"claude-haiku-4-5_2","messages":[]}"#, &settings);
+    let body = prepare_proxy_body(
+        r#"{"model":"claude-haiku-4-5[2]","messages":[]}"#,
+        &settings,
+    );
 
     assert_eq!(
         serde_json::from_str::<Value>(&body).unwrap()["model"],
@@ -113,6 +121,7 @@ fn prepare_proxy_body_falls_back_for_unmapped_local_alias() {
 }
 
 #[test]
+/// 驗證 `public_config_hides_api_key` 的行為符合預期。
 fn public_config_hides_api_key() {
     let settings = Settings {
         real_base_url: "https://openrouter.ai/api".to_string(),
@@ -133,6 +142,7 @@ fn public_config_hides_api_key() {
 }
 
 #[test]
+/// 驗證 `validates_proxy_authorization_header` 的行為符合預期。
 fn validates_proxy_authorization_header() {
     assert!(is_valid_proxy_authorization(Some(
         "Bearer local-proxy-token"
@@ -143,6 +153,7 @@ fn validates_proxy_authorization_header() {
 }
 
 #[test]
+/// 驗證 `validates_proxy_x_api_key_against_configured_token` 的行為符合預期。
 fn validates_proxy_x_api_key_against_configured_token() {
     assert!(is_authorized_proxy_request(
         None,
@@ -167,6 +178,7 @@ fn validates_proxy_x_api_key_against_configured_token() {
 }
 
 #[test]
+/// 驗證 `protects_and_restores_api_key` 的行為符合預期。
 fn protects_and_restores_api_key() {
     assert_eq!(unprotect_secret("legacy-key").unwrap(), "legacy-key");
     #[cfg(not(target_os = "windows"))]
@@ -174,6 +186,7 @@ fn protects_and_restores_api_key() {
 }
 
 #[test]
+/// 驗證 `test_anthropic_to_openai_request_multimodal_image` 的行為符合預期。
 fn test_anthropic_to_openai_request_multimodal_image() {
     let body = json!({
         "model": "anthropic/claude-3-5-sonnet",
@@ -221,6 +234,7 @@ fn test_anthropic_to_openai_request_multimodal_image() {
 }
 
 #[test]
+/// 驗證 `test_anthropic_to_openai_request_tool_result_ordering` 的行為符合預期。
 fn test_anthropic_to_openai_request_tool_result_ordering() {
     let body = json!({
         "model": "anthropic/claude-3-5-sonnet",
@@ -305,6 +319,7 @@ fn test_anthropic_to_openai_request_tool_result_ordering() {
 }
 
 #[test]
+/// 驗證 `test_anthropic_to_openai_thinking_conversion` 的行為符合預期。
 fn test_anthropic_to_openai_thinking_conversion() {
     let body = json!({
         "model": "anthropic/claude-3-5-sonnet",
@@ -333,6 +348,7 @@ fn test_anthropic_to_openai_thinking_conversion() {
 }
 
 #[test]
+/// 驗證 `test_openai_to_anthropic_thinking_response_conversion` 的行為符合預期。
 fn test_openai_to_anthropic_thinking_response_conversion() {
     let openai_res = json!({
         "id": "chatcmpl-123",

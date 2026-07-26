@@ -3,6 +3,7 @@
 use freeclaude_proxy::{constants::DEFAULT_PORT, server};
 
 #[tokio::main]
+/// 啟動程式並執行主要流程。
 async fn main() {
     let _logging_guard = server::init_logging();
     let port = std::env::var("FREECLAUDE_PROXY_PORT")

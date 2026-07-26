@@ -4,6 +4,7 @@ use std::sync::Mutex;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+/// 驗證 `set_test_app_dirs` 的行為符合預期。
 fn set_test_app_dirs(root: &Path) -> (PathBuf, PathBuf, Vec<(&'static str, Option<OsString>)>) {
     let keys = [
         "APPDATA",
@@ -41,6 +42,7 @@ fn set_test_app_dirs(root: &Path) -> (PathBuf, PathBuf, Vec<(&'static str, Optio
     (official_app_data_dir(), mirror_profile_dir(), old)
 }
 
+/// 驗證 `restore_env` 的行為符合預期。
 fn restore_env(old: Vec<(&'static str, Option<OsString>)>) {
     // 與 set_test_app_dirs 成對使用，僅在測試完成後還原先前快照。
     unsafe {
@@ -54,6 +56,7 @@ fn restore_env(old: Vec<(&'static str, Option<OsString>)>) {
 }
 
 #[test]
+/// 驗證 `meta_upsert_preserves_existing_entries` 的行為符合預期。
 fn meta_upsert_preserves_existing_entries() {
     let meta = json!({
         "appliedId": "other-id",
@@ -71,6 +74,7 @@ fn meta_upsert_preserves_existing_entries() {
 }
 
 #[test]
+/// 驗證 `meta_remove_only_removes_managed_entry` 的行為符合預期。
 fn meta_remove_only_removes_managed_entry() {
     let meta = json!({
         "appliedId": CONFIG_ID,
@@ -89,6 +93,7 @@ fn meta_remove_only_removes_managed_entry() {
 }
 
 #[test]
+/// 驗證 `deployment_mode_restore_keeps_previous_value` 的行為符合預期。
 fn deployment_mode_restore_keeps_previous_value() {
     let original = json!({ "deploymentMode": "custom" });
 
@@ -106,6 +111,7 @@ fn deployment_mode_restore_keeps_previous_value() {
 }
 
 #[test]
+/// 驗證 `anthropic_base_url_env_restore_keeps_previous_values` 的行為符合預期。
 fn anthropic_base_url_env_restore_keeps_previous_values() {
     let _guard = ENV_LOCK.lock().unwrap();
     let root = std::env::temp_dir().join(format!("fcl_settings_env_{}", std::process::id()));
@@ -155,6 +161,7 @@ fn anthropic_base_url_env_restore_keeps_previous_values() {
 }
 
 #[test]
+/// 驗證 `invalid_claude_settings_are_not_replaced_with_empty_json` 的行為符合預期。
 fn invalid_claude_settings_are_not_replaced_with_empty_json() {
     let _guard = ENV_LOCK.lock().unwrap();
     let root = std::env::temp_dir().join(format!("fcl_invalid_json_{}", std::process::id()));
@@ -171,6 +178,7 @@ fn invalid_claude_settings_are_not_replaced_with_empty_json() {
 }
 
 #[test]
+/// 驗證 `gateway_port_rewrite_updates_config_value` 的行為符合預期。
 fn gateway_port_rewrite_updates_config_value() {
     let updated = with_gateway_port(
         json!({
@@ -186,12 +194,14 @@ fn gateway_port_rewrite_updates_config_value() {
 }
 
 #[test]
+/// 驗證 `update_applied_claude_config_keeps_unit_return_signature` 的行為符合預期。
 fn update_applied_claude_config_keeps_unit_return_signature() {
     let update: fn(u16, &[crate::models::openai::InferenceModel]) = update_applied_claude_config;
     let _ = update;
 }
 
 #[test]
+/// 驗證 `strip_removed_computer_mcp_keeps_unrelated_servers` 的行為符合預期。
 fn strip_removed_computer_mcp_keeps_unrelated_servers() {
     let cleaned = strip_removed_computer_mcp(json!({
         "mcpServers": {
@@ -206,29 +216,33 @@ fn strip_removed_computer_mcp_keeps_unrelated_servers() {
 }
 
 #[test]
+/// 驗證 `claude_config_uses_supported_1m_variant_without_double_label` 的行為符合預期。
 fn claude_config_uses_supported_1m_variant_without_double_label() {
     let model = crate::models::openai::InferenceModel {
-        name: "claude-sonnet-4-6_0[1m]".to_string(),
-        label_override: "deepseek-v4-flash 1M".to_string(),
+        name: "claude-sonnet-4-6[0]".to_string(),
+        label_override: "deepseek-v4-flash".to_string(),
         provider_model_id: "deepseek-v4-flash".to_string(),
-        display_name: "deepseek-v4-flash 1M".to_string(),
+        display_name: "deepseek-v4-flash".to_string(),
         max_input_tokens: Some(1_000_000),
         max_tokens: Some(8192),
         capabilities: serde_json::json!({}),
-        supports1m: None,
+        supports1m: Some(true),
+        prefer1m: Some(true),
         transport_type: None,
     };
 
     let config = claude_config(12345, &[model], "proxy-token");
     let models = config["inferenceModels"].as_array().unwrap();
     assert_eq!(models.len(), 1);
-    assert_eq!(models[0]["name"], "claude-sonnet-4-6_0");
+    assert_eq!(models[0]["name"], "claude-sonnet-4-6[0]");
     assert_eq!(models[0]["labelOverride"], "deepseek-v4-flash");
     assert_eq!(models[0]["displayName"], "deepseek-v4-flash");
     assert_eq!(models[0]["supports1m"], true);
+    assert_eq!(models[0]["prefer1m"], true);
 }
 
 #[test]
+/// 驗證 `claude_config_enables_chat_and_extensions_by_default` 的行為符合預期。
 fn claude_config_enables_chat_and_extensions_by_default() {
     let config = claude_config(12345, &[], "proxy-token");
     assert_eq!(config["coworkTabEnabled"], true);
@@ -239,6 +253,7 @@ fn claude_config_enables_chat_and_extensions_by_default() {
 }
 
 #[test]
+/// 驗證 `clean_json_text_strips_comments_bom_and_trailing_commas` 的行為符合預期。
 fn clean_json_text_strips_comments_bom_and_trailing_commas() {
     let raw = "\u{feff}{\n  // line comment\n  \"mcpServers\": {\n    /* block comment */\n    \"custom\": { \"command\": \"node\", },\n  },\n}";
     let cleaned = clean_json_text(raw);
@@ -247,6 +262,7 @@ fn clean_json_text_strips_comments_bom_and_trailing_commas() {
 }
 
 #[test]
+/// 驗證 `clean_json_text_robust_boundary_scenarios` 的行為符合預期。
 fn clean_json_text_robust_boundary_scenarios() {
     let raw = "\u{feff}{
         // line comment
@@ -283,6 +299,7 @@ fn clean_json_text_robust_boundary_scenarios() {
 }
 
 #[test]
+/// 驗證 `merge_mcp_servers_preserves_and_merges_custom_servers` 的行為符合預期。
 fn merge_mcp_servers_preserves_and_merges_custom_servers() {
     let mut servers = serde_json::Map::new();
     servers.insert("user_mcp".to_string(), json!({ "command": "python" }));
@@ -300,6 +317,7 @@ fn merge_mcp_servers_preserves_and_merges_custom_servers() {
 }
 
 #[test]
+/// 驗證 `invalid_official_mcp_config_stops_deployment_write` 的行為符合預期。
 fn invalid_official_mcp_config_stops_deployment_write() {
     let _guard = ENV_LOCK.lock().unwrap();
     let root = std::env::temp_dir().join(format!("fcl_invalid_official_{}", std::process::id()));
@@ -324,6 +342,7 @@ fn invalid_official_mcp_config_stops_deployment_write() {
 }
 
 #[test]
+/// 驗證 `mirror_profile_dir_returns_valid_path` 的行為符合預期。
 fn mirror_profile_dir_returns_valid_path() {
     let mirror = mirror_profile_dir();
     assert!(mirror.to_string_lossy().contains("FreeClaudeDesktop"));
@@ -331,12 +350,14 @@ fn mirror_profile_dir_returns_valid_path() {
 }
 
 #[test]
+/// 驗證 `official_app_data_dir_returns_valid_path` 的行為符合預期。
 fn official_app_data_dir_returns_valid_path() {
     let official = official_app_data_dir();
     assert!(official.to_string_lossy().contains("Claude"));
 }
 
 #[test]
+/// 驗證 `copy_dir_all_recursively_copies_files` 的行為符合預期。
 fn copy_dir_all_recursively_copies_files() {
     let temp_src = std::env::temp_dir().join(format!("fcl_test_src_{}", std::process::id()));
     let temp_dst = std::env::temp_dir().join(format!("fcl_test_dst_{}", std::process::id()));
@@ -358,6 +379,7 @@ fn copy_dir_all_recursively_copies_files() {
 }
 
 #[test]
+/// 驗證 `resync_from_official_returns_copy_errors` 的行為符合預期。
 fn resync_from_official_returns_copy_errors() {
     let _guard = ENV_LOCK.lock().unwrap();
     let root = std::env::temp_dir().join(format!("fcl_resync_error_{}", std::process::id()));
@@ -377,6 +399,7 @@ fn resync_from_official_returns_copy_errors() {
 }
 
 #[test]
+/// 驗證 `reset_mirror_profile_restores_existing_profile_on_init_error` 的行為符合預期。
 fn reset_mirror_profile_restores_existing_profile_on_init_error() {
     let _guard = ENV_LOCK.lock().unwrap();
     let root = std::env::temp_dir().join(format!("fcl_reset_error_{}", std::process::id()));

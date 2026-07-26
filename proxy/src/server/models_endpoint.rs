@@ -1,6 +1,7 @@
 use crate::config_service::{load_runtime_settings, run_config_io, unprotect_runtime_api_key};
 use crate::conversion::response_converter::{
-    apply_model_visibility, build_inference_models, normalize_models_response_with_overrides,
+    apply_model_visibility, build_inference_models,
+    normalize_models_response_with_overrides_and_prefer1m,
 };
 use axum::{Json, http::HeaderMap, response::IntoResponse};
 use serde_json::json;
@@ -14,6 +15,7 @@ pub use free_claude_core::models_cache::{
     store_models_cache,
 };
 
+/// 處理 `handle_models` 對應的請求。
 pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
     // 1. Load settings.
     let mut settings = match load_runtime_settings().await {
@@ -41,6 +43,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
         &settings.real_auth_scheme,
         &settings.model_reasoning_overrides,
         &settings.model_1m_overrides,
+        &settings.model_1m_prefer_overrides,
         &settings.model_visibility_overrides,
     ) {
         return (axum::http::StatusCode::OK, Json(models)).into_response();
@@ -76,10 +79,11 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
     };
 
     match models_result {
-        Ok(raw_models) => match normalize_models_response_with_overrides(
+        Ok(raw_models) => match normalize_models_response_with_overrides_and_prefer1m(
             raw_models,
             &settings.model_reasoning_overrides,
             &settings.model_1m_overrides,
+            &settings.model_1m_prefer_overrides,
         ) {
             Ok(mut normalized) => {
                 let discovered_models = normalized
@@ -122,6 +126,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
                     &settings.real_auth_scheme,
                     &settings.model_reasoning_overrides,
                     &settings.model_1m_overrides,
+                    &settings.model_1m_prefer_overrides,
                     &settings.model_visibility_overrides,
                     &normalized,
                 );
@@ -154,6 +159,7 @@ mod tests {
     use crate::models::openai::{NormalizedModel, NormalizedModels};
     use std::collections::HashMap;
 
+    /// 執行 `normalized_models` 對應的處理流程。
     fn normalized_models() -> NormalizedModels {
         NormalizedModels {
             data: vec![NormalizedModel {
@@ -167,6 +173,7 @@ mod tests {
                 max_tokens: None,
                 capabilities: json!({ "thinking": { "supported": false } }),
                 supports1m: None,
+                prefer1m: None,
             }],
             has_more: false,
             first_id: Some("claude-3-5-haiku[0]".to_string()),
@@ -177,16 +184,19 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `cached_models_are_reused_only_for_matching_gateway_settings` 的行為符合預期。
     fn cached_models_are_reused_only_for_matching_gateway_settings() {
         clear_models_cache();
         let empty_reasoning = HashMap::new();
         let empty_m1: HashMap<String, bool> = HashMap::new();
+        let empty_prefer1m: HashMap<String, bool> = HashMap::new();
         let empty_visibility: HashMap<String, bool> = HashMap::new();
         store_models_cache(
             "http://localhost:4000",
             "bearer",
             &empty_reasoning,
             &empty_m1,
+            &empty_prefer1m,
             &empty_visibility,
             &normalized_models(),
         );
@@ -197,6 +207,7 @@ mod tests {
                 "bearer",
                 &empty_reasoning,
                 &empty_m1,
+                &empty_prefer1m,
                 &empty_visibility
             )
             .is_some()
@@ -207,6 +218,7 @@ mod tests {
                 "bearer",
                 &empty_reasoning,
                 &empty_m1,
+                &empty_prefer1m,
                 &empty_visibility
             )
             .is_none()
@@ -217,6 +229,7 @@ mod tests {
                 "x-api-key",
                 &empty_reasoning,
                 &empty_m1,
+                &empty_prefer1m,
                 &empty_visibility
             )
             .is_none()
@@ -228,6 +241,7 @@ mod tests {
                 "bearer",
                 &empty_reasoning,
                 &empty_m1,
+                &empty_prefer1m,
                 &hidden_visibility
             )
             .is_none()

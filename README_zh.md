@@ -17,10 +17,13 @@ FreeClaudeDesktop 是跨平台的命令列啟動器與 Claude Desktop 本機 API
 
 - 在 `127.0.0.1:3000` 提供 Claude Desktop 相容的本機 API Proxy。
 - 支援 OpenAI 相容與 Anthropic 相容的上游服務。
-- 支援模型探索、模型路由、推理設定與串流回應。
+- 探索上游 API `/v1/models` 端點回傳的所有模型，並讓這些模型顯示於 Claude Desktop 的模型選擇器；亦可個別控制是否顯示。
+- 支援模型路由、推理設定與串流回應。
 - 使用隔離的 Claude Desktop Profile，並可重新同步官方 Profile 的選定資料。
 - 提供繁體中文與英文的瀏覽器 Web Admin。
 - 支援 Windows、macOS 與 Linux。
+
+為獲得較完整的 Claude Desktop 使用體驗，建議上游模型支援多模態輸入，且上下文視窗至少為 200K tokens。上下文較小或僅支援文字的模型仍可能運作，但圖片、長對話、檔案及大量工具呼叫等情境可能受限。
 
 ## 快速開始
 
@@ -59,7 +62,7 @@ cargo build --release -p freeclaude -p freeclaude-proxy
 .\target\release\freeclaude.exe install
 ```
 
-`freeclaude install` 預設使用原生 proxy；只有明確需要 Docker runtime 時才使用 `freeclaude install --runtime docker`。
+`freeclaude install` 預設使用原生 Proxy，並預設啟用登入後自動啟動。只有明確需要 Docker runtime 時才使用 `freeclaude install --runtime docker`；若不希望自動啟動，兩種安裝模式都可加上 `--no-autostart`。
 
 ## 以 pnpm 全域安裝
 
@@ -94,10 +97,10 @@ cargo build --release -p freeclaude -p freeclaude-proxy
 
 ## CLI 與本機管理
 
-在開發工作區同時建置兩個 binary：
+在開發工作區建置 workspace 中的所有 binary：
 
 ```bash
-cargo build -p freeclaude -p freeclaude-proxy
+cargo build --release
 ```
 
 管理原生 Proxy：
@@ -133,7 +136,7 @@ freeclaude uninstall --yes
 freeclaude purge --yes
 ```
 
-Windows 使用 Task Scheduler、macOS 使用 LaunchAgent、Linux 使用 systemd user service。
+執行 `freeclaude install` 時預設會啟用登入後自動啟動；若要停用此預設行為，請在安裝時加上 `--no-autostart`。Windows 使用 Task Scheduler、macOS 使用 LaunchAgent、Linux 使用 systemd user service。
 
 ## Companion Daemon
 
@@ -157,7 +160,6 @@ freeclaude update --check
 
 ## 安全性
 
-- 請勿在 Issue 或日誌中包含 API key、session cookie 或完整本機設定檔。
 - Proxy 預設僅繫結於 loopback。除非已規劃適當的驗證與網路控管，否則不要公開對外。
 - 散布前請檢視產生的 Claude Desktop 設定。
 

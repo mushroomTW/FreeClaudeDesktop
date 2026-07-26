@@ -2,6 +2,7 @@ use super::*;
 use axum::{Router, routing::get};
 
 #[tokio::test]
+/// 驗證 `stream_converts_reasoning_content_to_thinking_events` 的行為符合預期。
 async fn stream_converts_reasoning_content_to_thinking_events() {
     let app = Router::new().route(
         "/",
@@ -42,6 +43,7 @@ async fn stream_converts_reasoning_content_to_thinking_events() {
 }
 
 #[tokio::test]
+/// 驗證 `stream_handles_reasoning_after_text_content` 的行為符合預期。
 async fn stream_handles_reasoning_after_text_content() {
     let app = Router::new().route(
         "/",
@@ -91,6 +93,7 @@ async fn stream_handles_reasoning_after_text_content() {
 }
 
 #[tokio::test]
+/// 驗證 `stream_does_not_break_early_on_finish_reason_and_includes_usage` 的行為符合預期。
 async fn stream_does_not_break_early_on_finish_reason_and_includes_usage() {
     let app = Router::new().route(
         "/",

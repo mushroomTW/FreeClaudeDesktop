@@ -306,6 +306,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    /// 驗證 `test_extract_system_text_string_and_array` 的行為符合預期。
     fn test_extract_system_text_string_and_array() {
         let string_system = json!({ "system": "Hello world" });
         assert_eq!(extract_system_text(&string_system).unwrap(), "Hello world");
@@ -323,6 +324,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `test_is_title_generation_request_array_system` 的行為符合預期。
     fn test_is_title_generation_request_array_system() {
         let body = json!({
             "system": [
@@ -335,6 +337,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `test_is_quota_check_request_token_count_and_env` 的行為符合預期。
     fn test_is_quota_check_request_token_count_and_env() {
         let count_body = json!({
             "max_tokens": 1,
@@ -360,6 +363,7 @@ mod tests {
     }
 
     #[test]
+    /// 驗證 `ordinary_short_quota_question_is_not_a_probe` 的行為符合預期。
     fn ordinary_short_quota_question_is_not_a_probe() {
         let body = json!({
             "max_tokens": 1,

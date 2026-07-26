@@ -14,16 +14,18 @@ pub use platform::{common, crypto, launcher};
 use std::collections::HashMap;
 
 // 重導出 main.rs 和外部需要的 API，保持向後相容
-pub use config_service::{SaveConfigInput, save_config_async, unprotect_runtime_api_key};
 pub use config::{
     Settings, generate_proxy_auth_token, get_launcher_settings, save_launcher_settings,
     to_public_config,
 };
+pub use config_service::{SaveConfigInput, save_config_async, unprotect_runtime_api_key};
 pub use constants::CONFIG_ID;
 pub use conversion::request_converter::anthropic_to_openai_request;
 pub use conversion::response_converter::{
     build_inference_models, normalize_messages_url, normalize_models_response,
-    normalize_models_response_with_overrides, openai_to_anthropic_response, prepare_proxy_body,
+    normalize_models_response_with_overrides,
+    normalize_models_response_with_overrides_and_prefer1m, openai_to_anthropic_response,
+    prepare_proxy_body,
 };
 pub use crypto::{delete_stored_secret, protect_secret, unprotect_secret};
 pub use gateway_client::{AsyncOpenAiGatewayFactory, GatewayClientFactory};
@@ -80,7 +82,9 @@ pub fn save_config(
         language: language.to_string(),
         model_reasoning_overrides: model_reasoning_overrides.clone(),
         model_1m_overrides: model_1m_overrides.clone(),
+        model_1m_prefer_overrides: HashMap::new(),
         model_visibility_overrides: model_visibility_overrides.clone(),
+        custom_claude_path: None,
         real_model,
         real_model_sonnet,
         real_model_opus,
@@ -123,6 +127,7 @@ use std::time::Duration;
 
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
+/// 執行 `http_client` 對應的處理流程。
 pub fn http_client() -> &'static reqwest::Client {
     HTTP_CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -162,6 +167,7 @@ pub fn resolve_auth_header_name(scheme: &str, url: &str) -> AppResult<&'static s
     })
 }
 
+/// 轉換或更新 `apply_gateway_auth` 所處理的內容。
 pub fn apply_gateway_auth(
     request: reqwest::RequestBuilder,
     scheme: &str,
@@ -179,6 +185,7 @@ pub fn apply_gateway_auth(
     }
 }
 
+/// 判斷是否符合 `is_valid_proxy_bearer` 的條件。
 pub fn is_valid_proxy_bearer(header: Option<&str>, token: &str) -> bool {
     header
         .and_then(|value| value.trim().strip_prefix("Bearer "))
@@ -186,10 +193,12 @@ pub fn is_valid_proxy_bearer(header: Option<&str>, token: &str) -> bool {
         == Some(token)
 }
 
+/// 判斷是否符合 `is_valid_proxy_authorization` 的條件。
 pub fn is_valid_proxy_authorization(header: Option<&str>) -> bool {
     is_valid_proxy_bearer(header, constants::PROXY_AUTH_TOKEN)
 }
 
+/// 判斷是否符合 `is_authorized_proxy_request` 的條件。
 pub fn is_authorized_proxy_request(
     authorization: Option<&str>,
     x_api_key: Option<&str>,

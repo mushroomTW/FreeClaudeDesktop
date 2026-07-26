@@ -5,6 +5,7 @@ use axum::{
 };
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
+/// 建立 `create_router` 所需的結果。
 pub fn create_router(port: u16) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(move |origin, _| {

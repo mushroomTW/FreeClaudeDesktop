@@ -11,6 +11,7 @@ pub struct PendingWrite {
 }
 
 impl PendingWrite {
+    /// 建立新的實例。
     pub fn new(path: PathBuf, contents: Vec<u8>) -> Self {
         Self { path, contents }
     }
@@ -23,6 +24,7 @@ struct StagedWrite {
 }
 
 impl StagedWrite {
+    /// 執行 `create` 對應的處理流程。
     fn create(write: PendingWrite) -> io::Result<Self> {
         let original = if write.path.exists() {
             Some(fs::read(&write.path)?)
@@ -37,10 +39,12 @@ impl StagedWrite {
         })
     }
 
+    /// 執行 `discard` 對應的處理流程。
     fn discard(self) {
         let _ = fs::remove_file(self.temp);
     }
 
+    /// 執行 `restore` 對應的處理流程。
     fn restore(&self) -> io::Result<()> {
         match &self.original {
             Some(contents) => {
@@ -62,6 +66,7 @@ impl StagedWrite {
     }
 }
 
+/// 儲存 `write_transaction` 所處理的資料。
 pub fn write_transaction(writes: Vec<PendingWrite>) -> io::Result<()> {
     let mut staged = Vec::with_capacity(writes.len());
     for write in writes {
@@ -78,6 +83,7 @@ pub fn write_transaction(writes: Vec<PendingWrite>) -> io::Result<()> {
     commit_staged(staged)
 }
 
+/// 執行 `stage_temp` 對應的處理流程。
 fn stage_temp(target: &Path, contents: &[u8]) -> io::Result<PathBuf> {
     let parent = target.parent().unwrap_or_else(|| Path::new("."));
     let filename = target
@@ -103,6 +109,7 @@ fn stage_temp(target: &Path, contents: &[u8]) -> io::Result<PathBuf> {
     }
 }
 
+/// 執行 `commit_staged` 對應的處理流程。
 fn commit_staged(staged: Vec<StagedWrite>) -> io::Result<()> {
     let mut committed = Vec::with_capacity(staged.len());
     let mut remaining = staged.into_iter();
@@ -133,11 +140,13 @@ fn commit_staged(staged: Vec<StagedWrite>) -> io::Result<()> {
 }
 
 #[cfg(not(windows))]
+/// 執行 `replace_file` 對應的處理流程。
 fn replace_file(source: &Path, target: &Path) -> io::Result<()> {
     fs::rename(source, target)
 }
 
 #[cfg(windows)]
+/// 執行 `replace_file` 對應的處理流程。
 fn replace_file(source: &Path, target: &Path) -> io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use winapi::um::winbase::{MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW};
@@ -163,6 +172,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 驗證 `staging_failure_keeps_every_original_file` 的行為符合預期。
     fn staging_failure_keeps_every_original_file() {
         let root = std::env::temp_dir().join(format!("fcd-atomic-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);

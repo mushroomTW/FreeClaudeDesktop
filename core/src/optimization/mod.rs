@@ -135,6 +135,7 @@ pub fn build_text_sse(
         .unwrap()
 }
 
+/// 處理 `request_is_stream` 對應的請求。
 fn request_is_stream(body_str: &str) -> bool {
     serde_json::from_str::<Value>(body_str)
         .ok()
@@ -142,6 +143,7 @@ fn request_is_stream(body_str: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// 建立 `build_optimized_text_response` 所需的結果。
 fn build_optimized_text_response(
     body_str: &str,
     model: &str,
@@ -243,6 +245,7 @@ pub async fn try_optimizations(
     None
 }
 
+/// 解析 `extract_model` 所需的資料。
 fn extract_model(body_str: &str) -> String {
     serde_json::from_str::<Value>(body_str)
         .ok()
@@ -257,6 +260,7 @@ mod tests {
     use axum::http::header::CONTENT_TYPE;
 
     #[tokio::test]
+    /// 驗證 `non_stream_optimization_returns_json_message` 的行為符合預期。
     async fn non_stream_optimization_returns_json_message() {
         let settings = Settings::default();
         let body = json!({
@@ -284,6 +288,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 驗證 `web_fetch_blocks_private_network_when_disabled` 的行為符合預期。
     async fn web_fetch_blocks_private_network_when_disabled() {
         let settings = Settings {
             enable_web_server_tools: true,
@@ -316,6 +321,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 驗證 `web_fetch_returns_page_text_when_allowed` 的行為符合預期。
     async fn web_fetch_returns_page_text_when_allowed() {
         use axum::{Router, routing::get};
 
