@@ -2,6 +2,46 @@ use super::*;
 
 static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+#[tokio::test]
+/// 驗證 Admin 頁面與拆分後資源的引用、MIME type 及快取標頭。
+async fn admin_assets_are_embedded_and_served_with_expected_headers() {
+    let admin = handle_admin_page().await.into_response();
+    let admin_body = axum::body::to_bytes(admin.into_body(), usize::MAX)
+        .await
+        .expect("Admin HTML 應可讀取");
+    let admin_html = String::from_utf8(admin_body.to_vec()).expect("Admin HTML 應為 UTF-8");
+    assert!(admin_html.contains("href=\"/admin.css\""));
+    assert!(admin_html.contains("src=\"/admin.js\""));
+    assert!(!admin_html.contains("<style>"));
+    assert!(!admin_html.contains("<script>"));
+    assert!(!admin_html.contains(" style="));
+    assert!(!admin_html.contains(" onclick="));
+
+    let css = handle_admin_css().await.into_response();
+    assert_eq!(
+        css.headers().get("content-type").unwrap(),
+        "text/css; charset=utf-8"
+    );
+    assert_eq!(
+        css.headers().get("cache-control").unwrap(),
+        "no-cache, no-store, must-revalidate"
+    );
+    let css_body = axum::body::to_bytes(css.into_body(), usize::MAX)
+        .await
+        .expect("CSS 應可讀取");
+    assert!(String::from_utf8_lossy(&css_body).contains(":root"));
+
+    let js = handle_admin_js().await.into_response();
+    assert_eq!(
+        js.headers().get("content-type").unwrap(),
+        "text/javascript; charset=utf-8"
+    );
+    let js_body = axum::body::to_bytes(js.into_body(), usize::MAX)
+        .await
+        .expect("JavaScript 應可讀取");
+    assert!(String::from_utf8_lossy(&js_body).contains("translations"));
+}
+
 #[test]
 /// 驗證 `test_is_model_gone_or_invalid_error` 的行為符合預期。
 fn test_is_model_gone_or_invalid_error() {
@@ -128,9 +168,10 @@ fn request_diagnostic_contains_no_user_content() {
 #[test]
 /// 驗證 `test_to_public_config_excludes_plaintext_api_key` 的行為符合預期。
 fn test_to_public_config_excludes_plaintext_api_key() {
-    let settings = Settings {
-        real_api_key: "sk-test-123456789".to_string(),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.gateway.real_api_key = "sk-test-123456789".to_string();
+        settings
     };
 
     let public_cfg = to_public_config(&settings);
@@ -140,6 +181,7 @@ fn test_to_public_config_excludes_plaintext_api_key() {
     assert!(public_cfg.get("realApiKey").is_none());
     assert!(public_cfg.get("apiKey").is_none());
     assert!(public_cfg.get("proxyAuthToken").is_none());
+    assert!(public_cfg.get("gateway").is_none());
 
     let serialized = serde_json::to_string(&public_cfg).unwrap();
     assert!(!serialized.contains("sk-test-123456789"));
@@ -228,32 +270,34 @@ async fn test_companion_offline_fails() {
         std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
     }
 
-    let settings_file = crate::config::settings_file();
+    let settings_file = free_claude_core::config::settings_file();
     let settings_dir = settings_file.parent().expect("設定檔目錄");
     std::fs::create_dir_all(settings_dir).unwrap();
 
-    let settings = Settings {
-        real_base_url: "https://api.anthropic.com".to_string(),
-        real_api_key: "protected_key".to_string(),
-        real_auth_scheme: "bearer".to_string(),
-        proxy_auth_token: "test_token".to_string(),
-        active_port: Some(3000),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.gateway.real_base_url = "https://api.anthropic.com".to_string();
+        settings.gateway.real_api_key = "protected_key".to_string();
+        settings.gateway.real_auth_scheme = "bearer".to_string();
+        settings.gateway.proxy_auth_token = "test_token".to_string();
+        settings.desktop.active_port = Some(3000);
+        settings
     };
     let mock_settings = serde_json::to_string(&settings).unwrap();
     std::fs::write(&settings_file, mock_settings).unwrap();
 
-    {
-        let mut active = ACTIVE_COMPANION.lock().await;
-        *active = None;
-    }
+    let companion_state = CompanionState::default();
 
     let mut headers = HeaderMap::new();
     headers.insert("Authorization", "Bearer test_token".parse().unwrap());
 
-    let response = handle_admin_rpc(headers, Json(AdminRpcRequest::DetectClaude))
-        .await
-        .into_response();
+    let response = handle_admin_rpc(
+        axum::extract::State(companion_state),
+        headers,
+        Json(AdminRpcRequest::DetectClaude),
+    )
+    .await
+    .into_response();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -299,24 +343,26 @@ async fn test_companion_forwarding_success() {
         std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
     }
 
-    let settings_file = crate::config::settings_file();
+    let settings_file = free_claude_core::config::settings_file();
     let settings_dir = settings_file.parent().expect("設定檔目錄");
     std::fs::create_dir_all(settings_dir).unwrap();
 
-    let settings = Settings {
-        real_base_url: "https://api.anthropic.com".to_string(),
-        real_api_key: "protected_key".to_string(),
-        real_auth_scheme: "bearer".to_string(),
-        proxy_auth_token: "test_token".to_string(),
-        active_port: Some(3000),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.gateway.real_base_url = "https://api.anthropic.com".to_string();
+        settings.gateway.real_api_key = "protected_key".to_string();
+        settings.gateway.real_auth_scheme = "bearer".to_string();
+        settings.gateway.proxy_auth_token = "test_token".to_string();
+        settings.desktop.active_port = Some(3000);
+        settings
     };
     let mock_settings = serde_json::to_string(&settings).unwrap();
     std::fs::write(&settings_file, mock_settings).unwrap();
 
+    let companion_state = CompanionState::default();
     let (tx, mut rx) = mpsc::unbounded_channel::<ProxyToCompanionMessage>();
     {
-        let mut active = ACTIVE_COMPANION.lock().await;
+        let mut active = companion_state.active().lock().await;
         *active = Some(ActiveCompanion { tx });
     }
 
@@ -334,9 +380,13 @@ async fn test_companion_forwarding_success() {
 
     let headers = HeaderMap::new();
 
-    let response = handle_admin_rpc(headers, Json(AdminRpcRequest::DetectClaude))
-        .await
-        .into_response();
+    let response = handle_admin_rpc(
+        axum::extract::State(companion_state.clone()),
+        headers,
+        Json(AdminRpcRequest::DetectClaude),
+    )
+    .await
+    .into_response();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body_bytes = axum::body::to_bytes(response.into_body(), 1024)
@@ -347,7 +397,7 @@ async fn test_companion_forwarding_success() {
 
     mock_companion_task.await.unwrap();
     {
-        let mut active = ACTIVE_COMPANION.lock().await;
+        let mut active = companion_state.active().lock().await;
         *active = None;
     }
     let _ = std::fs::remove_dir_all(&temp_dir);

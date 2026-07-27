@@ -241,9 +241,10 @@ fn rewrites_stale_mapped_model_to_fallback_route() {
         "deepseek-v4-flash".to_string(),
     );
     routes.insert("claude-opus-4-8[3]".to_string(), "glm-5.1".to_string());
-    let settings = Settings {
-        real_model_routes: routes,
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.models.real_model_routes = routes;
+        settings
     };
 
     let rewritten = rewrite_stale_model_request(

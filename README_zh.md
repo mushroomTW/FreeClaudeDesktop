@@ -113,9 +113,9 @@ freeclaude stop
 
 預設連接埠為 `3000`。設定 `FREECLAUDE_PROXY_PORT` 可使用其他本機連接埠；`start` 會等待 `/healthz` 成功後才回報完成。
 
-`freeclaude configure` 會開啟同源的 `/admin` Web Admin 頁面。不需要登入或 Proxy Token，即可查看狀態與更新 Gateway 設定。API key 儲存在作業系統 keyring，Admin API 不會回傳它。
+`freeclaude configure` 會開啟同源的 `/dashboard` Web Admin 頁面。不需要登入或 Proxy Token，即可查看狀態與更新 Gateway 設定。API key 儲存在作業系統 keyring，Admin API 不會回傳它。
 
-執行 `freeclaude start` 後，也可直接開啟 [http://127.0.0.1:3000/admin](http://127.0.0.1:3000/admin) 使用 Web Admin。
+執行 `freeclaude start` 後，也可直接開啟 [http://127.0.0.1:3000/dashboard](http://127.0.0.1:3000/dashboard) 使用 Web Admin。
 
 ```text
 GET  /healthz

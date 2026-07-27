@@ -1,18 +1,14 @@
-pub use free_claude_core::gateway_client;
+pub mod admin_assets;
+pub mod admin_settings;
+pub mod companion;
 pub mod handler;
+pub mod messages_probe;
+pub mod model_retry;
 pub mod models_endpoint;
+pub mod optimization_response;
 pub mod router;
 pub mod streaming;
-
-use std::sync::atomic::AtomicBool;
-
-pub static LAUNCHER_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
-pub static TRAY_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-pub static TRAY_THREAD: std::sync::OnceLock<std::thread::Thread> = std::sync::OnceLock::new();
-
-pub use free_claude_core::{
-    is_authorized_proxy_request, is_valid_proxy_authorization, is_valid_proxy_bearer,
-};
+pub mod upstream;
 
 /// 執行 `app_url` 對應的處理流程。
 pub fn app_url(port: u16) -> String {

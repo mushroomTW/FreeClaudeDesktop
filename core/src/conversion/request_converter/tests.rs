@@ -3,9 +3,10 @@ use super::*;
 #[test]
 /// 驗證 `test_role_mapping` 的行為符合預期。
 fn test_role_mapping() {
-    let settings = Settings {
-        real_base_url: "https://openrouter.ai/api".to_string(),
-        ..Default::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.gateway.real_base_url = "https://openrouter.ai/api".to_string();
+        settings
     };
     // Verify User and Assistant roles map correctly
     let body = json!({
@@ -85,10 +86,11 @@ fn thinking_budget_clamps_to_model_reasoning_effort_levels() {
         "claude-sonnet-4-6[0]".to_string(),
         vec!["none".to_string(), "low".to_string(), "medium".to_string()],
     );
-    let settings = Settings {
-        real_model_routes: routes,
-        real_model_reasoning_efforts: efforts,
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.models.real_model_routes = routes;
+        settings.models.real_model_reasoning_efforts = efforts;
+        settings
     };
     let body = json!({
         "model": "claude-sonnet-4-6[0]",
@@ -114,11 +116,12 @@ fn resolve_model_route_handles_1m_suffix_and_fallbacks() {
     routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
     routes.insert("claude-opus-4-8[0]".to_string(), "gpt-4o".to_string());
 
-    let settings = Settings {
-        real_model_routes: routes,
-        discovered_models: vec!["nim-medium".to_string(), "gpt-4o".to_string()],
-        real_model: Some("default-model".to_string()),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.models.real_model_routes = routes;
+        settings.models.discovered_models = vec!["nim-medium".to_string(), "gpt-4o".to_string()];
+        settings.models.real_model = Some("default-model".to_string());
+        settings
     };
 
     assert_eq!(
@@ -149,10 +152,11 @@ fn resolve_model_route_robust_bracket_and_fuzzy_matching() {
     );
     routes.insert("z-sonnet".to_string(), "target-z-sonnet".to_string());
 
-    let settings = Settings {
-        real_model_routes: routes,
-        discovered_models: vec![],
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.models.real_model_routes = routes;
+        settings.models.discovered_models = vec![];
+        settings
     };
 
     assert_eq!(
@@ -177,11 +181,12 @@ fn resolve_model_route_applies_fallback_safety_net_for_local_aliases() {
     let mut routes = std::collections::HashMap::new();
     routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
 
-    let settings = Settings {
-        real_model_routes: routes,
-        discovered_models: vec!["gpt-4o".to_string()],
-        real_model: None,
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.models.real_model_routes = routes;
+        settings.models.discovered_models = vec!["gpt-4o".to_string()];
+        settings.models.real_model = None;
+        settings
     };
 
     assert_eq!(
@@ -189,11 +194,12 @@ fn resolve_model_route_applies_fallback_safety_net_for_local_aliases() {
         Some("nim-medium".to_string())
     );
 
-    let settings_empty_routes = Settings {
-        real_model_routes: std::collections::HashMap::new(),
-        discovered_models: vec!["gpt-4o".to_string()],
-        real_model: None,
-        ..Settings::default()
+    let settings_empty_routes = {
+        let mut settings = Settings::default();
+        settings.models.real_model_routes = std::collections::HashMap::new();
+        settings.models.discovered_models = vec!["gpt-4o".to_string()];
+        settings.models.real_model = None;
+        settings
     };
     assert_eq!(
         resolve_model_route("claude-haiku-4-5[2]", &settings_empty_routes),
@@ -209,10 +215,11 @@ fn resolve_model_route_prefers_family_override_over_dynamic_route() {
         "claude-haiku-4-5[2]".to_string(),
         "diffusiongemma-26b".to_string(),
     );
-    let settings = Settings {
-        real_model_routes: routes,
-        real_model_haiku: Some("nemotron-3-super-120b".to_string()),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.models.real_model_routes = routes;
+        settings.models.real_model_haiku = Some("nemotron-3-super-120b".to_string());
+        settings
     };
 
     assert_eq!(

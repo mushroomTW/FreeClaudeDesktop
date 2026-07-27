@@ -7,22 +7,26 @@ pub mod command_utils;
 pub mod detection;
 pub mod web_tools;
 
-use axum::{Json, body::Bytes, response::IntoResponse};
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime};
 
 use crate::config::Settings;
 use detection::*;
 
-/// One-shot response for an intercepted optimization.
+/// 本機最佳化命中後產生的傳輸中立結果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum OptimizationResponse {
+    Json(Value),
+    Sse(Vec<String>),
+}
+
+/// 建立一次性 JSON 回應內容。
 pub fn build_text_response(
     model: &str,
     text: &str,
     input_tokens: u64,
     output_tokens: u64,
-) -> impl IntoResponse {
-    use axum::http::StatusCode;
-
+) -> Value {
     let msg_id = format!(
         "msg_opt_{}",
         SystemTime::now()
@@ -46,21 +50,16 @@ pub fn build_text_response(
         }
     });
 
-    (StatusCode::OK, Json(response)).into_response()
+    response
 }
 
-/// Build a simple SSE stream from pre-cooked events.
-///
-/// The result is an `axum::response::Response` with `Content-Type: text/event-stream`.
+/// 建立預先產生的 SSE 事件。
 pub fn build_text_sse(
     model: &str,
     text: &str,
-    _input_tokens: u64,
-    _output_tokens: u64,
-) -> axum::response::Response {
-    use axum::body::Body;
-    use axum::http::StatusCode;
-
+    input_tokens: u64,
+    output_tokens: u64,
+) -> Vec<String> {
     let msg_id = format!(
         "msg_opt_sse_{}",
         SystemTime::now()
@@ -69,7 +68,7 @@ pub fn build_text_sse(
             .as_millis()
     );
 
-    let events = vec![
+    vec![
         format!(
             "event: message_start\ndata: {}\n\n",
             json!({
@@ -81,7 +80,7 @@ pub fn build_text_sse(
                     "content": [],
                     "model": model,
                     "stop_reason": null,
-                    "usage": { "input_tokens": _input_tokens, "output_tokens": 0 }
+                    "usage": { "input_tokens": input_tokens, "output_tokens": 0 }
                 }
             })
         ),
@@ -108,31 +107,11 @@ pub fn build_text_sse(
             json!({
                 "type": "message_delta",
                 "delta": { "stop_reason": "end_turn", "stop_sequence": null },
-                "usage": { "input_tokens": _input_tokens, "output_tokens": _output_tokens }
+                "usage": { "input_tokens": input_tokens, "output_tokens": output_tokens }
             })
         ),
         "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n".to_string(),
-    ];
-
-    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::convert::Infallible>>(10);
-    let _model_owned = model.to_string();
-    let _text_owned = text.to_string();
-    tokio::spawn(async move {
-        for event in events {
-            let _ = tx.send(Ok(Bytes::from(event))).await;
-        }
-    });
-
-    let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
-    let body = Body::from_stream(stream);
-
-    axum::response::Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", "text/event-stream; charset=utf-8")
-        .header("Cache-Control", "no-cache")
-        .header("Connection", "keep-alive")
-        .body(body)
-        .unwrap()
+    ]
 }
 
 /// 處理 `request_is_stream` 對應的請求。
@@ -150,11 +129,16 @@ fn build_optimized_text_response(
     text: &str,
     input_tokens: u64,
     output_tokens: u64,
-) -> axum::response::Response {
+) -> OptimizationResponse {
     if request_is_stream(body_str) {
-        build_text_sse(model, text, input_tokens, output_tokens)
+        OptimizationResponse::Sse(build_text_sse(model, text, input_tokens, output_tokens))
     } else {
-        build_text_response(model, text, input_tokens, output_tokens).into_response()
+        OptimizationResponse::Json(build_text_response(
+            model,
+            text,
+            input_tokens,
+            output_tokens,
+        ))
     }
 }
 
@@ -172,9 +156,9 @@ fn build_optimized_text_response(
 pub async fn try_optimizations(
     body_str: &str,
     settings: &Settings,
-) -> Option<axum::response::Response> {
+) -> Option<OptimizationResponse> {
     // 1. Quota check (detect first, trivial cost)
-    if settings.enable_quota_check_mock && is_quota_check_request(body_str) {
+    if settings.optimizations.enable_quota_check_mock && is_quota_check_request(body_str) {
         tracing::info!("Optimization: mocked quota check");
         let model = extract_model(body_str);
         return Some(build_optimized_text_response(
@@ -187,7 +171,7 @@ pub async fn try_optimizations(
     }
 
     // 2. Prefix detection
-    if settings.enable_prefix_detection
+    if settings.optimizations.enable_prefix_detection
         && let Some(prefix) = extract_command_prefix(body_str)
     {
         tracing::info!("Optimization: fast prefix detection");
@@ -198,7 +182,8 @@ pub async fn try_optimizations(
     }
 
     // 3. Title generation skip
-    if settings.enable_title_generation_skip && is_title_generation_request(body_str) {
+    if settings.optimizations.enable_title_generation_skip && is_title_generation_request(body_str)
+    {
         tracing::info!("Optimization: skipped title generation");
         let model = extract_model(body_str);
         return Some(build_optimized_text_response(
@@ -211,14 +196,14 @@ pub async fn try_optimizations(
     }
 
     // 4. Suggestion mode skip
-    if settings.enable_suggestion_mode_skip && is_suggestion_mode_request(body_str) {
+    if settings.optimizations.enable_suggestion_mode_skip && is_suggestion_mode_request(body_str) {
         tracing::info!("Optimization: skipped suggestion mode");
         let model = extract_model(body_str);
         return Some(build_optimized_text_response(body_str, &model, "", 100, 1));
     }
 
     // 5. Filepath extraction
-    if settings.enable_filepath_extraction_mock
+    if settings.optimizations.enable_filepath_extraction_mock
         && let Some(filepaths) = extract_filepaths(body_str)
     {
         tracing::info!("Optimization: mocked filepath extraction");
@@ -229,7 +214,7 @@ pub async fn try_optimizations(
     }
 
     // 6. Web server tools
-    if settings.enable_web_server_tools
+    if settings.optimizations.enable_web_server_tools
         && let Some((_id, name, input)) = web_tools::extract_latest_web_tool_call(body_str)
     {
         let policy = web_tools::policy_from_settings(settings);
@@ -257,7 +242,6 @@ fn extract_model(body_str: &str) -> String {
 mod tests {
     use super::*;
     use crate::config::Settings;
-    use axum::http::header::CONTENT_TYPE;
 
     #[tokio::test]
     /// 驗證 `non_stream_optimization_returns_json_message` 的行為符合預期。
@@ -272,29 +256,22 @@ mod tests {
         })
         .to_string();
 
-        let response = try_optimizations(&body, &settings).await.unwrap();
-        let content_type = response
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("");
-        assert!(!content_type.starts_with("text/event-stream"));
-
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        let OptimizationResponse::Json(value) = try_optimizations(&body, &settings).await.unwrap()
+        else {
+            panic!("非串流請求應回傳 JSON");
+        };
         assert_eq!(value["content"][0]["text"], "配額檢查通過。");
     }
 
     #[tokio::test]
     /// 驗證 `web_fetch_blocks_private_network_when_disabled` 的行為符合預期。
     async fn web_fetch_blocks_private_network_when_disabled() {
-        let settings = Settings {
-            enable_web_server_tools: true,
-            web_fetch_allowed_schemes: "http,https".to_string(),
-            web_fetch_allow_private_networks: false,
-            ..Settings::default()
+        let settings = {
+            let mut settings = Settings::default();
+            settings.optimizations.enable_web_server_tools = true;
+            settings.optimizations.web_fetch_allowed_schemes = "http,https".to_string();
+            settings.optimizations.web_fetch_allow_private_networks = false;
+            settings
         };
         let body = json!({
             "model": "claude-test",
@@ -310,11 +287,10 @@ mod tests {
         })
         .to_string();
 
-        let response = try_optimizations(&body, &settings).await.unwrap();
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        let OptimizationResponse::Json(value) = try_optimizations(&body, &settings).await.unwrap()
+        else {
+            panic!("非串流請求應回傳 JSON");
+        };
         let text = value["content"][0]["text"].as_str().unwrap();
 
         assert!(text.contains("Private network access is not allowed"));
@@ -332,11 +308,12 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
 
-        let settings = Settings {
-            enable_web_server_tools: true,
-            web_fetch_allowed_schemes: "http,https".to_string(),
-            web_fetch_allow_private_networks: true,
-            ..Settings::default()
+        let settings = {
+            let mut settings = Settings::default();
+            settings.optimizations.enable_web_server_tools = true;
+            settings.optimizations.web_fetch_allowed_schemes = "http,https".to_string();
+            settings.optimizations.web_fetch_allow_private_networks = true;
+            settings
         };
         let body = json!({
             "model": "claude-test",
@@ -352,11 +329,10 @@ mod tests {
         })
         .to_string();
 
-        let response = try_optimizations(&body, &settings).await.unwrap();
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        let OptimizationResponse::Json(value) = try_optimizations(&body, &settings).await.unwrap()
+        else {
+            panic!("非串流請求應回傳 JSON");
+        };
         let text = value["content"][0]["text"].as_str().unwrap();
 
         assert!(text.contains("hello from web fetch"));

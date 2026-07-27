@@ -75,7 +75,7 @@ fn resolve_api_key_with(
 ) -> AppResult<String> {
     if api_key.trim().is_empty() {
         existing
-            .map(|settings| decrypt(&settings.real_api_key))
+            .map(|settings| decrypt(&settings.gateway.real_api_key))
             .transpose()
             .map(Option::unwrap_or_default)
     } else {
@@ -212,7 +212,7 @@ async fn save_or_refresh(
         .or_else(|| {
             existing
                 .as_ref()
-                .map(|settings| settings.discovered_models.clone())
+                .map(|settings| settings.models.discovered_models.clone())
         })
         .unwrap_or_default();
     if let Some(models) = normalized.as_mut() {
@@ -225,7 +225,7 @@ async fn save_or_refresh(
         .or_else(|| {
             existing
                 .as_ref()
-                .map(|settings| settings.real_model_routes.clone())
+                .map(|settings| settings.models.real_model_routes.clone())
         })
         .unwrap_or_default();
     let reasoning_efforts = normalized
@@ -234,7 +234,7 @@ async fn save_or_refresh(
         .or_else(|| {
             existing
                 .as_ref()
-                .map(|settings| settings.real_model_reasoning_efforts.clone())
+                .map(|settings| settings.models.real_model_reasoning_efforts.clone())
         })
         .unwrap_or_default();
     let inference_models = normalized
@@ -254,54 +254,68 @@ async fn save_or_refresh(
 
     run_config_io(move || {
         let stored_api_key = protect_secret(&real_api_key)?;
-        let proxy_auth_token = match existing.as_ref().map(|s| s.proxy_auth_token.as_str()) {
+        let proxy_auth_token = match existing
+            .as_ref()
+            .map(|s| s.gateway.proxy_auth_token.as_str())
+        {
             Some(token) if !token.is_empty() && token != crate::constants::PROXY_AUTH_TOKEN => {
                 token.to_string()
             }
             _ => crate::config::generate_proxy_auth_token()?,
         };
+        let custom_claude_path = input.custom_claude_path.unwrap_or_else(|| {
+            existing
+                .as_ref()
+                .and_then(|settings| settings.desktop.custom_claude_path.clone())
+        });
         let settings = Settings {
-            real_base_url: base_url,
-            real_api_key: stored_api_key,
-            real_auth_scheme: input.auth_scheme,
-            real_model: input
-                .real_model
-                .or_else(|| existing.as_ref()?.real_model.clone()),
-            real_model_sonnet: input
-                .real_model_sonnet
-                .or_else(|| existing.as_ref()?.real_model_sonnet.clone()),
-            real_model_opus: input
-                .real_model_opus
-                .or_else(|| existing.as_ref()?.real_model_opus.clone()),
-            real_model_haiku: input
-                .real_model_haiku
-                .or_else(|| existing.as_ref()?.real_model_haiku.clone()),
-            real_model_routes: routes,
-            real_model_reasoning_efforts: reasoning_efforts,
-            discovered_models,
-            model_reasoning_overrides: input.model_reasoning_overrides,
-            model_1m_overrides: input.model_1m_overrides,
-            model_1m_prefer_overrides: input.model_1m_prefer_overrides,
-            model_visibility_overrides: input.model_visibility_overrides,
-            proxy_auth_token: proxy_auth_token.clone(),
-            custom_claude_path: input.custom_claude_path.unwrap_or_else(|| {
-                existing
-                    .as_ref()
-                    .and_then(|settings| settings.custom_claude_path.clone())
-            }),
-            active_port: Some(input.port),
-            transport_type: input.transport_type,
-            reasoning_replay_mode: input.reasoning_replay_mode,
-            enable_quota_check_mock: input.enable_quota_check_mock,
-            enable_prefix_detection: input.enable_prefix_detection,
-            enable_title_generation_skip: input.enable_title_generation_skip,
-            enable_suggestion_mode_skip: input.enable_suggestion_mode_skip,
-            enable_filepath_extraction_mock: input.enable_filepath_extraction_mock,
-            enable_web_server_tools: input.enable_web_server_tools,
-            web_fetch_allowed_schemes: input.web_fetch_allowed_schemes,
-            web_fetch_allow_private_networks: input.web_fetch_allow_private_networks,
-            theme_mode: input.theme_mode,
-            language: input.language,
+            gateway: crate::config::GatewaySettings {
+                real_base_url: base_url,
+                real_api_key: stored_api_key,
+                real_auth_scheme: input.auth_scheme,
+                transport_type: input.transport_type,
+                proxy_auth_token: proxy_auth_token.clone(),
+            },
+            models: crate::config::ModelSettings {
+                real_model: input
+                    .real_model
+                    .or_else(|| existing.as_ref()?.models.real_model.clone()),
+                real_model_sonnet: input
+                    .real_model_sonnet
+                    .or_else(|| existing.as_ref()?.models.real_model_sonnet.clone()),
+                real_model_opus: input
+                    .real_model_opus
+                    .or_else(|| existing.as_ref()?.models.real_model_opus.clone()),
+                real_model_haiku: input
+                    .real_model_haiku
+                    .or_else(|| existing.as_ref()?.models.real_model_haiku.clone()),
+                real_model_routes: routes,
+                real_model_reasoning_efforts: reasoning_efforts,
+                discovered_models,
+                model_reasoning_overrides: input.model_reasoning_overrides,
+                model_1m_overrides: input.model_1m_overrides,
+                model_1m_prefer_overrides: input.model_1m_prefer_overrides,
+                model_visibility_overrides: input.model_visibility_overrides,
+                reasoning_replay_mode: input.reasoning_replay_mode,
+            },
+            optimizations: crate::config::OptimizationSettings {
+                enable_quota_check_mock: input.enable_quota_check_mock,
+                enable_prefix_detection: input.enable_prefix_detection,
+                enable_title_generation_skip: input.enable_title_generation_skip,
+                enable_suggestion_mode_skip: input.enable_suggestion_mode_skip,
+                enable_filepath_extraction_mock: input.enable_filepath_extraction_mock,
+                enable_web_server_tools: input.enable_web_server_tools,
+                web_fetch_allowed_schemes: input.web_fetch_allowed_schemes,
+                web_fetch_allow_private_networks: input.web_fetch_allow_private_networks,
+            },
+            desktop: crate::config::DesktopSettings {
+                custom_claude_path,
+                active_port: Some(input.port),
+            },
+            ui: crate::config::UiSettings {
+                theme_mode: input.theme_mode,
+                language: input.language,
+            },
         };
         crate::models_cache::clear_models_cache();
         crate::config::save_launcher_settings(&settings)?;

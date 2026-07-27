@@ -8,81 +8,67 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Settings {
+    pub gateway: GatewaySettings,
+    pub models: ModelSettings,
+    pub optimizations: OptimizationSettings,
+    pub desktop: DesktopSettings,
+    pub ui: UiSettings,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GatewaySettings {
     pub real_base_url: String,
     pub real_api_key: String,
     pub real_auth_scheme: String,
+    pub transport_type: String,
+    pub proxy_auth_token: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModelSettings {
     pub real_model: Option<String>,
-    #[serde(default)]
     pub real_model_sonnet: Option<String>,
-    #[serde(default)]
     pub real_model_opus: Option<String>,
-    #[serde(default)]
     pub real_model_haiku: Option<String>,
     pub real_model_routes: HashMap<String, String>,
-    #[serde(default)]
     pub real_model_reasoning_efforts: HashMap<String, Vec<String>>,
-    #[serde(default)]
     pub discovered_models: Vec<String>,
-    #[serde(default)]
     pub model_reasoning_overrides: HashMap<String, String>,
-    #[serde(default)]
     pub model_1m_overrides: HashMap<String, bool>,
-    #[serde(default)]
     pub model_1m_prefer_overrides: HashMap<String, bool>,
-    /// 是否在 Claude Desktop 顯示各上游模型；未設定時預設顯示。
-    #[serde(default)]
     pub model_visibility_overrides: HashMap<String, bool>,
-    /// 寫入 Claude Desktop gateway config 的本機 proxy token
-    #[serde(default = "default_proxy_auth_token")]
-    pub proxy_auth_token: String,
-    /// Web 或桌面端指定的 Claude Desktop 執行檔路徑；為 None 時使用自動偵測。
-    #[serde(default)]
-    pub custom_claude_path: Option<String>,
-    /// 當前啟用的代理埠號
-    #[serde(default)]
-    pub active_port: Option<u16>,
-    /// 上游通訊協定類型：
-    /// - "openai_chat": 需要將 Anthropic 請求轉換為 OpenAI Chat Completions 格式（預設）
-    /// - "anthropic_messages": 原生 Anthropic Messages API，直接 passthrough
-    #[serde(default)]
-    pub transport_type: String,
-    /// 推理/思考塊串流重播模式：
-    /// - "inline": 將思考內容包裝在 <antThinking>...</antThinking> 中並內嵌於文字串流
-    /// - "separate": 以 Claude 原生的獨立 thinking 區塊輸出（預設）
-    #[serde(default)]
     pub reasoning_replay_mode: String,
-    /// 是否啟用配額檢查模擬（攔截 max_tokens=1 且包含 "quota" 的請求）
-    #[serde(default = "default_true")]
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OptimizationSettings {
     pub enable_quota_check_mock: bool,
-    /// 是否啟用快速前綴檢測（解析 shell 命令前綴，避免呼叫 LLM）
-    #[serde(default = "default_true")]
     pub enable_prefix_detection: bool,
-    /// 是否啟用標題生成跳過（回傳固定標題 "Conversation"）
-    #[serde(default = "default_true")]
     pub enable_title_generation_skip: bool,
-    /// 是否啟用建議模式跳過（回傳空建議）
-    #[serde(default = "default_true")]
     pub enable_suggestion_mode_skip: bool,
-    /// 是否啟用檔案路徑提取模擬（從命令輸出中本地提取檔案路徑）
-    #[serde(default = "default_true")]
     pub enable_filepath_extraction_mock: bool,
-    /// 是否啟用 Web 工具攔截（本地執行 web_search/web_fetch）
-    #[serde(default = "default_false")]
     pub enable_web_server_tools: bool,
-    /// web_fetch 允許的 URL 方案清單（逗號分隔，如 "http,https"）
-    #[serde(default = "default_web_fetch_schemes")]
     pub web_fetch_allowed_schemes: String,
-    /// 是否允許 web_fetch 存取私有網路目標
-    #[serde(default = "default_false")]
     pub web_fetch_allow_private_networks: bool,
-    /// 主題模式 ("light", "dark", "system")
-    #[serde(default = "default_theme_mode")]
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DesktopSettings {
+    pub custom_claude_path: Option<String>,
+    pub active_port: Option<u16>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UiSettings {
     pub theme_mode: String,
-    /// 語言設定 ("en", "zh-tw")
-    #[serde(default = "default_language")]
     pub language: String,
 }
 
@@ -292,37 +278,36 @@ pub fn generate_proxy_auth_token() -> AppResult<String> {
     Ok(token)
 }
 
-impl Default for Settings {
-    /// 建立此型別的預設值。
+impl Default for GatewaySettings {
     fn default() -> Self {
         Self {
             real_base_url: String::new(),
             real_api_key: String::new(),
             real_auth_scheme: String::new(),
-            real_model: None,
-            real_model_sonnet: None,
-            real_model_opus: None,
-            real_model_haiku: None,
-            real_model_routes: HashMap::new(),
-            real_model_reasoning_efforts: HashMap::new(),
-            discovered_models: Vec::new(),
-            model_reasoning_overrides: HashMap::new(),
-            model_1m_overrides: HashMap::new(),
-            model_1m_prefer_overrides: HashMap::new(),
-            model_visibility_overrides: HashMap::new(),
-            proxy_auth_token: default_proxy_auth_token(),
-            custom_claude_path: None,
-            active_port: None,
             transport_type: String::new(),
-            reasoning_replay_mode: String::new(),
+            proxy_auth_token: default_proxy_auth_token(),
+        }
+    }
+}
+
+impl Default for OptimizationSettings {
+    fn default() -> Self {
+        Self {
             enable_quota_check_mock: true,
             enable_prefix_detection: true,
             enable_title_generation_skip: true,
             enable_suggestion_mode_skip: true,
             enable_filepath_extraction_mock: true,
             enable_web_server_tools: false,
-            web_fetch_allowed_schemes: "http,https".to_string(),
+            web_fetch_allowed_schemes: default_web_fetch_schemes(),
             web_fetch_allow_private_networks: false,
+        }
+    }
+}
+
+impl Default for UiSettings {
+    fn default() -> Self {
+        Self {
             theme_mode: default_theme_mode(),
             language: default_language(),
         }
@@ -342,30 +327,44 @@ pub fn parse_json_text(text: &str) -> serde_json::Result<Value> {
 
 /// 轉換 `to_public_config` 對應的資料格式。
 pub fn to_public_config(settings: &Settings) -> Value {
-    let has_key = unprotect_secret(&settings.real_api_key)
+    let has_key = unprotect_secret(&settings.gateway.real_api_key)
         .map(|key| !key.is_empty())
-        .unwrap_or(!settings.real_api_key.is_empty());
+        .unwrap_or(!settings.gateway.real_api_key.is_empty());
 
-    let mut map = match serde_json::to_value(settings) {
-        Ok(Value::Object(m)) => m,
-        _ => serde_json::Map::new(),
-    };
-
-    map.remove("realApiKey");
-    map.remove("proxyAuthToken");
-    map.insert("hasApiKey".to_string(), json!(has_key));
-
-    map.insert("baseUrl".to_string(), json!(settings.real_base_url));
-    map.insert(
-        "authScheme".to_string(),
-        json!(if settings.real_auth_scheme.is_empty() {
+    json!({
+        "baseUrl": settings.gateway.real_base_url,
+        "authScheme": if settings.gateway.real_auth_scheme.is_empty() {
             default_auth_scheme()
         } else {
-            settings.real_auth_scheme.clone()
-        }),
-    );
-
-    Value::Object(map)
+            settings.gateway.real_auth_scheme.clone()
+        },
+        "hasApiKey": has_key,
+        "transportType": settings.gateway.transport_type,
+        "realModel": settings.models.real_model,
+        "realModelSonnet": settings.models.real_model_sonnet,
+        "realModelOpus": settings.models.real_model_opus,
+        "realModelHaiku": settings.models.real_model_haiku,
+        "realModelRoutes": settings.models.real_model_routes,
+        "realModelReasoningEfforts": settings.models.real_model_reasoning_efforts,
+        "discoveredModels": settings.models.discovered_models,
+        "modelReasoningOverrides": settings.models.model_reasoning_overrides,
+        "model1mOverrides": settings.models.model_1m_overrides,
+        "model1mPreferOverrides": settings.models.model_1m_prefer_overrides,
+        "modelVisibilityOverrides": settings.models.model_visibility_overrides,
+        "reasoningReplayMode": settings.models.reasoning_replay_mode,
+        "enableQuotaCheckMock": settings.optimizations.enable_quota_check_mock,
+        "enablePrefixDetection": settings.optimizations.enable_prefix_detection,
+        "enableTitleGenerationSkip": settings.optimizations.enable_title_generation_skip,
+        "enableSuggestionModeSkip": settings.optimizations.enable_suggestion_mode_skip,
+        "enableFilepathExtractionMock": settings.optimizations.enable_filepath_extraction_mock,
+        "enableWebServerTools": settings.optimizations.enable_web_server_tools,
+        "webFetchAllowedSchemes": settings.optimizations.web_fetch_allowed_schemes,
+        "webFetchAllowPrivateNetworks": settings.optimizations.web_fetch_allow_private_networks,
+        "customClaudePath": settings.desktop.custom_claude_path,
+        "activePort": settings.desktop.active_port,
+        "themeMode": settings.ui.theme_mode,
+        "language": settings.ui.language,
+    })
 }
 
 /// 執行 `settings_file` 對應的處理流程。
@@ -412,11 +411,21 @@ mod tests {
 
     #[test]
     /// 驗證 `removed_feature_field_is_not_serialized` 的行為符合預期。
-    fn removed_feature_field_is_not_serialized() {
+    fn removed_feature_field_is_rejected() {
         let mut value = serde_json::to_value(Settings::default()).unwrap();
         value["enableComputerMcpServer"] = serde_json::Value::Bool(true);
-        let settings: Settings = serde_json::from_value(value).unwrap();
-        let saved = serde_json::to_value(settings).unwrap();
-        assert!(saved.get("enableComputerMcpServer").is_none());
+        assert!(serde_json::from_value::<Settings>(value).is_err());
+    }
+
+    #[test]
+    /// 舊版扁平設定格式不得被當成有效的新設定。
+    fn flat_settings_format_is_rejected() {
+        let value = serde_json::json!({
+            "realBaseUrl": "https://example.com",
+            "realApiKey": "fallback:test",
+            "realAuthScheme": "bearer",
+            "proxyAuthToken": "token"
+        });
+        assert!(serde_json::from_value::<Settings>(value).is_err());
     }
 }

@@ -110,9 +110,9 @@ freeclaude stop
 
 The default port is `3000`. Set `FREECLAUDE_PROXY_PORT` to use another local port; `start` waits for `/healthz` before reporting success.
 
-`freeclaude configure` opens the same-origin Web Admin page at `/admin`. No sign-in or proxy token is required. API keys are stored in the operating-system keyring and are never returned by the Admin API.
+`freeclaude configure` opens the same-origin Web Admin page at `/dashboard`. No sign-in or proxy token is required. API keys are stored in the operating-system keyring and are never returned by the Admin API.
 
-After `freeclaude start`, open [http://127.0.0.1:3000/admin](http://127.0.0.1:3000/admin) to use Web Admin directly.
+After `freeclaude start`, open [http://127.0.0.1:3000/dashboard](http://127.0.0.1:3000/dashboard) to use Web Admin directly.
 
 ```text
 GET  /healthz
