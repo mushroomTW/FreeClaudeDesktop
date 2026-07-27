@@ -1,92 +1,16 @@
 #![allow(linker_messages)]
 
+mod cli_args;
 mod companion_daemon;
 mod runtime;
+mod update_check;
 
 use std::time::Duration;
 use std::{io, process::Command as ProcessCommand};
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::Parser;
+use cli_args::*;
 use serde_json::Value;
-
-#[derive(Debug, Parser)]
-#[command(name = "freeclaude", about = "FreeClaudeDesktop 本機代理管理工具")]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Debug, Subcommand)]
-enum Command {
-    Install(InstallArgs),
-    Start(RuntimeArgs),
-    Stop(RuntimeArgs),
-    Status(RuntimeArgs),
-    Configure,
-    #[command(name = "launch-claude")]
-    LaunchClaude,
-    Restore,
-    Purge(PurgeArgs),
-    Update(UpdateArgs),
-    Uninstall(UninstallArgs),
-    Autostart {
-        #[command(subcommand)]
-        command: AutostartCommand,
-    },
-    #[command(hide = true)]
-    CompanionDaemon,
-}
-
-#[derive(Debug, Args)]
-struct InstallArgs {
-    #[arg(long, value_enum, default_value_t = Runtime::Native)]
-    runtime: Runtime,
-    #[arg(long)]
-    no_autostart: bool,
-}
-
-#[derive(Debug, Args)]
-struct RuntimeArgs {
-    #[arg(long, value_enum, default_value_t = Runtime::Native)]
-    runtime: Runtime,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum Runtime {
-    Native,
-    Docker,
-}
-
-#[derive(Debug, Args)]
-struct UpdateArgs {
-    #[arg(long)]
-    check: bool,
-    #[arg(long, value_enum, default_value_t = Runtime::Native)]
-    runtime: Runtime,
-}
-
-#[derive(Debug, Args)]
-struct UninstallArgs {
-    #[arg(long, value_enum, default_value_t = Runtime::Native)]
-    runtime: Runtime,
-    #[arg(long)]
-    purge_image: bool,
-    #[arg(long)]
-    yes: bool,
-}
-
-#[derive(Debug, Args)]
-struct PurgeArgs {
-    #[arg(long)]
-    yes: bool,
-}
-
-#[derive(Debug, Subcommand)]
-enum AutostartCommand {
-    Enable,
-    Disable,
-    Status,
-}
 
 #[tokio::main]
 /// 啟動程式並執行主要流程。
@@ -175,76 +99,27 @@ fn stop(runtime: Runtime) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-/// 執行 `update` 對應的處理流程。
+/// 執行 `uninstall` 對應的處理流程。
 async fn update(args: UpdateArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let check = check_for_update().await?;
+    let check = update_check::check_for_update().await?;
     println!("{}", serde_json::to_string_pretty(&check)?);
     if args.check || !check.update_available {
         return Ok(());
     }
+
     match args.runtime {
         Runtime::Docker => {
             crate::runtime::docker::update()?;
-            println!("Docker proxy 已使用目前本機來源重新建置。");
+            println!("Docker proxy 已更新，請確認服務重新啟動完成。");
             Ok(())
         }
-        Runtime::Native => Err("為避免覆蓋執行中的原生執行檔，請下載對應 release 資產後重新執行 `freeclaude update --check` 驗證版本。".into()),
+        Runtime::Native => Err(
+            "Native runtime 不支援直接覆寫執行檔；請由 release 頁面安裝新版本，或使用 `freeclaude update --check` 僅檢查更新。"
+                .into(),
+        ),
     }
 }
 
-#[derive(Debug, serde::Serialize)]
-struct UpdateCheck {
-    current_version: &'static str,
-    latest_version: String,
-    update_available: bool,
-    release_url: String,
-}
-
-/// 驗證 `check_for_update` 所需的條件。
-async fn check_for_update() -> Result<UpdateCheck, Box<dyn std::error::Error>> {
-    #[derive(serde::Deserialize)]
-    struct Release {
-        tag_name: String,
-        html_url: String,
-    }
-
-    let release = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .user_agent("freeclaude-cli")
-        .build()?
-        .get("https://api.github.com/repos/mushroomTW/FreeClaudeDesktop/releases/latest")
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<Release>()
-        .await?;
-    let latest_version = release.tag_name.trim_start_matches('v').to_string();
-    Ok(UpdateCheck {
-        current_version: env!("CARGO_PKG_VERSION"),
-        update_available: version_is_newer(&latest_version, env!("CARGO_PKG_VERSION")),
-        latest_version,
-        release_url: release.html_url,
-    })
-}
-
-/// 執行 `version_is_newer` 對應的處理流程。
-fn version_is_newer(candidate: &str, current: &str) -> bool {
-    /// 執行 `parts` 對應的處理流程。
-    fn parts(value: &str) -> Option<[u64; 3]> {
-        let mut parts = value.split('.').map(str::parse::<u64>);
-        Some([
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-        ])
-    }
-    match (parts(candidate), parts(current)) {
-        (Some(candidate), Some(current)) => candidate > current,
-        _ => false,
-    }
-}
-
-/// 執行 `uninstall` 對應的處理流程。
 fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     if !args.yes {
         return Err("uninstall 會停止服務並還原 Claude 設定；請加入 --yes 確認".into());
@@ -304,9 +179,9 @@ fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error:
 /// 啟動或執行 `open_admin` 流程。
 fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
     let port = free_claude_core::get_launcher_settings()
-        .and_then(|settings| settings.active_port)
+        .and_then(|settings| settings.desktop.active_port)
         .unwrap_or(3000);
-    let url = format!("http://127.0.0.1:{port}/admin");
+    let url = format!("http://127.0.0.1:{port}/dashboard");
 
     println!("正在開啟 Web Admin：{url}");
 
@@ -513,9 +388,9 @@ mod tests {
     #[test]
     /// 驗證 `detects_newer_three_part_versions` 的行為符合預期。
     fn detects_newer_three_part_versions() {
-        assert!(version_is_newer("0.2.0", "0.1.9"));
-        assert!(!version_is_newer("0.1.1", "0.1.1"));
-        assert!(!version_is_newer("invalid", "0.1.1"));
+        assert!(update_check::version_is_newer("0.2.0", "0.1.9"));
+        assert!(!update_check::version_is_newer("0.1.1", "0.1.1"));
+        assert!(!update_check::version_is_newer("invalid", "0.1.1"));
     }
 
     #[test]

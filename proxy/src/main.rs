@@ -1,6 +1,7 @@
 #![allow(linker_messages)]
 
-use freeclaude_proxy::{constants::DEFAULT_PORT, server};
+use free_claude_core::constants::DEFAULT_PORT;
+use freeclaude_proxy::server;
 
 #[tokio::main]
 /// 啟動程式並執行主要流程。

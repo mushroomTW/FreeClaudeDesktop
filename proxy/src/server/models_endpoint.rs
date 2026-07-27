@@ -1,9 +1,11 @@
-use crate::config_service::{load_runtime_settings, run_config_io, unprotect_runtime_api_key};
-use crate::conversion::response_converter::{
+use axum::{Json, http::HeaderMap, response::IntoResponse};
+use free_claude_core::config_service::{
+    load_runtime_settings, run_config_io, unprotect_runtime_api_key,
+};
+use free_claude_core::conversion::response_converter::{
     apply_model_visibility, build_inference_models,
     normalize_models_response_with_overrides_and_prefer1m,
 };
-use axum::{Json, http::HeaderMap, response::IntoResponse};
 use serde_json::json;
 
 // 模型快取與上游抓取邏輯統一放在 core::models_cache，作為單一來源。
@@ -39,18 +41,18 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
     };
 
     if let Some(models) = cached_models(
-        &settings.real_base_url,
-        &settings.real_auth_scheme,
-        &settings.model_reasoning_overrides,
-        &settings.model_1m_overrides,
-        &settings.model_1m_prefer_overrides,
-        &settings.model_visibility_overrides,
+        &settings.gateway.real_base_url,
+        &settings.gateway.real_auth_scheme,
+        &settings.models.model_reasoning_overrides,
+        &settings.models.model_1m_overrides,
+        &settings.models.model_1m_prefer_overrides,
+        &settings.models.model_visibility_overrides,
     ) {
         return (axum::http::StatusCode::OK, Json(models)).into_response();
     }
 
     // 3. Decrypt API key
-    let api_key = match unprotect_runtime_api_key(settings.real_api_key.clone()).await {
+    let api_key = match unprotect_runtime_api_key(settings.gateway.real_api_key.clone()).await {
         Ok(key) => key,
         Err(error) => {
             tracing::error!("<- 錯誤: 解密 API key 失敗: {:?}", error);
@@ -62,18 +64,24 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
         }
     };
 
-    tracing::info!("-> 正在獲取模型列表，Gateway: {}", settings.real_base_url);
+    tracing::info!(
+        "-> 正在獲取模型列表，Gateway: {}",
+        settings.gateway.real_base_url
+    );
 
     // 4. Fetch and normalize models
-    let models_result = if settings.transport_type != "anthropic_messages"
-        && settings.real_auth_scheme.eq_ignore_ascii_case("bearer")
+    let models_result = if settings.gateway.transport_type != "anthropic_messages"
+        && settings
+            .gateway
+            .real_auth_scheme
+            .eq_ignore_ascii_case("bearer")
     {
         fetch_models_list_typed(&settings, &api_key).await
     } else {
         fetch_models_list_async(
-            &settings.real_base_url,
+            &settings.gateway.real_base_url,
             &api_key,
-            &settings.real_auth_scheme,
+            &settings.gateway.real_auth_scheme,
         )
         .await
     };
@@ -81,9 +89,9 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
     match models_result {
         Ok(raw_models) => match normalize_models_response_with_overrides_and_prefer1m(
             raw_models,
-            &settings.model_reasoning_overrides,
-            &settings.model_1m_overrides,
-            &settings.model_1m_prefer_overrides,
+            &settings.models.model_reasoning_overrides,
+            &settings.models.model_1m_overrides,
+            &settings.models.model_1m_prefer_overrides,
         ) {
             Ok(mut normalized) => {
                 let discovered_models = normalized
@@ -91,25 +99,31 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
                     .iter()
                     .map(|model| model.provider_model_id.clone())
                     .collect();
-                apply_model_visibility(&mut normalized, &settings.model_visibility_overrides);
+                apply_model_visibility(
+                    &mut normalized,
+                    &settings.models.model_visibility_overrides,
+                );
                 tracing::info!("<- 獲取模型列表成功，模型數量: {}", normalized.data.len());
-                settings.real_model_routes = normalized.routes.clone();
-                settings.real_model_reasoning_efforts = normalized.reasoning_effort_routes.clone();
-                settings.discovered_models = discovered_models;
+                settings.models.real_model_routes = normalized.routes.clone();
+                settings.models.real_model_reasoning_efforts =
+                    normalized.reasoning_effort_routes.clone();
+                settings.models.discovered_models = discovered_models;
                 let inference_models = build_inference_models(&normalized.data);
                 let port = settings
+                    .desktop
                     .active_port
-                    .unwrap_or(crate::constants::DEFAULT_PORT);
+                    .unwrap_or(free_claude_core::constants::DEFAULT_PORT);
                 let settings_to_persist = settings.clone();
-                let config_name = format!("{}.json", crate::constants::CONFIG_ID);
+                let config_name = format!("{}.json", free_claude_core::constants::CONFIG_ID);
                 if let Err(error) = run_config_io(move || {
-                    crate::config::save_launcher_settings(&settings_to_persist)?;
-                    let content = serde_json::to_string_pretty(&crate::launcher::claude_config(
-                        port,
-                        &inference_models,
-                        &settings_to_persist.proxy_auth_token,
-                    ))?;
-                    crate::launcher::write_config_to_all_paths(&config_name, &content)
+                    free_claude_core::config::save_launcher_settings(&settings_to_persist)?;
+                    let content =
+                        serde_json::to_string_pretty(&free_claude_core::launcher::claude_config(
+                            port,
+                            &inference_models,
+                            &settings_to_persist.gateway.proxy_auth_token,
+                        ))?;
+                    free_claude_core::launcher::write_config_to_all_paths(&config_name, &content)
                 })
                 .await
                 {
@@ -122,12 +136,12 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
                 }
 
                 store_models_cache(
-                    &settings.real_base_url,
-                    &settings.real_auth_scheme,
-                    &settings.model_reasoning_overrides,
-                    &settings.model_1m_overrides,
-                    &settings.model_1m_prefer_overrides,
-                    &settings.model_visibility_overrides,
+                    &settings.gateway.real_base_url,
+                    &settings.gateway.real_auth_scheme,
+                    &settings.models.model_reasoning_overrides,
+                    &settings.models.model_1m_overrides,
+                    &settings.models.model_1m_prefer_overrides,
+                    &settings.models.model_visibility_overrides,
                     &normalized,
                 );
 
@@ -156,7 +170,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::openai::{NormalizedModel, NormalizedModels};
+    use free_claude_core::models::openai::{NormalizedModel, NormalizedModels};
     use std::collections::HashMap;
 
     /// 執行 `normalized_models` 對應的處理流程。

@@ -47,7 +47,11 @@ fn clamp_reasoning_effort<'a>(requested: &str, supported: &'a [String]) -> Optio
 /// 解析請求的 model 名稱，將其映射到適當的真實模型 ID。
 pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option<String> {
     if requested_model.is_empty() {
-        return settings.real_model.clone().filter(|m| !m.trim().is_empty());
+        return settings
+            .models
+            .real_model
+            .clone()
+            .filter(|m| !m.trim().is_empty());
     }
 
     let req_lower = requested_model.to_ascii_lowercase();
@@ -65,9 +69,9 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     // 0. 家族 override：若有為此家族指定的真實模型則直接採用。
     if let Some(fam) = family {
         let family_model = match fam {
-            "sonnet" => &settings.real_model_sonnet,
-            "opus" => &settings.real_model_opus,
-            "haiku" => &settings.real_model_haiku,
+            "sonnet" => &settings.models.real_model_sonnet,
+            "opus" => &settings.models.real_model_opus,
+            "haiku" => &settings.models.real_model_haiku,
             _ => &None,
         };
         if let Some(m) = family_model
@@ -78,7 +82,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     }
 
     // 1. 精確匹配 routes (例如 "claude-sonnet-4-6[87]" 或 "claude-sonnet-4-6[87][1m]")
-    if let Some(mapped) = settings.real_model_routes.get(requested_model) {
+    if let Some(mapped) = settings.models.real_model_routes.get(requested_model) {
         return Some(mapped.clone());
     }
 
@@ -86,15 +90,16 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
         .strip_suffix("[1m]")
         .or_else(|| requested_model.strip_suffix("[1M]"))
         .unwrap_or(requested_model);
-    if let Some(mapped) = settings.real_model_routes.get(clean_model) {
+    if let Some(mapped) = settings.models.real_model_routes.get(clean_model) {
         return Some(mapped.clone());
     }
 
     // 2. 若 requested_model 本身（或去除 [1m] 後）在 discovered_models 中，代表直接使用了上游模型名稱
     if settings
+        .models
         .discovered_models
         .iter()
-        .any(|m| m == requested_model || m == &clean_model)
+        .any(|m| m == requested_model || m == clean_model)
     {
         return Some(clean_model.to_string());
     }
@@ -115,10 +120,10 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
         }
         if let Some(end) = end_opt {
             let inner = &clean_model[start + 1..end];
-            if settings.discovered_models.iter().any(|m| m == inner) {
+            if settings.models.discovered_models.iter().any(|m| m == inner) {
                 return Some(inner.to_string());
             }
-            if let Some(mapped) = settings.real_model_routes.get(inner) {
+            if let Some(mapped) = settings.models.real_model_routes.get(inner) {
                 return Some(mapped.clone());
             }
         }
@@ -128,7 +133,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     if let Some(fam) = family {
         let mut best_key: Option<&String> = None;
         let mut best_val: Option<&String> = None;
-        for (k, v) in &settings.real_model_routes {
+        for (k, v) in &settings.models.real_model_routes {
             if k.to_ascii_lowercase().contains(fam) {
                 if let Some(bk) = best_key {
                     if k < bk {
@@ -147,7 +152,12 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     }
 
     // 4. Fallback: 使用使用者設定的全域真實模型名稱
-    if let Some(m) = settings.real_model.clone().filter(|m| !m.trim().is_empty()) {
+    if let Some(m) = settings
+        .models
+        .real_model
+        .clone()
+        .filter(|m| !m.trim().is_empty())
+    {
         return Some(m);
     }
 
@@ -164,7 +174,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     if (requested_model.contains('[') && requested_model.contains(']')) || is_indexed_claude_alias {
         // (1) 優先使用 routes 裡的真實模型；取字典序最小者確保決定性，
         //     避免 HashMap 迭代順序造成每次兜底選到不同模型。
-        if let Some(m) = settings.real_model_routes.values().min() {
+        if let Some(m) = settings.models.real_model_routes.values().min() {
             tracing::warn!(
                 "[model 映射安全兜底] 無法解析 alias {}，強制映射為 routes 內的第一個模型 {}",
                 requested_model,
@@ -173,7 +183,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
             return Some(m.clone());
         }
         // (2) 其次使用 discovered_models 裡的第一個模型
-        if let Some(m) = settings.discovered_models.first() {
+        if let Some(m) = settings.models.discovered_models.first() {
             tracing::warn!(
                 "[model 映射安全兜底] 無法解析 alias {}，強制映射為已偵測的第一個模型 {}",
                 requested_model,
@@ -220,7 +230,7 @@ pub fn anthropic_to_openai_request(
         let budget = thinking.budget_tokens.unwrap_or(1024);
         let effort = thinking_budget_to_effort(budget);
         let target_model = data["model"].as_str().unwrap_or("");
-        if let Some(supported) = settings.real_model_reasoning_efforts.get(&req.model) {
+        if let Some(supported) = settings.models.real_model_reasoning_efforts.get(&req.model) {
             if let Some(effort) = clamp_reasoning_effort(effort, supported) {
                 data["reasoning_effort"] = Value::String(effort.to_string());
             }

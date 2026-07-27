@@ -92,7 +92,7 @@ async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
     let result = match rpc_req {
         AdminRpcRequest::GetStatus => {
             json!({
-                "proxy": { "status": "ok", "port": settings.active_port },
+                "proxy": { "status": "ok", "port": settings.desktop.active_port },
                 "settings": free_claude_core::to_public_config(&settings),
             })
         }
@@ -101,7 +101,11 @@ async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
             json!({ "path": path.map(|p| p.display().to_string()) })
         }
         AdminRpcRequest::LaunchClaude => {
-            let custom_path = settings.custom_claude_path.as_deref().map(Path::new);
+            let custom_path = settings
+                .desktop
+                .custom_claude_path
+                .as_deref()
+                .map(Path::new);
             let path = free_claude_core::launch_claude(custom_path).map_err(|e| e.to_string())?;
             json!({ "path": path.display().to_string() })
         }
@@ -126,12 +130,12 @@ async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
             api_key,
         } => {
             let mut settings = free_claude_core::get_launcher_settings().unwrap_or_default();
-            settings.real_base_url = base_url;
-            settings.real_auth_scheme = auth_scheme;
+            settings.gateway.real_base_url = base_url;
+            settings.gateway.real_auth_scheme = auth_scheme;
             if let Some(key) = api_key
                 && !key.is_empty()
             {
-                settings.real_api_key =
+                settings.gateway.real_api_key =
                     free_claude_core::protect_secret(&key).map_err(|e| e.to_string())?;
             }
             free_claude_core::save_launcher_settings(&settings).map_err(|e| e.to_string())?;

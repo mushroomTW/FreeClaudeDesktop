@@ -13,14 +13,14 @@ pub struct AsyncOpenAiGatewayFactory;
 impl GatewayClientFactory for AsyncOpenAiGatewayFactory {
     /// 執行 `gateway_client` 對應的處理流程。
     fn gateway_client(&self, settings: &Settings) -> AppResult<Client<OpenAIConfig>> {
-        if settings.transport_type == "anthropic_messages" {
+        if settings.gateway.transport_type == "anthropic_messages" {
             return Err(AppError::InvalidConfig(
                 "anthropic_messages transport 不使用 async-openai client".to_string(),
             ));
         }
 
-        let api_base = openai_api_base(&settings.real_base_url)?;
-        let api_key = unprotect_secret(&settings.real_api_key)?;
+        let api_base = openai_api_base(&settings.gateway.real_base_url)?;
+        let api_key = unprotect_secret(&settings.gateway.real_api_key)?;
         let config = OpenAIConfig::new()
             .with_api_base(api_base)
             .with_api_key(api_key);

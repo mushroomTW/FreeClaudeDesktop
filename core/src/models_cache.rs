@@ -75,8 +75,12 @@ pub async fn fetch_models_list_typed(
     settings: &crate::Settings,
     api_key: &str,
 ) -> Result<Value, String> {
-    if let Ok(value) =
-        fetch_models_list_async(&settings.real_base_url, api_key, &settings.real_auth_scheme).await
+    if let Ok(value) = fetch_models_list_async(
+        &settings.gateway.real_base_url,
+        api_key,
+        &settings.gateway.real_auth_scheme,
+    )
+    .await
     {
         return Ok(value);
     }

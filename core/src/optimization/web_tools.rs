@@ -52,14 +52,15 @@ fn default_web_fetch_schemes() -> HashSet<String> {
 pub fn policy_from_settings(settings: &crate::config::Settings) -> WebFetchEgressPolicy {
     WebFetchEgressPolicy {
         allow_schemes: settings
+            .optimizations
             .web_fetch_allowed_schemes
             .split(',')
             .map(str::trim)
             .filter(|scheme| !scheme.is_empty())
             .map(str::to_ascii_lowercase)
             .collect(),
-        allow_private_networks: settings.web_fetch_allow_private_networks,
-        enabled: settings.enable_web_server_tools,
+        allow_private_networks: settings.optimizations.web_fetch_allow_private_networks,
+        enabled: settings.optimizations.enable_web_server_tools,
     }
 }
 

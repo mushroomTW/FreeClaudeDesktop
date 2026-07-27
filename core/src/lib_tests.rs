@@ -1,37 +1,6 @@
 use super::*;
 use serde_json::{Value, json};
-
-#[test]
-#[allow(clippy::type_complexity)]
-/// 驗證 `save_config_keeps_legacy_function_signature` 的行為符合預期。
-fn save_config_keeps_legacy_function_signature() {
-    let _: fn(
-        u16,
-        &str,
-        &str,
-        &str,
-        bool,
-        bool,
-        bool,
-        bool,
-        bool,
-        bool,
-        bool,
-        bool,
-        &str,
-        &str,
-        &str,
-        &str,
-        &str,
-        &HashMap<String, String>,
-        &HashMap<String, bool>,
-        &HashMap<String, bool>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    ) -> AppResult<()> = save_config;
-}
+use std::collections::HashMap;
 
 #[test]
 /// 驗證 `normalizes_provider_urls_to_messages_endpoint` 的行為符合預期。
@@ -55,9 +24,10 @@ fn rewrites_model_from_saved_routes() {
         "anthropic/claude-sonnet-4-5".to_string(),
         "openai/gpt-oss-20b:free".to_string(),
     );
-    let settings = Settings {
-        real_model_routes: routes,
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.models.real_model_routes = routes;
+        settings
     };
 
     let body = prepare_proxy_body(
@@ -83,9 +53,10 @@ fn rewrites_model_from_saved_routes_bracket_index_key() {
         "deepseek-v4-flash".to_string(),
     );
     routes.insert("claude-opus-4-8[3]".to_string(), "glm-5.1".to_string());
-    let settings = Settings {
-        real_model_routes: routes,
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.models.real_model_routes = routes;
+        settings
     };
 
     let body = prepare_proxy_body(r#"{"model":"claude-opus-4-8[0]","messages":[]}"#, &settings);
@@ -104,9 +75,10 @@ fn rewrites_model_from_saved_routes_bracket_index_key() {
 #[test]
 /// 驗證 `prepare_proxy_body_falls_back_for_unmapped_local_alias` 的行為符合預期。
 fn prepare_proxy_body_falls_back_for_unmapped_local_alias() {
-    let settings = Settings {
-        real_model_haiku: Some("nemotron-3-super-120b".to_string()),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.models.real_model_haiku = Some("nemotron-3-super-120b".to_string());
+        settings
     };
 
     let body = prepare_proxy_body(
@@ -123,11 +95,12 @@ fn prepare_proxy_body_falls_back_for_unmapped_local_alias() {
 #[test]
 /// 驗證 `public_config_hides_api_key` 的行為符合預期。
 fn public_config_hides_api_key() {
-    let settings = Settings {
-        real_base_url: "https://openrouter.ai/api".to_string(),
-        real_api_key: "secret".to_string(),
-        real_auth_scheme: "bearer".to_string(),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.gateway.real_base_url = "https://openrouter.ai/api".to_string();
+        settings.gateway.real_api_key = "secret".to_string();
+        settings.gateway.real_auth_scheme = "bearer".to_string();
+        settings
     };
 
     let public_cfg = to_public_config(&settings);
@@ -139,6 +112,7 @@ fn public_config_hides_api_key() {
     assert!(public_cfg.get("proxyAuthToken").is_none());
     assert!(public_cfg.get("discoveredModels").is_some());
     assert!(public_cfg.get("transportType").is_some());
+    assert!(public_cfg.get("gateway").is_none());
 }
 
 #[test]
@@ -180,9 +154,8 @@ fn validates_proxy_x_api_key_against_configured_token() {
 #[test]
 /// 驗證 `protects_and_restores_api_key` 的行為符合預期。
 fn protects_and_restores_api_key() {
-    assert_eq!(unprotect_secret("legacy-key").unwrap(), "legacy-key");
-    #[cfg(not(target_os = "windows"))]
-    assert_eq!(unprotect_secret("dpapi:1234abcd").unwrap(), "");
+    assert!(unprotect_secret("legacy-key").is_err());
+    assert!(unprotect_secret("dpapi:1234abcd").is_err());
 }
 
 #[test]
@@ -211,9 +184,10 @@ fn test_anthropic_to_openai_request_multimodal_image() {
         ]
     });
 
-    let settings = Settings {
-        real_base_url: "https://api.openai.com/v1".to_string(),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.gateway.real_base_url = "https://api.openai.com/v1".to_string();
+        settings
     };
 
     let (converted_body, _) = anthropic_to_openai_request(&body.to_string(), &settings).unwrap();
@@ -281,9 +255,10 @@ fn test_anthropic_to_openai_request_tool_result_ordering() {
         ]
     });
 
-    let settings = Settings {
-        real_base_url: "https://api.openai.com/v1".to_string(),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.gateway.real_base_url = "https://api.openai.com/v1".to_string();
+        settings
     };
 
     let (converted_body, _) = anthropic_to_openai_request(&body.to_string(), &settings).unwrap();
@@ -335,9 +310,10 @@ fn test_anthropic_to_openai_thinking_conversion() {
         }
     });
 
-    let settings = Settings {
-        real_base_url: "https://integrate.api.nvidia.com/v1".to_string(),
-        ..Settings::default()
+    let settings = {
+        let mut settings = Settings::default();
+        settings.gateway.real_base_url = "https://integrate.api.nvidia.com/v1".to_string();
+        settings
     };
 
     let (converted_body, _) = anthropic_to_openai_request(&body.to_string(), &settings).unwrap();

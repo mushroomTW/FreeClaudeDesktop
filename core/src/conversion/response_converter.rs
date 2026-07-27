@@ -147,18 +147,18 @@ pub fn rewrite_stale_model_request(
     let stale_model = data.get("model").and_then(Value::as_str)?.to_string();
 
     let mut fallback = Vec::new();
-    for (alias, model) in &settings.real_model_routes {
+    for (alias, model) in &settings.models.real_model_routes {
         if alias != requested_model && model != &stale_model {
             fallback.push(model.clone());
         }
     }
-    if let Some(real_m) = &settings.real_model
+    if let Some(real_m) = &settings.models.real_model
         && !real_m.trim().is_empty()
         && real_m != &stale_model
     {
         fallback.push(real_m.clone());
     }
-    for disc in &settings.discovered_models {
+    for disc in &settings.models.discovered_models {
         if disc != &stale_model && !disc.trim().is_empty() {
             fallback.push(disc.clone());
         }
