@@ -1,7 +1,7 @@
-pub mod admin_assets;
-pub mod admin_settings;
 pub mod api_log;
 pub mod companion;
+pub mod dashboard_assets;
+pub mod dashboard_settings;
 pub mod handler;
 pub mod messages_probe;
 pub mod model_retry;

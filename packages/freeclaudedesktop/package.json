@@ -1,11 +1,12 @@
 {
   "name": "@mushroomtw/freeclaudedesktop",
   "version": "0.1.1",
-  "description": "以 pnpm 管理的 FreeClaudeDesktop 本機 Proxy",
+  "description": "以 npm 管理的 FreeClaudeDesktop 本機 Proxy",
   "license": "MIT",
   "type": "commonjs",
   "bin": {
-    "freeclaude-proxy": "bin/freeclaude-proxy.cjs"
+    "freeclaude": "bin/freeclaude.cjs",
+    "freecd": "bin/freeclaude.cjs"
   },
   "files": [
     "bin",

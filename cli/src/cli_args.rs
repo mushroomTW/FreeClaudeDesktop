@@ -62,7 +62,7 @@ pub(crate) struct UninstallArgs {
     pub(crate) runtime: Runtime,
     #[arg(long)]
     pub(crate) purge_image: bool,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) yes: bool,
 }
 

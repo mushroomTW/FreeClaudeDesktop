@@ -18,16 +18,18 @@ use free_claude_core::to_public_config;
 use serde_json::{Value, json};
 use std::time::Instant;
 
-pub use super::admin_assets::{handle_admin_css, handle_admin_js, handle_admin_page};
-pub use super::admin_settings::{
-    AdminSettingsUpdate, handle_admin_rpc, handle_admin_settings, handle_admin_status,
-    update_admin_settings,
-};
-#[cfg(test)]
-use super::admin_settings::{normalize_custom_claude_path, validate_gateway_url};
 pub use super::companion::handle_companion_websocket;
 #[cfg(test)]
 use super::companion::{ActiveCompanion, CompanionState, ProxyToCompanionMessage};
+pub use super::dashboard_assets::{
+    handle_dashboard_css, handle_dashboard_js, handle_dashboard_page,
+};
+pub use super::dashboard_settings::{
+    DashboardSettingsUpdate, handle_dashboard_rpc, handle_dashboard_settings,
+    handle_dashboard_status, update_dashboard_settings,
+};
+#[cfg(test)]
+use super::dashboard_settings::{normalize_custom_claude_path, validate_gateway_url};
 #[cfg(test)]
 use super::messages_probe::MAX_UPSTREAM_ERROR_PREVIEW_CHARS;
 use super::messages_probe::{
@@ -41,7 +43,7 @@ use super::upstream::{build_upstream_request, copy_safe_response_headers, read_b
 use tokio::sync::mpsc;
 
 #[cfg(test)]
-use free_claude_core::AdminRpcRequest;
+use free_claude_core::DashboardRpcRequest;
 
 /// 執行 `reasoning_mode_from` 對應的處理流程。
 fn reasoning_mode_from(settings: &Settings) -> Option<ReasoningReplayMode> {
@@ -167,7 +169,7 @@ mod healthz_tests {
     struct CompanionRequest {
         request_id: String,
         #[serde(flatten)]
-        request: AdminRpcRequest,
+        request: DashboardRpcRequest,
     }
 
     #[tokio::test]
@@ -203,14 +205,17 @@ mod healthz_tests {
     #[test]
     /// 驗證 `rpc_request_uses_allowlist` 的行為符合預期。
     fn rpc_request_uses_allowlist() {
-        assert!(serde_json::from_str::<AdminRpcRequest>(r#"{"method":"GetStatus"}"#).is_ok());
-        assert!(serde_json::from_str::<AdminRpcRequest>(r#"{"method":"LaunchClaude"}"#).is_ok());
-        assert!(serde_json::from_str::<AdminRpcRequest>(
+        assert!(serde_json::from_str::<DashboardRpcRequest>(r#"{"method":"GetStatus"}"#).is_ok());
+        assert!(
+            serde_json::from_str::<DashboardRpcRequest>(r#"{"method":"LaunchClaude"}"#).is_ok()
+        );
+        assert!(serde_json::from_str::<DashboardRpcRequest>(
             r#"{"method":"ApplySettings","baseUrl":"https://gateway.example/v1","authScheme":"bearer"}"#
         )
         .is_ok());
         assert!(
-            serde_json::from_str::<AdminRpcRequest>(r#"{"method":"DeleteEverything"}"#).is_err()
+            serde_json::from_str::<DashboardRpcRequest>(r#"{"method":"DeleteEverything"}"#)
+                .is_err()
         );
     }
 

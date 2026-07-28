@@ -15,7 +15,7 @@ Run this command from the project root:
 docker compose up --build
 ```
 
-The proxy is published only on the local machine at `http://127.0.0.1:3000`. Web Admin does not have a sign-in flow. Do not modify `compose.yaml` to expose this port to a LAN or the public Internet.
+The proxy is published only on the local machine at `http://127.0.0.1:3000`. Web Dashboard does not have a sign-in flow. Do not modify `compose.yaml` to expose this port to a LAN or the public Internet.
 
 Stop the service with:
 

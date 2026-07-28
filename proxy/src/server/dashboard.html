@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="google" content="notranslate">
-  <title>FreeClaude Admin Dashboard</title>
-  <link rel="stylesheet" href="/admin.css">
+  <title>FreeClaude Dashboard Dashboard</title>
+  <link rel="stylesheet" href="/dashboard.css">
 </head>
 <body>
   <div id="appContainer" class="unauthorized">
@@ -17,14 +17,14 @@
         </div>
         <h1 class="auth-title">FreeClaudeDesktop</h1>
         <p class="auth-subtitle">管理您的本機代理伺服器、模型路由與優化開關</p>
-        <button class="btn btn-primary admin-inline-style-1" id="loadBtn">
+        <button class="btn btn-primary Dashboard-inline-style-1" id="loadBtn">
           載入設定 ↵
         </button>
       </div>
     </div>
 
     <!-- 2. 主雙欄佈局 (授權成功後) -->
-    <form class="admin-inline-style-2" id="settingsForm">
+    <form class="Dashboard-inline-style-2" id="settingsForm">
       <div id="mainLayout" class="main-layout hidden">
         <!-- 左側側邊欄 -->
         <aside class="sidebar">
@@ -130,7 +130,7 @@
                     <input id="baseUrl" type="url" required placeholder="http://127.0.0.1:4000">
                   </div>
                   <div class="form-group">
-                    <label class="admin-inline-style-3" for="apiKey"><span data-i18n="conn_api_key">API Key</span> <span id="keyStatus"></span></label>
+                    <label class="Dashboard-inline-style-3" for="apiKey"><span data-i18n="conn_api_key">API Key</span> <span id="keyStatus"></span></label>
                     <input id="apiKey" type="password" placeholder="••••••••••••••••" autocomplete="new-password">
                   </div>
                   <div class="form-group">
@@ -144,7 +144,7 @@
                   </div>
                 </div>
 
-                <div class="admin-inline-style-4">
+                <div class="Dashboard-inline-style-4">
                   <div class="switch-container">
                     <div class="switch-label">
                       <span data-i18n="conn_custom_path_title">使用自訂 Claude.exe 路徑</span>
@@ -155,18 +155,18 @@
                       <span class="slider"></span>
                     </label>
                   </div>
-                  <div class="form-group admin-inline-style-5">
+                  <div class="form-group Dashboard-inline-style-5">
                     <input type="text" id="customClaudePath" placeholder="C:\Program Files\Claude\Claude.exe" disabled>
                   </div>
                 </div>
 
                 <!-- 偵測到的 Claude Desktop 狀態卡片 -->
-                <div class="status-card-inner admin-inline-style-4">
-                  <div class="admin-inline-style-6">
+                <div class="status-card-inner Dashboard-inline-style-4">
+                  <div class="Dashboard-inline-style-6">
                     <span id="detectedClaudeDot" class="status-dot offline"></span>
-                    <span class="admin-inline-style-7" id="detectedClaudeStatus" data-i18n="conn_detecting">偵測中...</span>
+                    <span class="Dashboard-inline-style-7" id="detectedClaudeStatus" data-i18n="conn_detecting">偵測中...</span>
                   </div>
-                  <div class="admin-inline-style-8" id="detectedClaudePath" data-i18n="conn_detecting">
+                  <div class="Dashboard-inline-style-8" id="detectedClaudePath" data-i18n="conn_detecting">
                     偵測中...
                   </div>
                 </div>
@@ -199,40 +199,40 @@
                 </div>
                 <datalist id="modelSuggestions"></datalist>
 
-                <div class="admin-inline-style-9">
-                  <h3 class="subsection-title admin-inline-style-10" data-i18n="models_discovered_title">已偵測上游模型清單</h3>
-                  <div class="admin-inline-style-11">
-                    <button type="button" class="btn admin-inline-style-12" id="toggleAllShowBtn">
+                <div class="Dashboard-inline-style-9">
+                  <h3 class="subsection-title Dashboard-inline-style-10" data-i18n="models_discovered_title">已偵測上游模型清單</h3>
+                  <div class="Dashboard-inline-style-11">
+                    <button type="button" class="btn Dashboard-inline-style-12" id="toggleAllShowBtn">
                       <span data-i18n="models_toggle_show">全選/取消顯示</span>
                     </button>
-                    <button type="button" class="btn admin-inline-style-12" id="toggleAll1mBtn">
+                    <button type="button" class="btn Dashboard-inline-style-12" id="toggleAll1mBtn">
                       <span data-i18n="models_toggle_1m">全選/取消 1M</span>
                     </button>
-                    <button type="button" class="btn admin-inline-style-13" id="fetchModelsBtn">
+                    <button type="button" class="btn Dashboard-inline-style-13" id="fetchModelsBtn">
                       <span data-i18n="models_fetch_btn">抓取模型清單</span>
                     </button>
                   </div>
                 </div>
                 <p class="section-desc" data-i18n="models_discovered_desc">勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬上下文支援；「預設 1M」讓第一個模型預設選用 1M。</p>
                 
-                <div class="admin-inline-style-14">
-                  <input class="admin-inline-style-15" type="text" id="modelSearchInput" placeholder="搜尋模型名稱 (例如: claude, gpt, gemini, free)..." data-i18n-placeholder="models_search_placeholder">
+                <div class="Dashboard-inline-style-14">
+                  <input class="Dashboard-inline-style-15" type="text" id="modelSearchInput" placeholder="搜尋模型名稱 (例如: claude, gpt, gemini, free)..." data-i18n-placeholder="models_search_placeholder">
                 </div>
                 
                 <div class="table-container">
                   <table>
                     <thead>
                       <tr>
-                        <th class="sortable-th admin-inline-style-16" data-sort="name"><span data-i18n="models_table_name">模型名稱</span> <span class="sort-icon" id="sort-icon-name">↕</span></th>
-                        <th class="sortable-th admin-inline-style-17" data-sort="show"><span data-i18n="models_table_show">顯示</span> <span class="sort-icon" id="sort-icon-show">↕</span></th>
-                        <th class="sortable-th admin-inline-style-18" data-sort="1m"><span data-i18n="models_table_1m">1M</span> <span class="sort-icon" id="sort-icon-1m">↕</span></th>
-                        <th class="sortable-th admin-inline-style-19" data-sort="1m-default"><span data-i18n="models_table_1m_default">預設 1M</span> <span class="sort-icon" id="sort-icon-1m-default">↕</span></th>
-                        <th class="sortable-th admin-inline-style-20" data-sort="effort"><span data-i18n="models_table_effort">推理強度</span> <span class="sort-icon" id="sort-icon-effort">↕</span></th>
+                        <th class="sortable-th Dashboard-inline-style-16" data-sort="name"><span data-i18n="models_table_name">模型名稱</span> <span class="sort-icon" id="sort-icon-name">↕</span></th>
+                        <th class="sortable-th Dashboard-inline-style-17" data-sort="show"><span data-i18n="models_table_show">顯示</span> <span class="sort-icon" id="sort-icon-show">↕</span></th>
+                        <th class="sortable-th Dashboard-inline-style-18" data-sort="1m"><span data-i18n="models_table_1m">1M</span> <span class="sort-icon" id="sort-icon-1m">↕</span></th>
+                        <th class="sortable-th Dashboard-inline-style-19" data-sort="1m-default"><span data-i18n="models_table_1m_default">預設 1M</span> <span class="sort-icon" id="sort-icon-1m-default">↕</span></th>
+                        <th class="sortable-th Dashboard-inline-style-20" data-sort="effort"><span data-i18n="models_table_effort">推理強度</span> <span class="sort-icon" id="sort-icon-effort">↕</span></th>
                       </tr>
                     </thead>
                     <tbody id="modelsTableBody">
                       <tr>
-                        <td class="admin-inline-style-21" colspan="5">尚未載入任何模型</td>
+                        <td class="Dashboard-inline-style-21" colspan="5">尚未載入任何模型</td>
                       </tr>
                     </tbody>
                   </table>
@@ -311,12 +311,12 @@
                   </label>
                 </div>
                 
-                <div id="webToolsSettings" class="hidden admin-inline-style-22">
+                <div id="webToolsSettings" class="hidden Dashboard-inline-style-22">
                   <div class="form-group">
                     <label for="webFetchAllowedSchemes" data-i18n="ext_web_fetch_schemes">Web Fetch 允許 URL Schemes (以逗號分隔)</label>
                     <input id="webFetchAllowedSchemes" type="text" placeholder="http,https">
                   </div>
-                  <div class="switch-container admin-inline-style-23">
+                  <div class="switch-container Dashboard-inline-style-23">
                     <div class="switch-label" data-toggle-target="webFetchAllowPrivateNetworks">
                       <span data-i18n="ext_web_fetch_private">允許 web_fetch 存取私有網路 (Private Networks)</span>
                     </div>
@@ -398,6 +398,6 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="/admin.js" defer></script>
+  <script src="/dashboard.js" defer></script>
 </body>
 </html>

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "要發布的版本標籤（例如 v0.1.2）"
+        description: "Release 版本，例如 v0.1.2"
         required: true
         type: string
       publish_npm:
-        description: "同時發布 pnpm 套件"
+        description: "發布 npm 套件"
         required: true
         default: true
         type: boolean
@@ -18,21 +18,21 @@ permissions:
 
 jobs:
   validate:
-    name: 驗證發布版本
+    name: 驗證 Release 版本
     runs-on: ubuntu-latest
     steps:
-      - name: 驗證版本格式
+      - name: 驗證 SemVer
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           if [[ ! "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "版本必須使用 v 開頭的 SemVer 格式，例如 v0.1.2。"
+            echo "版本必須使用 v 開頭的 SemVer，例如 v0.1.2"
             exit 1
           fi
 
   build:
-    name: 建置 ${{ matrix.target }}
+    name: 建置 ${{ matrix.target }} npm binary 套件
     needs: validate
     strategy:
       fail-fast: false
@@ -40,33 +40,27 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            archive: tar.gz
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            archive: tar.gz
           - os: macos-13
             target: x86_64-apple-darwin
-            archive: tar.gz
           - os: macos-14
             target: aarch64-apple-darwin
-            archive: tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            archive: zip
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
-            archive: zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: 安裝 Rust 工具鏈
+      - name: 安裝 Rust toolchain
         run: rustup toolchain install 1.97.0 --profile minimal
 
       - name: 使用 Rust 1.97.0
         run: rustup override set 1.97.0
 
-      - name: 建置發行檔
+      - name: 建置 FreeClaudeDesktop binary
         run: cargo build --locked --release --package freeclaude --package freeclaude-proxy
 
       - name: 設定 pnpm
@@ -74,40 +68,17 @@ jobs:
         with:
           version: 10.15.0
 
-      - name: 建立目前平台的 pnpm binary 套件
+      - name: 建立平台 npm binary 套件
         shell: bash
         run: node scripts/pack-platform.mjs "${{ matrix.target }}"
 
-      - name: 打包目前平台的 pnpm binary 套件
+      - name: 打包平台 npm binary 套件
         shell: bash
         run: |
           package_dir="$(find dist/npm -mindepth 1 -maxdepth 1 -type d -name 'freeclaudedesktop-*' -print -quit)"
           pnpm --dir "$package_dir" pack --pack-destination ..
 
-      - name: 打包 Unix 發行檔
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          mkdir -p dist/package
-          cp target/release/freeclaude target/release/freeclaude-proxy dist/package/
-          tar -C dist/package -czf "../freeclaude-${{ matrix.target }}.tar.gz" freeclaude freeclaude-proxy
-
-      - name: 打包 Windows 發行檔
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist/package | Out-Null
-          Copy-Item target/release/freeclaude.exe, target/release/freeclaude-proxy.exe dist/package/
-          Compress-Archive -Path dist/package/* -DestinationPath "dist/freeclaude-${{ matrix.target }}.zip"
-
-      - name: 上傳發行檔
-        uses: actions/upload-artifact@v7
-        with:
-          name: freeclaude-${{ matrix.target }}
-          path: dist/freeclaude-${{ matrix.target }}.${{ matrix.archive }}
-          if-no-files-found: error
-
-      - name: 上傳 pnpm binary 套件
+      - name: 上傳 npm binary 套件
         uses: actions/upload-artifact@v7
         with:
           name: npm-${{ matrix.target }}
@@ -115,7 +86,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: 建立 GitHub Release
+    name: 發布 npm 套件與 GitHub Release
     needs: build
     runs-on: ubuntu-latest
     env:
@@ -124,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: 下載全部發行檔
+      - name: 下載 npm binary 套件
         uses: actions/download-artifact@v8
         with:
           path: dist
@@ -143,7 +114,7 @@ jobs:
         with:
           version: 10.15.0
 
-      - name: 發佈 pnpm 套件
+      - name: 發布 npm 套件
         if: inputs.publish_npm && env.HAS_NPM_TOKEN == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -156,20 +127,12 @@ jobs:
           pnpm --dir packages/freeclaudedesktop pack --pack-destination ../../dist/npm/main
           pnpm publish dist/npm/main/*.tgz --access public --no-git-checks
 
-      - name: 準備安裝器與校驗檔
-        shell: bash
-        run: |
-          cp scripts/install.sh dist/install.sh
-          cp scripts/install.ps1 dist/install.ps1
-          cd dist
-          sha256sum freeclaude-*.tar.gz freeclaude-*.zip > checksums.txt
-
-      - name: 建立 Release
+      - name: 建立 GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create "$RELEASE_VERSION" dist/* \
+          gh release create "$RELEASE_VERSION" \
             --target "$GITHUB_SHA" \
             --title "FreeClaudeDesktop $RELEASE_VERSION" \
             --generate-notes

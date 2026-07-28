@@ -3,21 +3,22 @@ use super::*;
 static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
-/// 驗證 Admin 頁面與拆分後資源的引用、MIME type 及快取標頭。
-async fn admin_assets_are_embedded_and_served_with_expected_headers() {
-    let admin = handle_admin_page().await.into_response();
-    let admin_body = axum::body::to_bytes(admin.into_body(), usize::MAX)
+/// 驗證 Dashboard 頁面與拆分後資源的引用、MIME type 及快取標頭。
+async fn dashboard_assets_are_embedded_and_served_with_expected_headers() {
+    let dashboard = handle_dashboard_page().await.into_response();
+    let dashboard_body = axum::body::to_bytes(dashboard.into_body(), usize::MAX)
         .await
-        .expect("Admin HTML 應可讀取");
-    let admin_html = String::from_utf8(admin_body.to_vec()).expect("Admin HTML 應為 UTF-8");
-    assert!(admin_html.contains("href=\"/admin.css\""));
-    assert!(admin_html.contains("src=\"/admin.js\""));
-    assert!(!admin_html.contains("<style>"));
-    assert!(!admin_html.contains("<script>"));
-    assert!(!admin_html.contains(" style="));
-    assert!(!admin_html.contains(" onclick="));
+        .expect("Dashboard HTML 應可讀取");
+    let dashboard_html =
+        String::from_utf8(dashboard_body.to_vec()).expect("Dashboard HTML 應為 UTF-8");
+    assert!(dashboard_html.contains("href=\"/dashboard.css\""));
+    assert!(dashboard_html.contains("src=\"/dashboard.js\""));
+    assert!(!dashboard_html.contains("<style>"));
+    assert!(!dashboard_html.contains("<script>"));
+    assert!(!dashboard_html.contains(" style="));
+    assert!(!dashboard_html.contains(" onclick="));
 
-    let css = handle_admin_css().await.into_response();
+    let css = handle_dashboard_css().await.into_response();
     assert_eq!(
         css.headers().get("content-type").unwrap(),
         "text/css; charset=utf-8"
@@ -31,7 +32,7 @@ async fn admin_assets_are_embedded_and_served_with_expected_headers() {
         .expect("CSS 應可讀取");
     assert!(String::from_utf8_lossy(&css_body).contains(":root"));
 
-    let js = handle_admin_js().await.into_response();
+    let js = handle_dashboard_js().await.into_response();
     assert_eq!(
         js.headers().get("content-type").unwrap(),
         "text/javascript; charset=utf-8"
@@ -291,10 +292,10 @@ async fn test_companion_offline_fails() {
     let mut headers = HeaderMap::new();
     headers.insert("Authorization", "Bearer test_token".parse().unwrap());
 
-    let response = handle_admin_rpc(
+    let response = handle_dashboard_rpc(
         axum::extract::State(companion_state),
         headers,
-        Json(AdminRpcRequest::DetectClaude),
+        Json(DashboardRpcRequest::DetectClaude),
     )
     .await
     .into_response();
@@ -380,10 +381,10 @@ async fn test_companion_forwarding_success() {
 
     let headers = HeaderMap::new();
 
-    let response = handle_admin_rpc(
+    let response = handle_dashboard_rpc(
         axum::extract::State(companion_state.clone()),
         headers,
-        Json(AdminRpcRequest::DetectClaude),
+        Json(DashboardRpcRequest::DetectClaude),
     )
     .await
     .into_response();

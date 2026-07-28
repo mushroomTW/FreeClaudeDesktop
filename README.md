@@ -20,32 +20,27 @@ FreeClaudeDesktop is a cross-platform command-line launcher and local API proxy 
 - Discovers every model returned by the upstream API's `/v1/models` endpoint and makes them available in the Claude Desktop model picker, with configurable visibility.
 - Supports model routing, reasoning settings, and streaming responses.
 - Keeps an isolated Claude Desktop profile and supports re-syncing selected data from the official profile.
-- Provides a browser-based Web Admin interface in English and Traditional Chinese.
 - Supports Windows, macOS, and Linux.
 
 For the best Claude Desktop experience, use upstream models with multimodal input support and a context window of at least 200K tokens. Models with smaller context windows or text-only capabilities may still work, but images, long conversations, files, and tool-heavy workflows can be limited.
 
 ## Quick start
 
-Prerequisite: Claude Desktop. The commands below download the matching prebuilt release and install the local `freeclaude` CLI; they do not require Rust, Cargo, Git, or a source checkout.
-
-### macOS / Linux
+Prerequisite: Claude Desktop and Node.js with npm. Install the published package globally; npm automatically selects the binary package for your operating system and CPU architecture.
 
 ```bash
-curl -fsSL "https://github.com/mushroomTW/FreeClaudeDesktop/releases/latest/download/install.sh" | sh
+npm install -g @mushroomtw/freeclaudedesktop
+freecd install
+freecd dashboard
 ```
 
-### Windows (PowerShell)
+Use the Web Dashboard to configure the Gateway URL, API key, and model settings. `freecd start` only starts the proxy; `freecd install` also sets up the local integration and default autostart.
 
-```powershell
-irm "https://github.com/mushroomTW/FreeClaudeDesktop/releases/latest/download/install.ps1" | iex
-```
+To fully uninstall FreeClaudeDesktop:
 
-The stable installer URL resolves to the latest GitHub Release. It downloads the matching prebuilt binaries, validates their SHA-256 hash against the release `checksums.txt`, and adds `freeclaude` to your user PATH. It does **not** change Claude Desktop settings; run the following after reviewing the installation:
-
-```text
-freeclaude install
-freeclaude configure
+```bash
+freecd uninstall
+npm uninstall -g @mushroomtw/freeclaudedesktop
 ```
 
 ### Manual installation
@@ -55,27 +50,14 @@ Only use this route when building from source; it requires the stable [Rust tool
 ```bash
 git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
 cd FreeClaudeDesktop
-cargo build --release -p freeclaude -p freeclaude-proxy
+cargo build --release
 # macOS / Linux
 ./target/release/freeclaude install
 # Windows (PowerShell)
 .\target\release\freeclaude.exe install
 ```
 
-`freeclaude install` uses the native proxy and enables startup at login by default. Use `freeclaude install --runtime docker` if you explicitly want the Docker runtime, or add `--no-autostart` to either installation mode if you do not want automatic startup.
-
-## pnpm global installation
-
-```bash
-pnpm add -g @mushroomtw/freeclaudedesktop
-freeclaude-proxy start
-```
-
-Use `freeclaude-proxy status`, `restart`, `admin`, and `path` to manage the local service. Run `freeclaude-proxy purge` to fully reset its local data. Removing the package stops the service, restores Claude settings, and deletes FreeClaudeDesktop-owned settings, its isolated profile, and its OS-keyring API key:
-
-```bash
-pnpm remove -g @mushroomtw/freeclaudedesktop
-```
+`freecd install` uses the native proxy and enables startup at login by default. Use `freecd install --runtime docker` if you explicitly want the Docker runtime, or add `--no-autostart` to either installation mode if you do not want automatic startup.
 
 ## Build and Run
 
@@ -85,14 +67,14 @@ Requirements:
 - Claude Desktop for launcher integration
 
 ```bash
-cargo build --release -p freeclaude -p freeclaude-proxy
+cargo build --release
 # macOS / Linux
 ./target/release/freeclaude start
 # Windows (PowerShell)
 .\target\release\freeclaude.exe start
 ```
 
-## CLI and local administration
+## CLI and local management
 
 Build all workspace binaries in a development checkout:
 
@@ -103,16 +85,16 @@ cargo build --release
 Manage the native proxy:
 
 ```bash
-freeclaude start
-freeclaude status
-freeclaude stop
+freecd start
+freecd status
+freecd stop
 ```
 
 The default port is `3000`. Set `FREECLAUDE_PROXY_PORT` to use another local port; `start` waits for `/healthz` before reporting success.
 
-`freeclaude configure` opens the same-origin Web Admin page at `/dashboard`. No sign-in or proxy token is required. API keys are stored in the operating-system keyring and are never returned by the Admin API.
+`freecd configure` opens the same-origin Web Dashboard page at `/dashboard`. No sign-in or proxy token is required. API keys are stored in the operating-system keyring and are never returned by the Dashboard API.
 
-After `freeclaude start`, open [http://127.0.0.1:3000/dashboard](http://127.0.0.1:3000/dashboard) to use Web Admin directly.
+After `freecd start`, open [http://127.0.0.1:3000/dashboard](http://127.0.0.1:3000/dashboard) to use Web Dashboard directly.
 
 ```text
 GET  /healthz
@@ -126,14 +108,13 @@ WS   /companion           (first message requires requestId)
 Manage startup and removal:
 
 ```bash
-freeclaude autostart enable
-freeclaude autostart status
-freeclaude autostart disable
-freeclaude uninstall --yes
-freeclaude purge --yes
+freecd autostart enable
+freecd autostart status
+freecd autostart disable
+freecd uninstall
 ```
 
-Startup at login is enabled by default when running `freeclaude install`. Pass `--no-autostart` during installation to opt out. Windows uses Task Scheduler, macOS uses a LaunchAgent, and Linux uses a systemd user service.
+Startup at login is enabled by default when running `freecd install`. Pass `--no-autostart` during installation to opt out. Windows uses Task Scheduler, macOS uses a LaunchAgent, and Linux uses a systemd user service.
 
 ## Companion daemon
 
@@ -146,7 +127,7 @@ See [DOCKER.md](DOCKER.md) for Docker Compose usage, memory limits, security not
 Check for a newer GitHub Release without changing the local installation:
 
 ```bash
-freeclaude update --check
+freecd update --check
 ```
 
 ## Project Links

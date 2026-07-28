@@ -39,7 +39,7 @@ mod tests;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "method")]
-pub enum AdminRpcRequest {
+pub enum DashboardRpcRequest {
     GetStatus,
     DetectClaude,
     ApplySettings {

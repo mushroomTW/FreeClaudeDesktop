@@ -21,7 +21,7 @@ function platformPackageDirectory() {
   try {
     return path.dirname(require.resolve(`${packageName}/package.json`));
   } catch {
-    throw new Error(`找不到 ${packageName}。請重新執行 pnpm add -g @mushroomtw/freeclaudedesktop。`);
+    throw new Error(`找不到 ${packageName}。請重新執行 npm install -g @mushroomtw/freeclaudedesktop。`);
   }
 }
 
@@ -44,16 +44,16 @@ function runNative(args) {
 }
 
 function printHelp() {
-  console.log(`FreeClaudeDesktop pnpm 管理工具
+  console.log(`FreeClaudeDesktop npm 管理工具
 
-用法：freeclaude-proxy <命令>
+用法：freeclaude <命令>
 
 命令：
   start      啟動本機 Proxy 並等待健康檢查
   stop       停止由 FreeClaudeDesktop 管理的 Proxy
   restart    重新啟動本機 Proxy
   status     顯示 Proxy 與自動啟動狀態
-  admin      開啟 Web Admin
+  dashboard  開啟 Web 控制台
   path       顯示目前平台 binary 所在資料夾
   purge      停止服務、還原 Claude 設定並完整清除本程式資料
   <其他>     直接傳遞給原生 freeclaude CLI
@@ -73,7 +73,7 @@ try {
       runNative(["stop"]);
       if (process.exitCode === 0) runNative(["start"]);
       break;
-    case "admin":
+    case "dashboard":
       runNative(["configure", ...rest]);
       break;
     case "path":
@@ -87,6 +87,6 @@ try {
       break;
   }
 } catch (error) {
-  console.error(`freeclaude-proxy：${error.message}`);
+  console.error(`freeclaude：${error.message}`);
   process.exitCode = 1;
 }
