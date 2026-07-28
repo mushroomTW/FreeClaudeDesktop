@@ -56,6 +56,6 @@ body:
     id: version
     attributes:
       label: FreeClaudeDesktop version
-      placeholder: "For example: 0.1.1 or a commit SHA"
+      placeholder: "For example: 1.0.0 or a commit SHA"
     validations:
       required: true

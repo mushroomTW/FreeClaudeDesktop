@@ -21,6 +21,8 @@ jobs:
     name: 驗證 Release 版本
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: 驗證 SemVer
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -28,6 +30,18 @@ jobs:
         run: |
           if [[ ! "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
             echo "版本必須使用 v 開頭的 SemVer，例如 v0.1.2"
+            exit 1
+          fi
+
+      - name: 驗證 npm 套件版本
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          package_version="$(node -p "require('./packages/freeclaudedesktop/package.json').version")"
+          release_version="${RELEASE_VERSION#v}"
+          if [[ "$package_version" != "$release_version" ]]; then
+            echo "npm 套件版本 $package_version 與 Release 版本 $release_version 不一致"
             exit 1
           fi
 
@@ -132,7 +146,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create "$RELEASE_VERSION" \
-            --target "$GITHUB_SHA" \
-            --title "FreeClaudeDesktop $RELEASE_VERSION" \
-            --generate-notes
+          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo "GitHub Release $RELEASE_VERSION 已存在，略過建立步驟"
+          else
+            gh release create "$RELEASE_VERSION" \
+              --target "$GITHUB_SHA" \
+              --title "FreeClaudeDesktop $RELEASE_VERSION" \
+              --generate-notes
+          fi

@@ -1,7 +1,10 @@
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 const [target, outputDirectory = "dist/npm"] = process.argv.slice(2);
+const packageVersion = JSON.parse(
+  readFileSync("packages/freeclaudedesktop/package.json", "utf8")
+).version;
 const platforms = {
   "aarch64-apple-darwin": { os: ["darwin"], cpu: ["arm64"], suffix: "darwin-arm64" },
   "x86_64-apple-darwin": { os: ["darwin"], cpu: ["x64"], suffix: "darwin-x64" },
@@ -29,7 +32,7 @@ for (const name of ["freeclaude", "freeclaude-proxy"]) {
 
 writeFileSync(join(output, "package.json"), `${JSON.stringify({
   name: `@mushroomtw/freeclaudedesktop-${platform.suffix}`,
-  version: "0.1.1",
+  version: packageVersion,
   description: `FreeClaudeDesktop ${platform.suffix} binary`,
   license: "MIT",
   os: platform.os,
