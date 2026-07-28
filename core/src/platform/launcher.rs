@@ -552,7 +552,10 @@ pub fn claude_config(
                 if m.supports1m == Some(true) {
                     item["supports1m"] = serde_json::json!(true);
                 }
-                if m.supports1m == Some(true) && m.prefer1m == Some(true) {
+                // Claude Desktop 需要 `prefer1m` 才會將 1M 變體設為預設。
+                // 對已標示支援 1M 的模型一律輸出此欄位，避免舊版控制台
+                // 保存的偏好值遺漏，導致設定頁面仍顯示為關閉。
+                if m.supports1m == Some(true) {
                     item["prefer1m"] = serde_json::json!(true);
                 }
                 item

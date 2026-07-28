@@ -56,6 +56,8 @@ pub struct AdminSettingsUpdate {
     #[serde(default)]
     pub enable_filepath_extraction_mock: Option<bool>,
     #[serde(default)]
+    pub enable_api_call_logging: Option<bool>,
+    #[serde(default)]
     pub enable_web_server_tools: Option<bool>,
     #[serde(default)]
     pub web_fetch_allowed_schemes: Option<String>,
@@ -177,6 +179,10 @@ fn apply_settings_update(
     apply_optional(
         &mut settings.optimizations.enable_filepath_extraction_mock,
         input.enable_filepath_extraction_mock,
+    );
+    apply_optional(
+        &mut settings.optimizations.enable_api_call_logging,
+        input.enable_api_call_logging,
     );
     apply_optional(
         &mut settings.optimizations.enable_web_server_tools,
@@ -330,6 +336,7 @@ fn save_input_from_settings(settings: &Settings, api_key: String) -> SaveConfigI
         enable_title_generation_skip: settings.optimizations.enable_title_generation_skip,
         enable_suggestion_mode_skip: settings.optimizations.enable_suggestion_mode_skip,
         enable_filepath_extraction_mock: settings.optimizations.enable_filepath_extraction_mock,
+        enable_api_call_logging: settings.optimizations.enable_api_call_logging,
         enable_web_server_tools: settings.optimizations.enable_web_server_tools,
         web_fetch_allow_private_networks: settings.optimizations.web_fetch_allow_private_networks,
         reasoning_replay_mode: settings.models.reasoning_replay_mode.clone(),

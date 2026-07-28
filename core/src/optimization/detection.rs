@@ -34,8 +34,10 @@ fn extract_system_text(v: &Value) -> Option<String> {
 
 /// Check if this is a quota probe request.
 ///
-/// Quota checks are typically simple requests with max_tokens=1
-/// and a single message containing the word "quota".
+/// 配額檢查與 Claude Desktop 背景探測通常都會使用 `max_tokens=1`。
+///
+/// 背景探測與一般短訊息的差異在於：它是明確的非串流請求、不帶 system
+/// 或工具，且請求本文會附帶足以超過一般使用者短訊息的背景資料。
 pub fn is_quota_check_request(body_str: &str) -> bool {
     let Ok(v) = serde_json::from_str::<Value>(body_str) else {
         return false;
@@ -74,7 +76,24 @@ pub fn is_quota_check_request(body_str: &str) -> bool {
         .get("tools")
         .and_then(Value::as_array)
         .is_some_and(|tools| !tools.is_empty());
-    is_user && has_tools && lower == "count"
+    // 舊版 Claude Desktop 配額檢查：帶工具且內容固定為 `count`。
+    if is_user && has_tools && lower == "count" {
+        return true;
+    }
+
+    // 新版 Claude Desktop 會在開啟對話後並行送出多個非串流的
+    // `max_tokens=1` 背景探測。這些請求沒有工具或 system，但本文至少
+    // 553 bytes；以 512 bytes 作為保守下限，可避開一般使用者短訊息。
+    let is_non_streaming = !v.get("stream").and_then(Value::as_bool).unwrap_or(false);
+    let has_system = v.get("system").is_some_and(|system| !system.is_null());
+    const BACKGROUND_PROBE_MIN_BODY_BYTES: usize = 512;
+
+    // 背景探測的單一訊息在新版 Claude Desktop 不一定會標為 `user`
+    // （實測會以其他角色送出），因此這個分支只依請求結構判斷。
+    !has_tools
+        && !has_system
+        && is_non_streaming
+        && body_str.len() >= BACKGROUND_PROBE_MIN_BODY_BYTES
 }
 
 /// Check if this is a command prefix detection request.
@@ -360,6 +379,39 @@ mod tests {
         })
         .to_string();
         assert!(!is_quota_check_request(&normal_body));
+    }
+
+    #[test]
+    /// 驗證 Claude Desktop 的非串流一 token 背景探測會被配額檢查攔截。
+    fn background_one_token_probe_is_a_quota_check() {
+        let body = json!({
+            "max_tokens": 1,
+            "metadata": { "probe_context": "x".repeat(512) },
+            "messages": [{
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "refresh background state" }]
+            }]
+        })
+        .to_string();
+
+        assert!(is_quota_check_request(&body));
+    }
+
+    #[test]
+    /// 驗證帶有 system 的正式請求不會因一 token 設定而被誤攔截。
+    fn one_token_request_with_system_is_not_a_background_probe() {
+        let body = json!({
+            "max_tokens": 1,
+            "stream": false,
+            "system": "You are a helpful assistant.",
+            "messages": [{
+                "role": "user",
+                "content": "x".repeat(600)
+            }]
+        })
+        .to_string();
+
+        assert!(!is_quota_check_request(&body));
     }
 
     #[test]

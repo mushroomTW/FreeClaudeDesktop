@@ -80,10 +80,10 @@ fn other_anthropic_native_tools_still_fail_clearly_for_openai_gateways() {
 /// 驗證 `thinking_budget_clamps_to_model_reasoning_effort_levels` 的行為符合預期。
 fn thinking_budget_clamps_to_model_reasoning_effort_levels() {
     let mut routes = std::collections::HashMap::new();
-    routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
+    routes.insert("claude-sonnet-5[0]".to_string(), "nim-medium".to_string());
     let mut efforts = std::collections::HashMap::new();
     efforts.insert(
-        "claude-sonnet-4-6[0]".to_string(),
+        "claude-sonnet-5[0]".to_string(),
         vec!["none".to_string(), "low".to_string(), "medium".to_string()],
     );
     let settings = {
@@ -93,7 +93,7 @@ fn thinking_budget_clamps_to_model_reasoning_effort_levels() {
         settings
     };
     let body = json!({
-        "model": "claude-sonnet-4-6[0]",
+        "model": "claude-sonnet-5[0]",
         "messages": [{"role": "user", "content": "think"}],
         "thinking": {
             "type": "enabled",
@@ -113,8 +113,8 @@ fn thinking_budget_clamps_to_model_reasoning_effort_levels() {
 /// 驗證 `resolve_model_route_handles_1m_suffix_and_fallbacks` 的行為符合預期。
 fn resolve_model_route_handles_1m_suffix_and_fallbacks() {
     let mut routes = std::collections::HashMap::new();
-    routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
-    routes.insert("claude-opus-4-8[0]".to_string(), "gpt-4o".to_string());
+    routes.insert("claude-sonnet-5[0]".to_string(), "nim-medium".to_string());
+    routes.insert("claude-opus-5[0]".to_string(), "gpt-4o".to_string());
 
     let settings = {
         let mut settings = Settings::default();
@@ -125,11 +125,11 @@ fn resolve_model_route_handles_1m_suffix_and_fallbacks() {
     };
 
     assert_eq!(
-        resolve_model_route("claude-sonnet-4-6[0]", &settings),
+        resolve_model_route("claude-sonnet-5[0]", &settings),
         Some("nim-medium".to_string())
     );
     assert_eq!(
-        resolve_model_route("claude-sonnet-4-6[0][1m]", &settings),
+        resolve_model_route("claude-sonnet-5[0][1m]", &settings),
         Some("nim-medium".to_string())
     );
     assert_eq!(
@@ -179,7 +179,7 @@ fn resolve_model_route_robust_bracket_and_fuzzy_matching() {
 /// 驗證 `resolve_model_route_applies_fallback_safety_net_for_local_aliases` 的行為符合預期。
 fn resolve_model_route_applies_fallback_safety_net_for_local_aliases() {
     let mut routes = std::collections::HashMap::new();
-    routes.insert("claude-sonnet-4-6[0]".to_string(), "nim-medium".to_string());
+    routes.insert("claude-sonnet-5[0]".to_string(), "nim-medium".to_string());
 
     let settings = {
         let mut settings = Settings::default();

@@ -81,7 +81,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
         }
     }
 
-    // 1. 精確匹配 routes (例如 "claude-sonnet-4-6[87]" 或 "claude-sonnet-4-6[87][1m]")
+    // 1. 精確匹配 routes (例如 "claude-sonnet-5[87]" 或 "claude-sonnet-5[87][1m]")
     if let Some(mapped) = settings.models.real_model_routes.get(requested_model) {
         return Some(mapped.clone());
     }

@@ -1,5 +1,6 @@
 pub mod admin_assets;
 pub mod admin_settings;
+pub mod api_log;
 pub mod companion;
 pub mod handler;
 pub mod messages_probe;
