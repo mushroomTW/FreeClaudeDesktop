@@ -219,7 +219,7 @@ fn strip_removed_computer_mcp_keeps_unrelated_servers() {
 /// 驗證 `claude_config_uses_supported_1m_variant_without_double_label` 的行為符合預期。
 fn claude_config_uses_supported_1m_variant_without_double_label() {
     let model = crate::models::openai::InferenceModel {
-        name: "claude-sonnet-4-6[0]".to_string(),
+        name: "claude-sonnet-5[0]".to_string(),
         label_override: "deepseek-v4-flash".to_string(),
         provider_model_id: "deepseek-v4-flash".to_string(),
         display_name: "deepseek-v4-flash".to_string(),
@@ -227,14 +227,15 @@ fn claude_config_uses_supported_1m_variant_without_double_label() {
         max_tokens: Some(8192),
         capabilities: serde_json::json!({}),
         supports1m: Some(true),
-        prefer1m: Some(true),
+        // 即使舊設定沒有保存 1M 偏好，支援 1M 的模型也必須預設使用它。
+        prefer1m: None,
         transport_type: None,
     };
 
     let config = claude_config(12345, &[model], "proxy-token");
     let models = config["inferenceModels"].as_array().unwrap();
     assert_eq!(models.len(), 1);
-    assert_eq!(models[0]["name"], "claude-sonnet-4-6[0]");
+    assert_eq!(models[0]["name"], "claude-sonnet-5[0]");
     assert_eq!(models[0]["labelOverride"], "deepseek-v4-flash");
     assert_eq!(models[0]["displayName"], "deepseek-v4-flash");
     assert_eq!(models[0]["supports1m"], true);

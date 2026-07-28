@@ -21,7 +21,7 @@ fn normalizes_provider_urls_to_messages_endpoint() {
 fn rewrites_model_from_saved_routes() {
     let mut routes = HashMap::new();
     routes.insert(
-        "anthropic/claude-sonnet-4-5".to_string(),
+        "anthropic/claude-sonnet-5".to_string(),
         "openai/gpt-oss-20b:free".to_string(),
     );
     let settings = {
@@ -31,7 +31,7 @@ fn rewrites_model_from_saved_routes() {
     };
 
     let body = prepare_proxy_body(
-        r#"{"model":"anthropic/claude-sonnet-4-5","messages":[]}"#,
+        r#"{"model":"anthropic/claude-sonnet-5","messages":[]}"#,
         &settings,
     );
 
@@ -44,28 +44,28 @@ fn rewrites_model_from_saved_routes() {
 #[test]
 /// 驗證 `rewrites_model_from_saved_routes_bracket_index_key` 的行為符合預期。
 fn rewrites_model_from_saved_routes_bracket_index_key() {
-    // Claude Desktop receives model IDs like "claude-opus-4-8[0]".
+    // Claude Desktop receives model IDs like "claude-opus-5[0]".
     // The routes map must use the same bracket index format as keys, otherwise lookup fails and the
     // unmapped alias gets forwarded to LiteLLM, causing "Invalid model name" errors.
     let mut routes = HashMap::new();
     routes.insert(
-        "claude-opus-4-8[0]".to_string(),
+        "claude-opus-5[0]".to_string(),
         "deepseek-v4-flash".to_string(),
     );
-    routes.insert("claude-opus-4-8[3]".to_string(), "glm-5.1".to_string());
+    routes.insert("claude-opus-5[3]".to_string(), "glm-5.1".to_string());
     let settings = {
         let mut settings = Settings::default();
         settings.models.real_model_routes = routes;
         settings
     };
 
-    let body = prepare_proxy_body(r#"{"model":"claude-opus-4-8[0]","messages":[]}"#, &settings);
+    let body = prepare_proxy_body(r#"{"model":"claude-opus-5[0]","messages":[]}"#, &settings);
     assert_eq!(
         serde_json::from_str::<Value>(&body).unwrap()["model"],
         "deepseek-v4-flash"
     );
 
-    let body2 = prepare_proxy_body(r#"{"model":"claude-opus-4-8[3]","messages":[]}"#, &settings);
+    let body2 = prepare_proxy_body(r#"{"model":"claude-opus-5[3]","messages":[]}"#, &settings);
     assert_eq!(
         serde_json::from_str::<Value>(&body2).unwrap()["model"],
         "glm-5.1"

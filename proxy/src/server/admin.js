@@ -5,9 +5,9 @@
     const translations = {
       'zh-tw': {
         'nav_connection': '連線設定',
-        'nav_models': '模型與思考',
-        'nav_extensions': '擴充與技能',
-        'nav_optimization': '效能優化',
+        'nav_models': '模型設定',
+        'nav_extensions': '請求最佳化與工具優化',
+        'nav_optimization': '進階設定',
         'conn_title': '基本連線設定',
         'conn_provider': 'API 供應商',
         'conn_api_url': 'API URL',
@@ -34,9 +34,9 @@
         'models_toggle_show': '全選/取消顯示',
         'models_toggle_1m': '全選/取消 1M',
         'models_search_placeholder': '搜尋模型名稱 (例如: claude, gpt, gemini, free)...',
-        'ext_title': '擴充與本地技能',
+        'ext_title': '請求最佳化與工具優化',
         'ext_quota_title': '配額檢查攔截',
-        'ext_quota_desc': '攔截 max_tokens=1 且含有 "quota" 的測試請求',
+        'ext_quota_desc': '攔截 max_tokens=1 的配額與背景探測請求',
         'ext_prefix_title': '命令前綴快速檢測',
         'ext_prefix_desc': '本地解析 shell 命令，避免不必要地呼叫 LLM',
         'ext_title_skip_title': '跳過對話標題生成',
@@ -45,11 +45,14 @@
         'ext_suggest_skip_desc': '直接回傳空建議，減少無用 API 請求',
         'ext_filepath_title': '本機檔案路徑提取',
         'ext_filepath_desc': '由命令輸出中進行本地路徑分析',
+        'api_log_title': 'API 呼叫紀錄',
+        'api_log_enable_title': 'API 呼叫紀錄',
+        'api_log_enable_desc': '記錄模型、狀態與耗時；不保存提示詞、回應內容或 API Key。最多保留 5 個 10 MiB 檔案。',
         'ext_web_tools_title': 'Web 網頁存取工具',
         'ext_web_tools_desc': '允許本地執行 web_search 與 web_fetch 抓取工具',
         'ext_web_fetch_schemes': 'Web Fetch 允許 URL Schemes (以逗號分隔)',
         'ext_web_fetch_private': '允許 web_fetch 存取私有網路 (Private Networks)',
-        'opt_title': '效能優化設定',
+        'opt_title': '進階設定',
         'opt_transport': '傳輸協定',
         'opt_transport_openai': 'OpenAI Chat 格式轉換',
         'opt_transport_anthropic': '原生 Anthropic passthrough',
@@ -59,7 +62,7 @@
         'btn_launch_claude': '啟動 Claude Desktop',
         'btn_reset_mirror': '重置鏡像 Profile',
         'btn_sync_original': '從原版同步',
-        'btn_save_only': '僅儲存',
+        'btn_save_only': '儲存',
         'btn_save_launch': '啟動 ↵',
         'toast_save_success': '設定已成功儲存！',
         'toast_save_failed': '儲存失敗: ',
@@ -93,9 +96,9 @@
       },
       'en': {
         'nav_connection': 'Connection',
-        'nav_models': 'Models & Thinking',
-        'nav_extensions': 'Extensions & Skills',
-        'nav_optimization': 'Optimization',
+        'nav_models': 'Model Settings',
+        'nav_extensions': 'Request Optimization & Tools',
+        'nav_optimization': 'Advanced Settings',
         'conn_title': 'Connection Settings',
         'conn_provider': 'API Provider',
         'conn_api_url': 'API URL',
@@ -122,9 +125,9 @@
         'models_toggle_show': 'Toggle All Show',
         'models_toggle_1m': 'Toggle All 1M',
         'models_search_placeholder': 'Search model name (e.g. claude, gpt, gemini, free)...',
-        'ext_title': 'Extensions & Skills',
+        'ext_title': 'Request Optimization & Tools',
         'ext_quota_title': 'Quota Mock',
-        'ext_quota_desc': 'Intercept max_tokens=1 and quota checks',
+        'ext_quota_desc': 'Intercept max_tokens=1 quota and background probes',
         'ext_prefix_title': 'Prefix Detection',
         'ext_prefix_desc': 'Parse shell prefixes locally to bypass LLM',
         'ext_title_skip_title': 'Skip Title Generation',
@@ -133,11 +136,14 @@
         'ext_suggest_skip_desc': 'Return empty suggestions to reduce API usage',
         'ext_filepath_title': 'Filepath Extraction',
         'ext_filepath_desc': 'Extract filepaths locally from command output',
+        'api_log_title': 'API Call Logs',
+        'api_log_enable_title': 'API Call Logging',
+        'api_log_enable_desc': 'Logs models, status, and timing only. Prompts, responses, and API keys are excluded. Keeps at most five 10 MiB files.',
         'ext_web_tools_title': 'Web Access Tools',
         'ext_web_tools_desc': 'Enable local execution of web_search and web_fetch',
         'ext_web_fetch_schemes': 'Allowed URL Schemes (comma separated)',
         'ext_web_fetch_private': 'Allow web_fetch to access private networks',
-        'opt_title': 'Optimization Settings',
+        'opt_title': 'Advanced Settings',
         'opt_transport': 'Transport Protocol',
         'opt_transport_openai': 'OpenAI Chat Format Conversion',
         'opt_transport_anthropic': 'Native Anthropic Passthrough',
@@ -406,6 +412,7 @@
         $('enableTitleGenerationSkip').checked = settings.enableTitleGenerationSkip !== false;
         $('enableSuggestionModeSkip').checked = settings.enableSuggestionModeSkip !== false;
         $('enableFilepathExtractionMock').checked = settings.enableFilepathExtractionMock !== false;
+        $('enableApiCallLogging').checked = settings.enableApiCallLogging === true;
 
         $('enableWebServerTools').checked = settings.enableWebServerTools === true;
         if (settings.enableWebServerTools) {
@@ -590,7 +597,9 @@
             .find(item => item.dataset.model === el.dataset.model);
           if (!prefer) return;
           prefer.disabled = !el.checked;
-          if (!el.checked) prefer.checked = false;
+          // 啟用 1M 變體時，同步將它設為預設選項，避免只輸出
+          // `supports1m` 而遺漏 Claude Desktop 所需的 `prefer1m`。
+          prefer.checked = el.checked;
         };
       });
 
@@ -651,11 +660,9 @@
             .find(item => item.dataset.model === cb.dataset.model);
           if (prefer) {
             prefer.disabled = allChecked;
-            if (allChecked) {
-              prefer.checked = false;
-              if (loadedSettings && loadedSettings.model1mPreferOverrides) {
-                loadedSettings.model1mPreferOverrides[cb.dataset.model] = false;
-              }
+            prefer.checked = !allChecked;
+            if (loadedSettings && loadedSettings.model1mPreferOverrides) {
+              loadedSettings.model1mPreferOverrides[cb.dataset.model] = !allChecked;
             }
           }
         });
@@ -747,6 +754,7 @@
           enableTitleGenerationSkip: $('enableTitleGenerationSkip').checked,
           enableSuggestionModeSkip: $('enableSuggestionModeSkip').checked,
           enableFilepathExtractionMock: $('enableFilepathExtractionMock').checked,
+          enableApiCallLogging: $('enableApiCallLogging').checked,
 
           enableWebServerTools: $('enableWebServerTools').checked,
           webFetchAllowedSchemes: $('webFetchAllowedSchemes').value.trim(),

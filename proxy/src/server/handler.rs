@@ -16,6 +16,7 @@ use free_claude_core::optimization;
 #[cfg(test)]
 use free_claude_core::to_public_config;
 use serde_json::{Value, json};
+use std::time::Instant;
 
 pub use super::admin_assets::{handle_admin_css, handle_admin_js, handle_admin_page};
 pub use super::admin_settings::{
@@ -63,6 +64,80 @@ fn sse_stream_response(
         .header("Connection", "keep-alive")
         .body(axum::body::Body::from_stream(stream))
         .unwrap()
+}
+
+/// 建立不含提示詞、工具參數或驗證資訊的 API 請求摘要。
+fn api_request_summary(body: &str) -> Value {
+    let parsed = serde_json::from_str::<Value>(body).ok();
+    let message_count = parsed
+        .as_ref()
+        .and_then(|value| value.get("messages"))
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let tool_count = parsed
+        .as_ref()
+        .and_then(|value| value.get("tools"))
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+
+    json!({
+        "model": parsed
+            .as_ref()
+            .and_then(|value| value.get("model"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown"),
+        "stream": parsed
+            .as_ref()
+            .and_then(|value| value.get("stream"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        "maxTokens": parsed
+            .as_ref()
+            .and_then(|value| value.get("max_tokens"))
+            .and_then(Value::as_u64),
+        "messageCount": message_count,
+        "toolCount": tool_count,
+        "hasSystem": parsed
+            .as_ref()
+            .and_then(|value| value.get("system"))
+            .is_some(),
+        "requestBytes": body.len(),
+        "validJson": parsed.is_some(),
+    })
+}
+
+/// 移除查詢字串與片段，避免 API 紀錄意外保存 URL 內的敏感資料。
+fn redacted_url(url: &str) -> &str {
+    url.split(['?', '#']).next().unwrap_or(url)
+}
+
+fn record_api_outcome(
+    enabled: bool,
+    call_id: u64,
+    request: &Value,
+    target_url: &str,
+    transport: &str,
+    outcome: &str,
+    elapsed_ms: u128,
+    status: Option<u16>,
+    content_type: Option<&str>,
+    error: Option<&str>,
+) {
+    if !enabled {
+        return;
+    }
+    super::api_log::record_api_call(json!({
+        "timestampMs": super::api_log::unix_time_ms(),
+        "callId": call_id,
+        "outcome": outcome,
+        "transport": transport,
+        "targetUrl": redacted_url(target_url),
+        "status": status,
+        "contentType": content_type,
+        "elapsedMs": elapsed_ms,
+        "request": request,
+        "error": error,
+    }));
 }
 
 pub async fn handle_root() -> impl IntoResponse {
@@ -192,9 +267,24 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     };
 
     let body_str = String::from_utf8_lossy(&body);
+    let call_id = super::api_log::next_call_id();
+    let started_at = Instant::now();
+    let request_summary = api_request_summary(&body_str);
 
     // 3. Try local optimizations (quota mock, prefix detection, etc.)
     if let Some(response) = optimization::try_optimizations(&body_str, &settings).await {
+        record_api_outcome(
+            settings.optimizations.enable_api_call_logging,
+            call_id,
+            &request_summary,
+            "local://optimization",
+            "local",
+            "optimized",
+            started_at.elapsed().as_millis(),
+            Some(StatusCode::OK.as_u16()),
+            None,
+            None,
+        );
         return super::optimization_response::into_response(response);
     }
 
@@ -220,6 +310,18 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
     // 3. Connection Probe interception：攔截背景連線健康檢查（詳見 try_probe_response）。
     if let Some(response) = try_probe_response(&body_str, &req_model) {
+        record_api_outcome(
+            settings.optimizations.enable_api_call_logging,
+            call_id,
+            &request_summary,
+            "local://connection-probe",
+            "local",
+            "probe",
+            started_at.elapsed().as_millis(),
+            Some(StatusCode::OK.as_u16()),
+            None,
+            None,
+        );
         return response;
     }
 
@@ -300,6 +402,27 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         Ok(response) => {
             let status = response.status();
             let status_u16 = status.as_u16();
+            let content_type = response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+            record_api_outcome(
+                settings.optimizations.enable_api_call_logging,
+                call_id,
+                &request_summary,
+                &target_url,
+                if is_anthropic_native {
+                    "anthropic_messages"
+                } else {
+                    "openai_chat_completions"
+                },
+                "upstream_response",
+                started_at.elapsed().as_millis(),
+                Some(status_u16),
+                content_type.as_deref(),
+                None,
+            );
 
             if is_openai_format && is_stream {
                 tracing::info!("<- 上游回應狀態碼(流式): {}", status_u16);
@@ -437,6 +560,22 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         }
         Err(error) => {
             tracing::error!("<- 轉發錯誤: {:?}", error);
+            record_api_outcome(
+                settings.optimizations.enable_api_call_logging,
+                call_id,
+                &request_summary,
+                &target_url,
+                if is_anthropic_native {
+                    "anthropic_messages"
+                } else {
+                    "openai_chat_completions"
+                },
+                "upstream_error",
+                started_at.elapsed().as_millis(),
+                None,
+                None,
+                Some(&error.to_string()),
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": format!("Proxy forwarding error: {error}") })),

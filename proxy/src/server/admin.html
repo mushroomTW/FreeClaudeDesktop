@@ -42,15 +42,15 @@
             </a>
             <a href="#models" class="nav-item" data-tab="models">
               <span class="nav-indicator"></span>
-              <span data-i18n="nav_models">模型與思考</span>
+              <span data-i18n="nav_models">模型設定</span>
             </a>
             <a href="#extensions" class="nav-item" data-tab="extensions">
               <span class="nav-indicator"></span>
-              <span data-i18n="nav_extensions">擴充與技能</span>
+              <span data-i18n="nav_extensions">請求最佳化與工具優化</span>
             </a>
             <a href="#optimization" class="nav-item" data-tab="optimization">
               <span class="nav-indicator"></span>
-              <span data-i18n="nav_optimization">效能優化</span>
+              <span data-i18n="nav_optimization">進階設定</span>
             </a>
           </nav>
           <div class="sidebar-footer">
@@ -243,12 +243,12 @@
             <!-- 3. 擴充與技能分頁 -->
             <section id="tab-extensions" class="tab-section hidden">
               <div class="card">
-                <div class="card-title" data-i18n="ext_title">擴充與本地技能</div>
+                <div class="card-title" data-i18n="ext_title">請求最佳化與工具優化</div>
                 
                 <div class="switch-container">
                   <div class="switch-label" data-toggle-target="enableQuotaCheckMock">
                     <span data-i18n="ext_quota_title">配額檢查攔截</span>
-                    <span class="switch-desc" data-i18n="ext_quota_desc">攔截 max_tokens=1 且含有 "quota" 的測試請求</span>
+                    <span class="switch-desc" data-i18n="ext_quota_desc">攔截 max_tokens=1 的配額與背景探測請求</span>
                   </div>
                   <label class="switch" aria-label="配額檢查攔截">
                     <input type="checkbox" id="enableQuotaCheckMock">
@@ -329,10 +329,21 @@
               </div>
             </section>
 
-            <!-- 4. 效能優化分頁 -->
+            <!-- 4. 進階設定分頁 -->
             <section id="tab-optimization" class="tab-section hidden">
               <div class="card">
-                <div class="card-title" data-i18n="opt_title">效能優化設定</div>
+                <div class="card-title" data-i18n="opt_title">進階設定</div>
+
+                <div class="switch-container">
+                  <div class="switch-label" data-toggle-target="enableApiCallLogging">
+                    <span data-i18n="api_log_enable_title">API 呼叫紀錄</span>
+                    <span class="switch-desc" data-i18n="api_log_enable_desc">記錄模型、狀態與耗時；不保存提示詞、回應內容或 API Key。最多保留 5 個 10 MiB 檔案。</span>
+                  </div>
+                  <label class="switch" aria-label="API 呼叫紀錄">
+                    <input type="checkbox" id="enableApiCallLogging">
+                    <span class="slider"></span>
+                  </label>
+                </div>
                 
                 <div class="grid">
                   <div class="form-group">
@@ -372,7 +383,7 @@
             <div class="actions-wrapper">
               <button type="button" class="btn btn-secondary" id="resetMirrorBtn" data-i18n="btn_reset_mirror">重置鏡像 Profile</button>
               <button type="button" class="btn btn-secondary" id="syncOfficialBtn" data-i18n="btn_sync_original">從原版同步</button>
-              <button type="button" class="btn btn-secondary" id="saveOnlyBtn" data-i18n="btn_save_only">僅儲存</button>
+              <button type="button" class="btn btn-secondary" id="saveOnlyBtn" data-i18n="btn_save_only">儲存</button>
               <button type="button" class="btn btn-primary" id="saveAndLaunchBtn" data-i18n="btn_save_launch">啟動</button>
             </div>
           </footer>

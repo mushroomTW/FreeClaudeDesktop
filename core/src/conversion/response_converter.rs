@@ -311,9 +311,9 @@ fn model_alias(model: &ProviderModel, index: usize, overrides: &HashMap<String, 
     if supports_reasoning_effort(model, overrides) {
         let levels = effective_reasoning_effort_levels(model, overrides);
         if levels.iter().any(|level| level == "max") {
-            format!("claude-opus-4-8[{index}]")
+            format!("claude-opus-5[{index}]")
         } else {
-            format!("claude-sonnet-4-6[{index}]")
+            format!("claude-sonnet-5[{index}]")
         }
     } else {
         format!("claude-haiku-4-5[{index}]")

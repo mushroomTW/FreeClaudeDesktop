@@ -128,10 +128,10 @@ fn models_store_litellm_reasoning_effort_levels() {
     .unwrap();
 
     assert_eq!(
-        normalized.reasoning_effort_routes["claude-sonnet-4-6[0]"],
+        normalized.reasoning_effort_routes["claude-sonnet-5[0]"],
         vec!["none", "low", "high"]
     );
-    assert_eq!(normalized.data[0].id, "claude-sonnet-4-6[0]");
+    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0]");
     assert_eq!(
         normalized.data[0].capabilities["thinking"]["supported"],
         true
@@ -152,9 +152,9 @@ fn models_with_max_reasoning_stores_reasoning_effort_levels() {
     }))
     .unwrap();
 
-    assert_eq!(normalized.data[0].id, "claude-opus-4-8[0]");
+    assert_eq!(normalized.data[0].id, "claude-opus-5[0]");
     assert_eq!(
-        normalized.reasoning_effort_routes["claude-opus-4-8[0]"],
+        normalized.reasoning_effort_routes["claude-opus-5[0]"],
         vec!["none", "high", "max"]
     );
 }
@@ -180,9 +180,9 @@ fn model_reasoning_override_enables_reasoning_alias() {
     )
     .unwrap();
 
-    assert_eq!(normalized.data[0].id, "claude-sonnet-4-6[0]");
+    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0]");
     assert_eq!(
-        normalized.reasoning_effort_routes["claude-sonnet-4-6[0]"],
+        normalized.reasoning_effort_routes["claude-sonnet-5[0]"],
         vec!["none", "high"]
     );
 }
@@ -237,10 +237,10 @@ fn duplicate_litellm_deployments_are_deduped_by_model_name() {
 fn rewrites_stale_mapped_model_to_fallback_route() {
     let mut routes = std::collections::HashMap::new();
     routes.insert(
-        "claude-opus-4-8[0]".to_string(),
+        "claude-opus-5[0]".to_string(),
         "deepseek-v4-flash".to_string(),
     );
-    routes.insert("claude-opus-4-8[3]".to_string(), "glm-5.1".to_string());
+    routes.insert("claude-opus-5[3]".to_string(), "glm-5.1".to_string());
     let settings = {
         let mut settings = Settings::default();
         settings.models.real_model_routes = routes;
@@ -250,7 +250,7 @@ fn rewrites_stale_mapped_model_to_fallback_route() {
     let rewritten = rewrite_stale_model_request(
         r#"{"model":"glm-5.1","messages":[]}"#,
         &settings,
-        "claude-opus-4-8[3]",
+        "claude-opus-5[3]",
     )
     .unwrap();
 
@@ -366,13 +366,13 @@ fn model_info_max_input_tokens_enables_1m_support() {
 fn models_response_hides_same_name_200k_variant_when_1m_enabled() {
     // 上游同時回傳兩筆 id 不同但 name 相同的條目（200k 與 1m 變體）
     let mut m1_overrides = std::collections::HashMap::new();
-    m1_overrides.insert("claude-sonnet-4-5-1m".to_string(), true);
+    m1_overrides.insert("claude-sonnet-5-1m".to_string(), true);
 
     let normalized = normalize_models_response_with_overrides(
         json!({
             "data": [
                 {
-                    "id": "claude-sonnet-4-5",
+                    "id": "claude-sonnet-5",
                     "name": "Claude Sonnet 4.5",
                     "model_info": {
                         "supports_reasoning_effort": false,
@@ -380,7 +380,7 @@ fn models_response_hides_same_name_200k_variant_when_1m_enabled() {
                     }
                 },
                 {
-                    "id": "claude-sonnet-4-5-1m",
+                    "id": "claude-sonnet-5-1m",
                     "name": "Claude Sonnet 4.5",
                     "model_info": {
                         "supports_reasoning_effort": false,
@@ -396,7 +396,7 @@ fn models_response_hides_same_name_200k_variant_when_1m_enabled() {
 
     // 只剩被勾選 1M 的那一筆
     assert_eq!(normalized.data.len(), 1);
-    assert_eq!(normalized.data[0].provider_model_id, "claude-sonnet-4-5-1m");
+    assert_eq!(normalized.data[0].provider_model_id, "claude-sonnet-5-1m");
     assert_eq!(normalized.data[0].id, "claude-haiku-4-5[0]");
     assert_eq!(normalized.data[0].name, "Claude Sonnet 4.5");
     assert_eq!(normalized.data[0].supports1m, Some(true));
@@ -410,7 +410,7 @@ fn models_response_keeps_all_when_no_1m_override() {
         json!({
             "data": [
                 {
-                    "id": "claude-sonnet-4-5",
+                    "id": "claude-sonnet-5",
                     "name": "Claude Sonnet 4.5",
                     "model_info": {
                         "supports_reasoning_effort": false,
@@ -418,7 +418,7 @@ fn models_response_keeps_all_when_no_1m_override() {
                     }
                 },
                 {
-                    "id": "claude-sonnet-4-5-1m",
+                    "id": "claude-sonnet-5-1m",
                     "name": "Claude Sonnet 4.5",
                     "model_info": {
                         "supports_reasoning_effort": false,
@@ -447,7 +447,7 @@ fn models_response_keeps_same_name_variants_when_neither_1m_enabled() {
         json!({
             "data": [
                 {
-                    "id": "claude-sonnet-4-5",
+                    "id": "claude-sonnet-5",
                     "name": "Claude Sonnet 4.5",
                     "model_info": {
                         "supports_reasoning_effort": false,
@@ -455,7 +455,7 @@ fn models_response_keeps_same_name_variants_when_neither_1m_enabled() {
                     }
                 },
                 {
-                    "id": "claude-sonnet-4-5-1m",
+                    "id": "claude-sonnet-5-1m",
                     "name": "Claude Sonnet 4.5",
                     "model_info": {
                         "supports_reasoning_effort": false,
@@ -548,6 +548,6 @@ fn models_response_keeps_sonnet_alias_for_1m_model_without_max_reasoning() {
     )
     .unwrap();
 
-    assert_eq!(normalized.data[0].id, "claude-sonnet-4-6[0]");
+    assert_eq!(normalized.data[0].id, "claude-sonnet-5[0]");
     assert_eq!(normalized.data[0].supports1m, Some(true));
 }
