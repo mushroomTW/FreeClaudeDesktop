@@ -23,15 +23,16 @@ pub fn create_router(port: u16) -> Router {
         .route("/", get(super::handler::handle_root))
         .route("/healthz", get(super::handler::handle_healthz))
         .route("/assets/icon.png", get(super::handler::handle_app_icon))
-        .route("/dashboard", get(super::handler::handle_admin_page))
-        .route("/admin.css", get(super::handler::handle_admin_css))
-        .route("/admin.js", get(super::handler::handle_admin_js))
+        .route("/dashboard", get(super::handler::handle_dashboard_page))
+        .route("/dashboard.css", get(super::handler::handle_dashboard_css))
+        .route("/dashboard.js", get(super::handler::handle_dashboard_js))
         .route(
             "/settings",
-            get(super::handler::handle_admin_settings).post(super::handler::update_admin_settings),
+            get(super::handler::handle_dashboard_settings)
+                .post(super::handler::update_dashboard_settings),
         )
-        .route("/status", get(super::handler::handle_admin_status))
-        .route("/rpc", post(super::handler::handle_admin_rpc))
+        .route("/status", get(super::handler::handle_dashboard_status))
+        .route("/rpc", post(super::handler::handle_dashboard_rpc))
         .route(
             "/companion",
             get(super::handler::handle_companion_websocket),

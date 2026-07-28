@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Start(args) => start(args.runtime).await,
         Command::Stop(args) => stop(args.runtime),
         Command::Status(args) => print_status(args.runtime).await,
-        Command::Configure => open_admin(),
+        Command::Configure => open_dashboard(),
         Command::LaunchClaude => launch_claude(),
         Command::Restore => restore_settings(),
         Command::Purge(args) => purge(args),
@@ -121,9 +121,6 @@ async fn update(args: UpdateArgs) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
-    if !args.yes {
-        return Err("uninstall 會停止服務並還原 Claude 設定；請加入 --yes 確認".into());
-    }
     let _ = crate::runtime::native::stop_companion();
     match args.runtime {
         Runtime::Native => {
@@ -140,6 +137,7 @@ fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
     let _ = crate::runtime::autostart::disable();
     free_claude_core::restore_official_config()?;
+    free_claude_core::purge_application_data()?;
 
     if args.purge_image && matches!(args.runtime, Runtime::Native) {
         let status = ProcessCommand::new("docker")
@@ -176,14 +174,14 @@ fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-/// 啟動或執行 `open_admin` 流程。
-fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
+/// 啟動或執行 `open_dashboard` 流程。
+fn open_dashboard() -> Result<(), Box<dyn std::error::Error>> {
     let port = free_claude_core::get_launcher_settings()
         .and_then(|settings| settings.desktop.active_port)
         .unwrap_or(3000);
     let url = format!("http://127.0.0.1:{port}/dashboard");
 
-    println!("正在開啟 Web Admin：{url}");
+    println!("正在開啟 Web 控制台：{url}");
 
     #[cfg(target_os = "windows")]
     let status = ProcessCommand::new("cmd")
@@ -195,7 +193,7 @@ fn open_admin() -> Result<(), Box<dyn std::error::Error>> {
     let status = ProcessCommand::new("xdg-open").arg(&url).status()?;
 
     if !status.success() {
-        return Err(io::Error::other("無法開啟 Web Admin").into());
+        return Err(io::Error::other("無法開啟 Web 控制台").into());
     }
     Ok(())
 }
@@ -365,14 +363,9 @@ mod tests {
     }
 
     #[test]
-    /// 驗證 `uninstall_requires_explicit_confirmation` 的行為符合預期。
-    fn uninstall_requires_explicit_confirmation() {
-        let args = UninstallArgs {
-            runtime: Runtime::Native,
-            purge_image: false,
-            yes: false,
-        };
-        assert!(!args.yes);
+    /// 驗證 `uninstall_does_not_require_confirmation` 的行為符合預期。
+    fn uninstall_does_not_require_confirmation() {
+        Cli::try_parse_from(["freeclaude", "uninstall"]).expect("uninstall 不應要求 --yes");
     }
 
     #[test]

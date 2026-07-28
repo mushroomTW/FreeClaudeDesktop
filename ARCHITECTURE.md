@@ -7,7 +7,7 @@ This document describes the internal structure and execution paths of FreeClaude
 | Crate | Internal responsibility |
 | --- | --- |
 | `free-claude-core` (`core/`) | Shared schemas, persistent settings, model discovery and routing, request/response conversion, and launcher integration. |
-| `freeclaude-proxy` (`proxy/`) | Axum routes, authentication, gateway forwarding, SSE conversion, Web Admin, and companion WebSocket handling. |
+| `freeclaude-proxy` (`proxy/`) | Axum routes, authentication, gateway forwarding, SSE conversion, Web Dashboard, and companion WebSocket handling. |
 | `freeclaude` (`cli/`) | Commands that coordinate installation, process lifecycle, profile configuration, autostart, update, and removal. |
 
 Dependencies flow inward: the CLI and proxy depend on `free-claude-core`; the core crate is independent of the HTTP server and command-line interface.
@@ -25,14 +25,14 @@ flowchart BT
 ```mermaid
 flowchart LR
     CD["Claude Desktop"] -->|"Anthropic Messages API"| PX["Proxy"]
-    ADMIN["Web Admin"] --> PX
+    Dashboard["Web Dashboard"] --> PX
     CLI["CLI / Companion"] --> PX
     PX -->|"OpenAI-compatible Chat Completions"| GW["Configured gateway"]
     GW --> PROVIDER["Model provider"]
     PROVIDER --> GW --> PX --> CD
 ```
 
-The proxy is the protocol boundary. It accepts Claude-compatible requests, while the gateway adapter sends OpenAI-compatible requests upstream. The companion connection lets the Web Admin coordinate with the host-side CLI process without putting host-control logic inside the proxy container.
+The proxy is the protocol boundary. It accepts Claude-compatible requests, while the gateway adapter sends OpenAI-compatible requests upstream. The companion connection lets the Web Dashboard coordinate with the host-side CLI process without putting host-control logic inside the proxy container.
 
 ## Message execution flow
 
@@ -78,7 +78,7 @@ During request conversion, Claude `thinking.budget_tokens` is translated to a su
 ```mermaid
 flowchart LR
     SETTINGS["Settings store"] --> PROXY["Proxy request handlers"]
-    SETTINGS --> ADMIN["Web Admin settings API"]
+    SETTINGS --> Dashboard["Web Dashboard settings API"]
     KEYRING["OS keyring"] --> PROXY
     PROFILE["Isolated Claude Desktop profile"] <-->|"configure / sync"| CLI["CLI"]
     CLI --> SETTINGS

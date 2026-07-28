@@ -1,8 +1,8 @@
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const wrapper = path.join(__dirname, "..", "bin", "freeclaude-proxy.cjs");
-const result = spawnSync(process.execPath, [wrapper, "purge"], { stdio: "inherit" });
+const wrapper = path.join(__dirname, "..", "bin", "freeclaude.cjs");
+const result = spawnSync(process.execPath, [wrapper, "uninstall"], { stdio: "inherit" });
 
 if (result.error) throw result.error;
 if (result.status !== 0) {

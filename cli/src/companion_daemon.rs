@@ -1,4 +1,4 @@
-use free_claude_core::AdminRpcRequest;
+use free_claude_core::DashboardRpcRequest;
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -87,20 +87,20 @@ async fn handle_message(text: &str) -> Result<Value, String> {
 /// 處理 `handle_rpc_logic` 對應的請求。
 async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
     let settings = free_claude_core::get_launcher_settings().ok_or("Launcher not configured")?;
-    let rpc_req: AdminRpcRequest =
+    let rpc_req: DashboardRpcRequest =
         serde_json::from_value(req_val.clone()).map_err(|e| e.to_string())?;
     let result = match rpc_req {
-        AdminRpcRequest::GetStatus => {
+        DashboardRpcRequest::GetStatus => {
             json!({
                 "proxy": { "status": "ok", "port": settings.desktop.active_port },
                 "settings": free_claude_core::to_public_config(&settings),
             })
         }
-        AdminRpcRequest::DetectClaude => {
+        DashboardRpcRequest::DetectClaude => {
             let path = free_claude_core::detect_claude_path();
             json!({ "path": path.map(|p| p.display().to_string()) })
         }
-        AdminRpcRequest::LaunchClaude => {
+        DashboardRpcRequest::LaunchClaude => {
             let custom_path = settings
                 .desktop
                 .custom_claude_path
@@ -109,22 +109,22 @@ async fn handle_rpc_logic(req_val: &Value) -> Result<Value, String> {
             let path = free_claude_core::launch_claude(custom_path).map_err(|e| e.to_string())?;
             json!({ "path": path.display().to_string() })
         }
-        AdminRpcRequest::RestoreSettings => {
+        DashboardRpcRequest::RestoreSettings => {
             free_claude_core::restore_official_config().map_err(|e| e.to_string())?;
             json!({ "restored": true })
         }
-        AdminRpcRequest::SyncFromOfficial => {
+        DashboardRpcRequest::SyncFromOfficial => {
             free_claude_core::resync_from_official().map_err(|e| e.to_string())?;
             json!({ "synced": true })
         }
-        AdminRpcRequest::ResetMirrorProfile => {
+        DashboardRpcRequest::ResetMirrorProfile => {
             free_claude_core::reset_mirror_profile().map_err(|e| e.to_string())?;
             json!({ "reset": true })
         }
-        AdminRpcRequest::FetchModels => {
+        DashboardRpcRequest::FetchModels => {
             return Err("FetchModels should be handled by proxy directly".to_string());
         }
-        AdminRpcRequest::ApplySettings {
+        DashboardRpcRequest::ApplySettings {
             base_url,
             auth_scheme,
             api_key,

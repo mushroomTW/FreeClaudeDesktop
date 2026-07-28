@@ -7,7 +7,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use free_claude_core::AdminRpcRequest;
+use free_claude_core::DashboardRpcRequest;
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
@@ -39,7 +39,10 @@ impl CompanionState {
 }
 
 /// 將管理端 RPC 轉送給目前連線的 Companion。
-pub(crate) async fn forward_request(state: &CompanionState, request: AdminRpcRequest) -> Response {
+pub(crate) async fn forward_request(
+    state: &CompanionState,
+    request: DashboardRpcRequest,
+) -> Response {
     let companion_tx = {
         let active = state.active.lock().await;
         active.as_ref().map(|companion| companion.tx.clone())

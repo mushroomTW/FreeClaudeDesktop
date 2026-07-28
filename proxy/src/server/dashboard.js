@@ -204,7 +204,7 @@
         $('apiKey').placeholder = loadedSettings.hasApiKey ? dict['apiKey_saved'] : dict['apiKey_not_set'];
         $('keyStatus').textContent = loadedSettings.hasApiKey ? dict['keyStatus_saved'] : dict['keyStatus_not_set'];
       }
-      document.title = dict['title'] || 'FreeClaude Admin Dashboard';
+      document.title = dict['title'] || 'FreeClaude Dashboard Dashboard';
       document.documentElement.lang = lang === 'en' ? 'en' : 'zh-TW';
     }
 
@@ -567,14 +567,14 @@
         const effort = (settings.modelReasoningOverrides && settings.modelReasoningOverrides[model]) || '';
 
         tr.innerHTML = `
-          <td class="admin-inline-style-24">${model}</td>
-          <td class="admin-inline-style-25">
+          <td class="Dashboard-inline-style-24">${model}</td>
+          <td class="Dashboard-inline-style-25">
             <input type="checkbox" class="model-visibility" data-model="${model}" ${isVisible ? 'checked' : ''} aria-label="${model} 顯示狀態">
           </td>
-          <td class="admin-inline-style-25">
+          <td class="Dashboard-inline-style-25">
             <input type="checkbox" class="model-1m" data-model="${model}" ${is1m ? 'checked' : ''} aria-label="${model} 1M Context 支援">
           </td>
-          <td class="admin-inline-style-25">
+          <td class="Dashboard-inline-style-25">
             <input type="checkbox" class="model-1m-prefer" data-model="${model}" ${is1mPrefer ? 'checked' : ''} ${is1m ? '' : 'disabled'} aria-label="${model} 預設使用 1M">
           </td>
           <td>
@@ -787,10 +787,10 @@
               // 瀏覽器若允許便自動關閉；若遭安全政策阻擋，繼續顯示手動關閉提示。
               window.close();
               document.body.innerHTML = `
-                <div class="admin-inline-style-26">
-                  <img class="admin-inline-style-27" src="/assets/icon.png" alt="FreeClaudeDesktop 圖標" />
-                  <h1 class="admin-inline-style-28">${t('close_title')}</h1>
-                  <p class="admin-inline-style-29">${t('close_desc')}</p>
+                <div class="Dashboard-inline-style-26">
+                  <img class="Dashboard-inline-style-27" src="/assets/icon.png" alt="FreeClaudeDesktop 圖標" />
+                  <h1 class="Dashboard-inline-style-28">${t('close_title')}</h1>
+                  <p class="Dashboard-inline-style-29">${t('close_desc')}</p>
                 </div>
               `;
             }, 1000);

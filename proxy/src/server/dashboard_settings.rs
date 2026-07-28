@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use free_claude_core::{
-    AdminRpcRequest, SaveConfigInput, Settings, config_service::load_runtime_settings,
+    DashboardRpcRequest, SaveConfigInput, Settings, config_service::load_runtime_settings,
     to_public_config,
 };
 use serde::Deserialize;
@@ -15,7 +15,7 @@ use url::Url;
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct AdminSettingsUpdate {
+pub struct DashboardSettingsUpdate {
     pub base_url: String,
     pub auth_scheme: String,
     pub api_key: Option<String>,
@@ -97,7 +97,7 @@ pub(crate) fn normalize_custom_claude_path(path: Option<String>) -> Option<Strin
 
 fn apply_settings_update(
     settings: &mut Settings,
-    input: AdminSettingsUpdate,
+    input: DashboardSettingsUpdate,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     settings.gateway.real_base_url = validate_gateway_url(&input.base_url)
         .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
@@ -222,16 +222,16 @@ async fn load_settings() -> Result<Settings, Response> {
     }
 }
 
-pub async fn handle_admin_settings(_headers: HeaderMap) -> Response {
+pub async fn handle_dashboard_settings(_headers: HeaderMap) -> Response {
     match load_settings().await {
         Ok(settings) => (StatusCode::OK, Json(to_public_config(&settings))).into_response(),
         Err(response) => response,
     }
 }
 
-pub async fn update_admin_settings(
+pub async fn update_dashboard_settings(
     _headers: HeaderMap,
-    Json(input): Json<AdminSettingsUpdate>,
+    Json(input): Json<DashboardSettingsUpdate>,
 ) -> Response {
     let mut settings = match load_settings().await {
         Ok(settings) => settings,
@@ -278,7 +278,7 @@ pub async fn update_admin_settings(
     (StatusCode::OK, Json(updated_config)).into_response()
 }
 
-pub async fn handle_admin_status(_headers: HeaderMap) -> Response {
+pub async fn handle_dashboard_status(_headers: HeaderMap) -> Response {
     match load_settings().await {
         Ok(settings) => (
             StatusCode::OK,
@@ -292,16 +292,16 @@ pub async fn handle_admin_status(_headers: HeaderMap) -> Response {
     }
 }
 
-pub async fn handle_admin_rpc(
+pub async fn handle_dashboard_rpc(
     State(companion_state): State<super::companion::CompanionState>,
     _headers: HeaderMap,
-    Json(request): Json<AdminRpcRequest>,
+    Json(request): Json<DashboardRpcRequest>,
 ) -> Response {
     let settings = match load_settings().await {
         Ok(settings) => settings,
         Err(response) => return response,
     };
-    if matches!(request, AdminRpcRequest::GetStatus) {
+    if matches!(request, DashboardRpcRequest::GetStatus) {
         return (
             StatusCode::OK,
             Json(json!({
@@ -313,7 +313,7 @@ pub async fn handle_admin_rpc(
         )
             .into_response();
     }
-    if matches!(request, AdminRpcRequest::FetchModels) {
+    if matches!(request, DashboardRpcRequest::FetchModels) {
         super::models_endpoint::clear_models_cache();
         return super::models_endpoint::handle_models(HeaderMap::new())
             .await

@@ -20,33 +20,27 @@ FreeClaudeDesktop 是跨平台的命令列啟動器與 Claude Desktop 本機 API
 - 探索上游 API `/v1/models` 端點回傳的所有模型，並讓這些模型顯示於 Claude Desktop 的模型選擇器；亦可個別控制是否顯示。
 - 支援模型路由、推理設定與串流回應。
 - 使用隔離的 Claude Desktop Profile，並可重新同步官方 Profile 的選定資料。
-- 提供繁體中文與英文的瀏覽器 Web Admin。
 - 支援 Windows、macOS 與 Linux。
 
 為獲得較完整的 Claude Desktop 使用體驗，建議上游模型支援多模態輸入，且上下文視窗至少為 200K tokens。上下文較小或僅支援文字的模型仍可能運作，但圖片、長對話、檔案及大量工具呼叫等情境可能受限。
 
 ## 快速開始
 
-只需先安裝 Claude Desktop。以下指令會下載符合平台的預編譯 release 並安裝本機 `freeclaude` CLI；不需要 Rust、Cargo、Git 或原始碼工作區。
-
-### macOS / Linux
+請先安裝 Claude Desktop，以及含 npm 的 Node.js。全域安裝已發布的 npm 套件後，npm 會自動選擇符合作業系統與 CPU 架構的 binary 套件。
 
 ```bash
-curl -fsSL "https://github.com/mushroomTW/FreeClaudeDesktop/releases/latest/download/install.sh" | sh
+npm install -g @mushroomtw/freeclaudedesktop
+freecd install
+freecd dashboard
+```
+完整解除安裝 FreeClaudeDesktop：
+
+```bash
+freecd uninstall
+npm uninstall -g @mushroomtw/freeclaudedesktop
 ```
 
-### Windows（PowerShell）
-
-```powershell
-irm "https://github.com/mushroomTW/FreeClaudeDesktop/releases/latest/download/install.ps1" | iex
-```
-
-穩定安裝器 URL 會解析至最新 GitHub Release。安裝程式會下載符合平台的預編譯 binary、依 release 的 `checksums.txt` 驗證 SHA-256，並將 `freeclaude` 加入使用者 PATH；它**不會**修改 Claude Desktop 設定。請在確認安裝內容後，再執行：
-
-```text
-freeclaude install
-freeclaude configure
-```
+請使用 Web 控制台設定 Gateway URL、API key 與模型。`freecd start` 只會啟動 Proxy；`freecd install` 會另外完成本機整合並預設啟用自動啟動。
 
 ### 手動安裝
 
@@ -55,30 +49,14 @@ freeclaude configure
 ```bash
 git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
 cd FreeClaudeDesktop
-cargo build --release -p freeclaude -p freeclaude-proxy
+cargo build --release
 # macOS / Linux
 ./target/release/freeclaude install
 # Windows（PowerShell）
 .\target\release\freeclaude.exe install
 ```
 
-`freeclaude install` 預設使用原生 Proxy，並預設啟用登入後自動啟動。只有明確需要 Docker runtime 時才使用 `freeclaude install --runtime docker`；若不希望自動啟動，兩種安裝模式都可加上 `--no-autostart`。
-
-## 以 pnpm 全域安裝
-
-```bash
-pnpm add -g @mushroomtw/freeclaudedesktop
-freeclaude-proxy install
-freeclaude-proxy admin
-```
-
-在 Web Admin 填入並儲存 Gateway URL、API key 與模型設定後，按「啟動 Claude Desktop」即可開始使用。單獨執行 `freeclaude-proxy start` 只會啟動 Proxy，尚未完成 Claude Desktop 整合與 Gateway 設定。
-
-可使用 `freeclaude-proxy status`、`restart`、`admin` 與 `path` 管理本機服務；執行 `freeclaude-proxy purge` 可完整重設本機資料。解除安裝時會停止服務、還原 Claude 設定，並完整清除 FreeClaudeDesktop 擁有的設定、隔離 profile 與 OS keyring API key：
-
-```bash
-pnpm remove -g @mushroomtw/freeclaudedesktop
-```
+`freecd install` 預設使用原生 Proxy，並預設啟用登入後自動啟動。只有明確需要 Docker runtime 時才使用 `freecd install --runtime docker`；若不希望自動啟動，兩種安裝模式都可加上 `--no-autostart`。
 
 ## 建置與執行
 
@@ -88,7 +66,7 @@ pnpm remove -g @mushroomtw/freeclaudedesktop
 - 用於啟動整合的 Claude Desktop。
 
 ```bash
-cargo build --release -p freeclaude -p freeclaude-proxy
+cargo build --release
 # macOS / Linux
 ./target/release/freeclaude start
 # Windows（PowerShell）
@@ -106,16 +84,16 @@ cargo build --release
 管理原生 Proxy：
 
 ```bash
-freeclaude start
-freeclaude status
-freeclaude stop
+freecd start
+freecd status
+freecd stop
 ```
 
 預設連接埠為 `3000`。設定 `FREECLAUDE_PROXY_PORT` 可使用其他本機連接埠；`start` 會等待 `/healthz` 成功後才回報完成。
 
-`freeclaude configure` 會開啟同源的 `/dashboard` Web Admin 頁面。不需要登入或 Proxy Token，即可查看狀態與更新 Gateway 設定。API key 儲存在作業系統 keyring，Admin API 不會回傳它。
+`freecd configure` 會開啟同源的 `/dashboard` Web 控制台頁面。不需要登入或 Proxy Token，即可查看狀態與更新 Gateway 設定。API key 儲存在作業系統 keyring，控制台 API 不會回傳它。
 
-執行 `freeclaude start` 後，也可直接開啟 [http://127.0.0.1:3000/dashboard](http://127.0.0.1:3000/dashboard) 使用 Web Admin。
+執行 `freecd start` 後，也可直接開啟 [http://127.0.0.1:3000/dashboard](http://127.0.0.1:3000/dashboard) 使用 Web 控制台。
 
 ```text
 GET  /healthz
@@ -129,14 +107,13 @@ WS   /companion           （首個訊息需要 requestId）
 管理自動啟動與移除：
 
 ```bash
-freeclaude autostart enable
-freeclaude autostart status
-freeclaude autostart disable
-freeclaude uninstall --yes
-freeclaude purge --yes
+freecd autostart enable
+freecd autostart status
+freecd autostart disable
+freecd uninstall
 ```
 
-執行 `freeclaude install` 時預設會啟用登入後自動啟動；若要停用此預設行為，請在安裝時加上 `--no-autostart`。Windows 使用 Task Scheduler、macOS 使用 LaunchAgent、Linux 使用 systemd user service。
+執行 `freecd install` 時預設會啟用登入後自動啟動；若要停用此預設行為，請在安裝時加上 `--no-autostart`。Windows 使用 Task Scheduler、macOS 使用 LaunchAgent、Linux 使用 systemd user service。
 
 ## Companion Daemon
 
@@ -149,7 +126,7 @@ Docker Compose 用法、記憶體上限、安全注意事項與 CLI 管理指令
 僅檢查是否有新版 GitHub Release、但不變更本機安裝：
 
 ```bash
-freeclaude update --check
+freecd update --check
 ```
 
 ## 專案連結
