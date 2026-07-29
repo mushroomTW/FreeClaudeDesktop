@@ -5,7 +5,7 @@
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/Rust-stable-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust 1.97.1](https://img.shields.io/badge/Rust-1.97.1-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![HTTP: Axum](https://img.shields.io/badge/HTTP-Axum-6d3f8c.svg?style=for-the-badge)](https://github.com/tokio-rs/axum)
 [![Runtime: Tokio](https://img.shields.io/badge/runtime-Tokio-4c8eda.svg?style=for-the-badge)](https://tokio.rs/)
 
@@ -33,18 +33,12 @@ npm install -g @mushroomtw/freeclaudedesktop
 freecd install
 freecd dashboard
 ```
-完整解除安裝 FreeClaudeDesktop：
-
-```bash
-freecd uninstall
-npm uninstall -g @mushroomtw/freeclaudedesktop
-```
 
 請使用 Web 控制台設定 Gateway URL、API key 與模型。`freecd start` 只會啟動 Proxy；`freecd install` 會另外完成本機整合並預設啟用自動啟動。
 
 ### 手動安裝
 
-只有需要從原始碼建置時才使用此方式；它需要穩定版 [Rust toolchain](https://www.rust-lang.org/tools/install)。
+只有需要從原始碼建置時才使用此方式；它需要 [Rust 1.97.1 toolchain](https://www.rust-lang.org/tools/install)。Cargo 建置的原生 CLI 名稱為 `freeclaude`；npm 套件則提供 `freecd` 入口。
 
 ```bash
 git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
@@ -62,7 +56,7 @@ cargo build --release
 
 需求：
 
-- 穩定版 Rust toolchain 與 Cargo。
+- Rust 1.97.1 與 Cargo。
 - 用於啟動整合的 Claude Desktop。
 
 ```bash
@@ -110,10 +104,18 @@ WS   /companion           （首個訊息需要 requestId）
 freecd autostart enable
 freecd autostart status
 freecd autostart disable
-freecd uninstall
 ```
 
 執行 `freecd install` 時預設會啟用登入後自動啟動；若要停用此預設行為，請在安裝時加上 `--no-autostart`。Windows 使用 Task Scheduler、macOS 使用 LaunchAgent、Linux 使用 systemd user service。
+
+## 解除安裝
+
+移除 npm 套件前，請先清理本機狀態：
+
+```bash
+freecd uninstall
+npm uninstall -g @mushroomtw/freeclaudedesktop
+```
 
 ## Companion Daemon
 

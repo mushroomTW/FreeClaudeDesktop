@@ -7,11 +7,11 @@ npm install -g @mushroomtw/freeclaudedesktop
 freecd start
 ```
 
-可使用 `freecd status`、`restart`、`dashboard`、`path` 與 `purge` 管理服務。Web 控制台預設位於 `http://127.0.0.1:3000/dashboard`。
+可使用 `freecd status`、`freecd restart`、`freecd dashboard` 與 `freecd path` 管理服務。Web 控制台預設位於 `http://127.0.0.1:3000/dashboard`。
 
-移除套件時會停止服務、還原 Claude 設定並清除 FreeClaudeDesktop 所擁有的本機資料：
+## 解除安裝
 
-完整解除安裝前，請先執行：
+移除 npm 套件前，請先清理本機狀態：
 
 ```sh
 freecd uninstall
