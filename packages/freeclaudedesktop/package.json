@@ -19,6 +19,7 @@
   "optionalDependencies": {
     "@mushroomtw/freeclaudedesktop-darwin-arm64": "1.0.0",
     "@mushroomtw/freeclaudedesktop-darwin-x64": "1.0.0",
+    "@mushroomtw/freeclaudedesktop-linux-arm64": "1.0.0",
     "@mushroomtw/freeclaudedesktop-linux-x64": "1.0.0",
     "@mushroomtw/freeclaudedesktop-win32-arm64": "1.0.0",
     "@mushroomtw/freeclaudedesktop-win32-x64": "1.0.0"
