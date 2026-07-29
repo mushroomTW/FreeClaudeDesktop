@@ -584,6 +584,24 @@
       border-color: var(--primary-active);
     }
 
+    .btn-danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #ffffff;
+    }
+
+    .btn-danger:hover {
+      background: var(--danger);
+      border-color: var(--danger);
+      filter: brightness(1.1);
+    }
+
+    .btn-danger:active {
+      background: var(--danger);
+      border-color: var(--danger);
+      filter: brightness(0.9);
+    }
+
     /* 底部固定動作列 */
     .bottom-actions {
       position: fixed;
@@ -601,6 +619,7 @@
 
     .actions-wrapper {
       display: flex;
+      flex-wrap: wrap;
       gap: 0.75rem;
       width: 100%;
       max-width: 52rem;

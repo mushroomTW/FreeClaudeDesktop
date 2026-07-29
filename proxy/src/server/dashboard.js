@@ -64,6 +64,7 @@
         'btn_sync_original': '從原版同步',
         'btn_save_only': '儲存',
         'btn_save_launch': '啟動 ↵',
+        'btn_restore_official': '還原為原版',
         'toast_save_success': '設定已成功儲存！',
         'toast_save_failed': '儲存失敗: ',
         'toast_load_success': '設定載入成功！',
@@ -72,8 +73,13 @@
         'toast_launch_failed': '儲存成功，但 Claude 啟動失敗: ',
         'toast_fetch_success': '模型清單抓取成功！',
         'toast_fetch_failed': '抓取失敗: ',
+        'toast_restore_success': '已還原為官方 Claude Desktop 設定。',
+        'toast_restore_failed': '還原失敗: ',
         'confirm_sync': '⚠ 確定要從官方原版 Claude Desktop 同步配置？',
         'confirm_reset': '⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。',
+        'confirm_restore': '⚠ 還原為官方設定會停止 Claude Desktop，並移除 FreeClaudeDesktop 套用的設定。確定要繼續嗎？',
+        'restore_title': '已還原為原版',
+        'restore_desc': '官方 Claude Desktop 設定已恢復。請從原本的捷徑重新啟動 Claude Desktop。',
         'conn_detecting': '偵測中...',
         'detected_online': '已偵測 Claude Desktop',
         'detected_offline': '未偵測到安裝路徑，將使用預設路徑',
@@ -155,6 +161,7 @@
         'btn_sync_original': 'Sync from Official',
         'btn_save_only': 'Save Only',
         'btn_save_launch': 'Launch ↵',
+        'btn_restore_official': 'Restore Official',
         'toast_save_success': 'Settings saved successfully!',
         'toast_save_failed': 'Save failed: ',
         'toast_load_success': 'Settings loaded successfully!',
@@ -163,8 +170,13 @@
         'toast_launch_failed': 'Saved, but failed to launch Claude: ',
         'toast_fetch_success': 'Model list fetched successfully!',
         'toast_fetch_failed': 'Fetch failed: ',
+        'toast_restore_success': 'Official Claude Desktop settings restored.',
+        'toast_restore_failed': 'Restore failed: ',
         'confirm_sync': '⚠ Are you sure you want to sync settings from original Claude?',
         'confirm_reset': '⚠ Are you sure you want to reset mirror Profile? Original profile will not be affected.',
+        'confirm_restore': '⚠ Restoring the official settings will stop Claude Desktop and remove the settings applied by FreeClaudeDesktop. Continue?',
+        'restore_title': 'Official mode restored',
+        'restore_desc': 'Official Claude Desktop settings have been restored. Launch Claude Desktop from its original shortcut.',
         'detected_online': 'Claude Desktop Detected',
         'detected_offline': 'Claude Desktop not detected, using default path',
         'detected_failed': 'Failed to detect Claude Desktop path',
@@ -841,6 +853,33 @@
         await load();
       } catch(e) {
         showToast(t('toast_save_failed') + e.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    };
+
+    $('restoreOfficialBtn').onclick = async () => {
+      if (!confirm(t('confirm_restore'))) return;
+      showLoading(true);
+      try {
+        await request('/rpc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'RestoreSettings' })
+        });
+        showToast(t('toast_restore_success'));
+        setTimeout(() => {
+          window.close();
+          document.body.innerHTML = `
+            <div class="Dashboard-inline-style-26">
+              <img class="Dashboard-inline-style-27" src="/assets/icon.png" alt="FreeClaudeDesktop 圖標" />
+              <h1 class="Dashboard-inline-style-28">${t('restore_title')}</h1>
+              <p class="Dashboard-inline-style-29">${t('restore_desc')}</p>
+            </div>
+          `;
+        }, 800);
+      } catch (e) {
+        showToast(t('toast_restore_failed') + e.message, 'error');
       } finally {
         showLoading(false);
       }
