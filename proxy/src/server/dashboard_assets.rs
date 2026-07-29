@@ -11,7 +11,7 @@ pub async fn handle_dashboard_page() -> impl IntoResponse {
             (header::PRAGMA, "no-cache"),
             (header::EXPIRES, "0"),
         ],
-        Html(include_str!("Dashboard.html")),
+        Html(include_str!("dashboard.html")),
     )
 }
 
