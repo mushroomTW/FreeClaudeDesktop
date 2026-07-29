@@ -2,32 +2,39 @@ use std::env;
 use std::io;
 use std::process::Command;
 
+#[cfg(target_os = "windows")]
+use std::process::Stdio;
+
 #[cfg(not(target_os = "windows"))]
 use std::fs;
 #[cfg(not(target_os = "windows"))]
 use std::path::PathBuf;
 
 #[cfg(target_os = "windows")]
-const SERVICE_NAME: &str = "FreeClaudeDesktop";
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+#[cfg(target_os = "windows")]
+const RUN_VALUE: &str = "FreeClaudeDesktop";
+#[cfg(target_os = "windows")]
+const LEGACY_TASK_NAME: &str = "FreeClaudeDesktop";
 
 /// 執行 `enable` 對應的處理流程。
 pub fn enable() -> io::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        let executable = env::current_exe()?;
-        let task_command = format!("\"{}\" start", executable.display());
-        run(Command::new("schtasks").args([
-            "/Create",
-            "/TN",
-            SERVICE_NAME,
-            "/TR",
-            &task_command,
-            "/SC",
-            "ONLOGON",
-            "/RL",
-            "LIMITED",
-            "/F",
-        ]))
+        let command_line = windows_start_command()?;
+        run_silently(Command::new("reg.exe").args([
+            "ADD",
+            RUN_KEY,
+            "/v",
+            RUN_VALUE,
+            "/t",
+            "REG_SZ",
+            "/d",
+            command_line.as_str(),
+            "/f",
+        ]))?;
+        remove_legacy_task();
+        Ok(())
     }
     #[cfg(target_os = "macos")]
     {
@@ -64,7 +71,11 @@ pub fn enable() -> io::Result<()> {
 pub fn disable() -> io::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        run(Command::new("schtasks").args(["/Delete", "/TN", SERVICE_NAME, "/F"]))
+        if registry_autostart_exists()? {
+            run_silently(Command::new("reg.exe").args(["DELETE", RUN_KEY, "/v", RUN_VALUE, "/f"]))?;
+        }
+        remove_legacy_task();
+        Ok(())
     }
     #[cfg(target_os = "macos")]
     {
@@ -95,10 +106,7 @@ pub fn disable() -> io::Result<()> {
 pub fn is_enabled() -> io::Result<bool> {
     #[cfg(target_os = "windows")]
     {
-        Ok(Command::new("schtasks")
-            .args(["/Query", "/TN", SERVICE_NAME])
-            .status()?
-            .success())
+        registry_autostart_exists()
     }
     #[cfg(target_os = "macos")]
     {
@@ -118,6 +126,48 @@ fn run(command: &mut Command) -> io::Result<()> {
     } else {
         Err(io::Error::other(format!("autostart 命令失敗：{status}")))
     }
+}
+
+#[cfg(target_os = "windows")]
+/// 建立目前使用者登入時要執行的 Windows 命令列。
+fn windows_start_command() -> io::Result<String> {
+    let executable = env::current_exe()?;
+    let command_line = format!("\"{}\" start", executable.display());
+    if command_line.chars().count() > 260 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Windows Registry 自動啟動命令列不可超過 260 個字元",
+        ));
+    }
+    Ok(command_line)
+}
+
+#[cfg(target_os = "windows")]
+/// 執行 Windows 命令並隱藏不影響結果的輸出。
+fn run_silently(command: &mut Command) -> io::Result<()> {
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    run(command)
+}
+
+#[cfg(target_os = "windows")]
+/// 判斷目前使用者的 Registry 自動啟動值是否存在。
+fn registry_autostart_exists() -> io::Result<bool> {
+    Ok(Command::new("reg.exe")
+        .args(["QUERY", RUN_KEY, "/v", RUN_VALUE])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?
+        .success())
+}
+
+#[cfg(target_os = "windows")]
+/// 嘗試移除舊版 Task Scheduler 自動啟動項目。
+fn remove_legacy_task() {
+    let _ = Command::new("schtasks.exe")
+        .args(["/Delete", "/TN", LEGACY_TASK_NAME, "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 #[cfg(target_os = "macos")]
@@ -160,9 +210,13 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
-    /// 驗證 `service_name_is_stable` 的行為符合預期。
-    fn service_name_is_stable() {
-        assert_eq!(SERVICE_NAME, "FreeClaudeDesktop");
+    /// 驗證 Windows Registry 自動啟動位置符合預期。
+    fn registry_autostart_location_is_stable() {
+        assert_eq!(
+            RUN_KEY,
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+        );
+        assert_eq!(RUN_VALUE, "FreeClaudeDesktop");
     }
 
     #[test]
@@ -185,16 +239,7 @@ mod tests {
                     "disable() 之後 is_enabled() 應為 false"
                 );
             }
-            Err(e) => {
-                let err_msg = e.to_string();
-                if cfg!(target_os = "windows") && err_msg.contains("exit code: 1") {
-                    println!(
-                        "警告：當前 Windows 環境可能缺乏管理員權限（Access is denied），已跳過自動啟動整合測試。"
-                    );
-                    return;
-                }
-                panic!("enable() 失敗：{:?}", e);
-            }
+            Err(e) => panic!("enable() 失敗：{:?}", e),
         }
     }
 }

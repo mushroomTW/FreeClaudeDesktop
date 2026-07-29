@@ -13,6 +13,7 @@ async fn dashboard_assets_are_embedded_and_served_with_expected_headers() {
         String::from_utf8(dashboard_body.to_vec()).expect("Dashboard HTML 應為 UTF-8");
     assert!(dashboard_html.contains("href=\"/dashboard.css\""));
     assert!(dashboard_html.contains("src=\"/dashboard.js\""));
+    assert!(dashboard_html.contains("id=\"restoreOfficialBtn\""));
     assert!(!dashboard_html.contains("<style>"));
     assert!(!dashboard_html.contains("<script>"));
     assert!(!dashboard_html.contains(" style="));
@@ -40,7 +41,9 @@ async fn dashboard_assets_are_embedded_and_served_with_expected_headers() {
     let js_body = axum::body::to_bytes(js.into_body(), usize::MAX)
         .await
         .expect("JavaScript 應可讀取");
-    assert!(String::from_utf8_lossy(&js_body).contains("translations"));
+    let js_text = String::from_utf8_lossy(&js_body);
+    assert!(js_text.contains("translations"));
+    assert!(js_text.contains("RestoreSettings"));
 }
 
 #[test]
