@@ -7,11 +7,6 @@ on:
         description: "Release 版本，例如 v0.1.2"
         required: true
         type: string
-      publish_npm:
-        description: "發布 npm 套件"
-        required: true
-        default: true
-        type: boolean
 
 permissions:
   contents: write
@@ -104,7 +99,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     env:
-      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
       RELEASE_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v7
@@ -116,20 +110,17 @@ jobs:
           merge-multiple: true
 
       - name: 設定 Node.js
-        if: inputs.publish_npm && env.HAS_NPM_TOKEN == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: 設定 pnpm
-        if: inputs.publish_npm && env.HAS_NPM_TOKEN == 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10.15.0
 
       - name: 發布 npm 套件
-        if: inputs.publish_npm && env.HAS_NPM_TOKEN == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
