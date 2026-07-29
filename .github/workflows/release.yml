@@ -132,11 +132,11 @@ jobs:
         shell: bash
         run: |
           for archive in dist/mushroomtw-freeclaudedesktop-*-*.tgz; do
-            pnpm publish "$archive" --access public --no-git-checks
+            pnpm publish "./$archive" --access public --no-git-checks
           done
           mkdir -p dist/npm/main
           pnpm --dir packages/freeclaudedesktop pack --pack-destination ../../dist/npm/main
-          pnpm publish dist/npm/main/*.tgz --access public --no-git-checks
+          pnpm publish ./dist/npm/main/*.tgz --access public --no-git-checks
 
       - name: 建立 GitHub Release
         env:
