@@ -41,33 +41,39 @@ jobs:
           fi
 
   build:
-    name: 建置 ${{ matrix.target }} npm binary 套件
+    name: 建置 ${{ matrix.label }} npm binary 套件
     needs: validate
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
+            label: Linux x64
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-24.04-arm
+            label: Linux ARM64
             target: aarch64-unknown-linux-gnu
-          - os: macos-13
+          - os: macos-15-intel
+            label: macOS Intel x64
             target: x86_64-apple-darwin
-          - os: macos-14
+          - os: macos-15
+            label: macOS ARM64
             target: aarch64-apple-darwin
           - os: windows-latest
+            label: Windows x64
             target: x86_64-pc-windows-msvc
           - os: windows-11-arm
+            label: Windows ARM64
             target: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
       - name: 安裝 Rust toolchain
-        run: rustup toolchain install 1.97.0 --profile minimal
+        run: rustup toolchain install 1.97.1 --profile minimal
 
-      - name: 使用 Rust 1.97.0
-        run: rustup override set 1.97.0
+      - name: 使用 Rust 1.97.1
+        run: rustup override set 1.97.1
 
       - name: 建置 FreeClaudeDesktop binary
         run: cargo build --locked --release --package freeclaude --package freeclaude-proxy

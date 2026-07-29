@@ -5,7 +5,7 @@
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/Rust-stable-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust 1.97.1](https://img.shields.io/badge/Rust-1.97.1-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![HTTP: Axum](https://img.shields.io/badge/HTTP-Axum-6d3f8c.svg?style=for-the-badge)](https://github.com/tokio-rs/axum)
 [![Runtime: Tokio](https://img.shields.io/badge/runtime-Tokio-4c8eda.svg?style=for-the-badge)](https://tokio.rs/)
 
@@ -36,16 +36,9 @@ freecd dashboard
 
 Use the Web Dashboard to configure the Gateway URL, API key, and model settings. `freecd start` only starts the proxy; `freecd install` also sets up the local integration and default autostart.
 
-To fully uninstall FreeClaudeDesktop:
-
-```bash
-freecd uninstall
-npm uninstall -g @mushroomtw/freeclaudedesktop
-```
-
 ### Manual installation
 
-Only use this route when building from source; it requires the stable [Rust toolchain](https://www.rust-lang.org/tools/install).
+Only use this route when building from source; it requires the [Rust 1.97.1 toolchain](https://www.rust-lang.org/tools/install). Cargo builds the native CLI as `freeclaude`; the npm package exposes it through `freecd`.
 
 ```bash
 git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
@@ -63,7 +56,7 @@ cargo build --release
 
 Requirements:
 
-- Stable Rust toolchain with Cargo
+- Rust 1.97.1 with Cargo
 - Claude Desktop for launcher integration
 
 ```bash
@@ -111,10 +104,18 @@ Manage startup and removal:
 freecd autostart enable
 freecd autostart status
 freecd autostart disable
-freecd uninstall
 ```
 
 Startup at login is enabled by default when running `freecd install`. Pass `--no-autostart` during installation to opt out. Windows uses Task Scheduler, macOS uses a LaunchAgent, and Linux uses a systemd user service.
+
+## Uninstall
+
+Before removing the npm package, clean up local state:
+
+```bash
+freecd uninstall
+npm uninstall -g @mushroomtw/freeclaudedesktop
+```
 
 ## Companion daemon
 

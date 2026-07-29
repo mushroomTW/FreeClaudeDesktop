@@ -7,6 +7,7 @@ const { spawnSync } = require("node:child_process");
 const PLATFORM_PACKAGES = {
   "darwin-arm64": "@mushroomtw/freeclaudedesktop-darwin-arm64",
   "darwin-x64": "@mushroomtw/freeclaudedesktop-darwin-x64",
+  "linux-arm64": "@mushroomtw/freeclaudedesktop-linux-arm64",
   "linux-x64": "@mushroomtw/freeclaudedesktop-linux-x64",
   "win32-arm64": "@mushroomtw/freeclaudedesktop-win32-arm64",
   "win32-x64": "@mushroomtw/freeclaudedesktop-win32-x64"

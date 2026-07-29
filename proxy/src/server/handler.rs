@@ -113,32 +113,35 @@ fn redacted_url(url: &str) -> &str {
     url.split(['?', '#']).next().unwrap_or(url)
 }
 
-fn record_api_outcome(
+/// 記錄一次 API 請求結果。
+struct ApiOutcome<'a> {
     enabled: bool,
     call_id: u64,
-    request: &Value,
-    target_url: &str,
-    transport: &str,
-    outcome: &str,
+    request: &'a Value,
+    target_url: &'a str,
+    transport: &'a str,
+    outcome: &'a str,
     elapsed_ms: u128,
     status: Option<u16>,
-    content_type: Option<&str>,
-    error: Option<&str>,
-) {
-    if !enabled {
+    content_type: Option<&'a str>,
+    error: Option<&'a str>,
+}
+
+fn record_api_outcome(outcome: ApiOutcome<'_>) {
+    if !outcome.enabled {
         return;
     }
     super::api_log::record_api_call(json!({
         "timestampMs": super::api_log::unix_time_ms(),
-        "callId": call_id,
-        "outcome": outcome,
-        "transport": transport,
-        "targetUrl": redacted_url(target_url),
-        "status": status,
-        "contentType": content_type,
-        "elapsedMs": elapsed_ms,
-        "request": request,
-        "error": error,
+        "callId": outcome.call_id,
+        "outcome": outcome.outcome,
+        "transport": outcome.transport,
+        "targetUrl": redacted_url(outcome.target_url),
+        "status": outcome.status,
+        "contentType": outcome.content_type,
+        "elapsedMs": outcome.elapsed_ms,
+        "request": outcome.request,
+        "error": outcome.error,
     }));
 }
 
@@ -278,18 +281,18 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
     // 3. Try local optimizations (quota mock, prefix detection, etc.)
     if let Some(response) = optimization::try_optimizations(&body_str, &settings).await {
-        record_api_outcome(
-            settings.optimizations.enable_api_call_logging,
+        record_api_outcome(ApiOutcome {
+            enabled: settings.optimizations.enable_api_call_logging,
             call_id,
-            &request_summary,
-            "local://optimization",
-            "local",
-            "optimized",
-            started_at.elapsed().as_millis(),
-            Some(StatusCode::OK.as_u16()),
-            None,
-            None,
-        );
+            request: &request_summary,
+            target_url: "local://optimization",
+            transport: "local",
+            outcome: "optimized",
+            elapsed_ms: started_at.elapsed().as_millis(),
+            status: Some(StatusCode::OK.as_u16()),
+            content_type: None,
+            error: None,
+        });
         return super::optimization_response::into_response(response);
     }
 
@@ -315,18 +318,18 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
 
     // 3. Connection Probe interception：攔截背景連線健康檢查（詳見 try_probe_response）。
     if let Some(response) = try_probe_response(&body_str, &req_model) {
-        record_api_outcome(
-            settings.optimizations.enable_api_call_logging,
+        record_api_outcome(ApiOutcome {
+            enabled: settings.optimizations.enable_api_call_logging,
             call_id,
-            &request_summary,
-            "local://connection-probe",
-            "local",
-            "probe",
-            started_at.elapsed().as_millis(),
-            Some(StatusCode::OK.as_u16()),
-            None,
-            None,
-        );
+            request: &request_summary,
+            target_url: "local://connection-probe",
+            transport: "local",
+            outcome: "probe",
+            elapsed_ms: started_at.elapsed().as_millis(),
+            status: Some(StatusCode::OK.as_u16()),
+            content_type: None,
+            error: None,
+        });
         return response;
     }
 
@@ -412,22 +415,22 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
                 .get(header::CONTENT_TYPE)
                 .and_then(|value| value.to_str().ok())
                 .map(str::to_string);
-            record_api_outcome(
-                settings.optimizations.enable_api_call_logging,
+            record_api_outcome(ApiOutcome {
+                enabled: settings.optimizations.enable_api_call_logging,
                 call_id,
-                &request_summary,
-                &target_url,
-                if is_anthropic_native {
+                request: &request_summary,
+                target_url: &target_url,
+                transport: if is_anthropic_native {
                     "anthropic_messages"
                 } else {
                     "openai_chat_completions"
                 },
-                "upstream_response",
-                started_at.elapsed().as_millis(),
-                Some(status_u16),
-                content_type.as_deref(),
-                None,
-            );
+                outcome: "upstream_response",
+                elapsed_ms: started_at.elapsed().as_millis(),
+                status: Some(status_u16),
+                content_type: content_type.as_deref(),
+                error: None,
+            });
 
             if is_openai_format && is_stream {
                 tracing::info!("<- 上游回應狀態碼(流式): {}", status_u16);
@@ -565,22 +568,23 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         }
         Err(error) => {
             tracing::error!("<- 轉發錯誤: {:?}", error);
-            record_api_outcome(
-                settings.optimizations.enable_api_call_logging,
+            let error_message = error.to_string();
+            record_api_outcome(ApiOutcome {
+                enabled: settings.optimizations.enable_api_call_logging,
                 call_id,
-                &request_summary,
-                &target_url,
-                if is_anthropic_native {
+                request: &request_summary,
+                target_url: &target_url,
+                transport: if is_anthropic_native {
                     "anthropic_messages"
                 } else {
                     "openai_chat_completions"
                 },
-                "upstream_error",
-                started_at.elapsed().as_millis(),
-                None,
-                None,
-                Some(&error.to_string()),
-            );
+                outcome: "upstream_error",
+                elapsed_ms: started_at.elapsed().as_millis(),
+                status: None,
+                content_type: None,
+                error: Some(&error_message),
+            });
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": format!("Proxy forwarding error: {error}") })),

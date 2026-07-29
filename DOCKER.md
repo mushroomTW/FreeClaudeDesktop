@@ -6,6 +6,7 @@ This guide explains how to run the FreeClaudeDesktop Proxy with Docker Compose. 
 
 - Docker Engine or Docker Desktop, including Docker Compose v2
 - `compose.yaml`, `Dockerfile`, and `.env.example` in the project root
+- The FreeClaudeDesktop npm package, installed with `npm install -g @mushroomtw/freeclaudedesktop`
 
 ## Quick start
 
@@ -42,18 +43,18 @@ docker compose up --build --force-recreate
 From the project root, run:
 
 ```bash
-freeclaude install --runtime docker
-freeclaude status --runtime docker
-freeclaude stop --runtime docker
-freeclaude start --runtime docker
-freeclaude update --runtime docker
-freeclaude uninstall --runtime docker --yes --purge-image
+freecd install --runtime docker
+freecd status --runtime docker
+freecd stop --runtime docker
+freecd start --runtime docker
+freecd update --runtime docker
+freecd uninstall --runtime docker --purge-image
 ```
 
 If the Compose file is stored elsewhere, set `FREECLAUDE_COMPOSE_FILE` to its absolute path.
 Docker runtime currently uses port `3000` only. Do not set `FREECLAUDE_PROXY_PORT` when using it; use the native runtime if a custom port is required.
 
-The prebuilt `freeclaude` release contains only the executables, not the Docker build context. Docker commands therefore require a checkout or another directory containing this project's `compose.yaml` and `Dockerfile`.
+The npm package provides the executables, but not the Docker build context. Docker commands therefore require a checkout or another directory containing this project's `compose.yaml` and `Dockerfile`.
 
 ## Companion daemon
 
