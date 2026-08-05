@@ -706,7 +706,7 @@ mod tests {
             settings.models.real_model_reasoning_efforts["provider/sonnet"],
             vec!["low".to_string(), "high".to_string()]
         );
-        assert_eq!(settings.optimizations.enable_api_call_logging, true);
+        assert!(settings.optimizations.enable_api_call_logging);
         assert_eq!(settings.optimizations.web_fetch_allowed_schemes, "https");
         assert_eq!(
             settings.desktop.custom_claude_path.as_deref(),
