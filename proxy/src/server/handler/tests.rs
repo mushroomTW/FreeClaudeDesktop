@@ -252,7 +252,146 @@ fn test_build_upstream_request_native_vs_openai() {
 }
 
 #[tokio::test]
-/// 驗證 `test_companion_offline_fails` 的行為符合預期。
+/// 驗證 dashboard 初次讀取扁平設定時會成功回應並完成遷移。
+async fn dashboard_settings_migrates_flat_settings_file() {
+    let _guard = TEST_LOCK.lock().await;
+    let temp_dir = std::env::temp_dir().join(format!(
+        "fc_test_flat_settings_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    let old_local = std::env::var_os("LOCALAPPDATA");
+    let old_home = std::env::var_os("HOME");
+    let old_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
+
+    unsafe {
+        std::env::set_var("LOCALAPPDATA", &temp_dir);
+        std::env::set_var("HOME", &temp_dir);
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
+    }
+
+    let settings_file = free_claude_core::config::settings_file();
+    let settings_dir = settings_file.parent().expect("設定檔應該有父目錄");
+    std::fs::create_dir_all(settings_dir).unwrap();
+    let flat_settings = serde_json::json!({
+        "baseUrl": "https://gateway.example.com/v1",
+        "authScheme": "bearer",
+        "hasApiKey": true,
+        "transportType": "openai_chat",
+        "activePort": 4321,
+        "themeMode": "dark",
+        "language": "zh-tw"
+    });
+    std::fs::write(
+        &settings_file,
+        serde_json::to_string(&flat_settings).unwrap(),
+    )
+    .unwrap();
+
+    let response = handle_dashboard_settings(HeaderMap::new())
+        .await
+        .into_response();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let public: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(public["baseUrl"], "https://gateway.example.com/v1");
+    assert_eq!(public["activePort"], 4321);
+    assert_eq!(public["hasApiKey"], false);
+
+    let persisted: Value =
+        serde_json::from_str(&std::fs::read_to_string(&settings_file).unwrap()).unwrap();
+    assert!(persisted.get("gateway").is_some());
+    assert!(persisted.get("models").is_some());
+    assert!(persisted.get("optimizations").is_some());
+    assert!(persisted.get("desktop").is_some());
+    assert!(persisted.get("ui").is_some());
+    assert!(persisted.get("activePort").is_none());
+    assert_eq!(persisted["desktop"]["activePort"], 4321);
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    unsafe {
+        if let Some(val) = old_local {
+            std::env::set_var("LOCALAPPDATA", val);
+        } else {
+            std::env::remove_var("LOCALAPPDATA");
+        }
+        if let Some(val) = old_home {
+            std::env::set_var("HOME", val);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(val) = old_xdg_config_home {
+            std::env::set_var("XDG_CONFIG_HOME", val);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+    }
+}
+
+#[tokio::test]
+/// 驗證無法辨識或型別錯誤的設定不會被覆寫。
+async fn dashboard_settings_rejects_invalid_flat_settings_without_overwrite() {
+    let _guard = TEST_LOCK.lock().await;
+    let temp_dir = std::env::temp_dir().join(format!(
+        "fc_test_invalid_flat_settings_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    let old_local = std::env::var_os("LOCALAPPDATA");
+    let old_home = std::env::var_os("HOME");
+    let old_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
+
+    unsafe {
+        std::env::set_var("LOCALAPPDATA", &temp_dir);
+        std::env::set_var("HOME", &temp_dir);
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
+    }
+
+    let settings_file = free_claude_core::config::settings_file();
+    let settings_dir = settings_file.parent().expect("設定檔應該有父目錄");
+    std::fs::create_dir_all(settings_dir).unwrap();
+    let original = r#"{"activePort":"not-a-port"}"#;
+    std::fs::write(&settings_file, original).unwrap();
+
+    let response = handle_dashboard_settings(HeaderMap::new())
+        .await
+        .into_response();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(std::fs::read_to_string(&settings_file).unwrap(), original);
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    unsafe {
+        if let Some(val) = old_local {
+            std::env::set_var("LOCALAPPDATA", val);
+        } else {
+            std::env::remove_var("LOCALAPPDATA");
+        }
+        if let Some(val) = old_home {
+            std::env::set_var("HOME", val);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(val) = old_xdg_config_home {
+            std::env::set_var("XDG_CONFIG_HOME", val);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+    }
+}
+
+#[tokio::test]
+/// ?????? `test_companion_offline_fails` ????????????????????????
 async fn test_companion_offline_fails() {
     let _guard = TEST_LOCK.lock().await;
     let temp_dir = std::env::temp_dir().join(format!(
