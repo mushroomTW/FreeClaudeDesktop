@@ -74,6 +74,48 @@ pub struct UiSettings {
     pub language: String,
 }
 
+/// 舊版 `/settings` 使用的扁平設定格式。
+///
+/// 這個型別只供載入器辨識與遷移使用，不會取代目前 `Settings` 的嚴格格式。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyFlatSettings {
+    #[serde(alias = "realBaseUrl")]
+    base_url: Option<String>,
+    #[serde(alias = "realAuthScheme")]
+    auth_scheme: Option<String>,
+    #[serde(rename = "hasApiKey")]
+    _has_api_key: Option<bool>,
+    real_api_key: Option<String>,
+    transport_type: Option<String>,
+    proxy_auth_token: Option<String>,
+    real_model: Option<Option<String>>,
+    real_model_sonnet: Option<Option<String>>,
+    real_model_opus: Option<Option<String>>,
+    real_model_haiku: Option<Option<String>>,
+    real_model_routes: Option<HashMap<String, String>>,
+    real_model_reasoning_efforts: Option<HashMap<String, Vec<String>>>,
+    discovered_models: Option<Vec<String>>,
+    model_reasoning_overrides: Option<HashMap<String, String>>,
+    model_1m_overrides: Option<HashMap<String, bool>>,
+    model_1m_prefer_overrides: Option<HashMap<String, bool>>,
+    model_visibility_overrides: Option<HashMap<String, bool>>,
+    reasoning_replay_mode: Option<String>,
+    enable_quota_check_mock: Option<bool>,
+    enable_prefix_detection: Option<bool>,
+    enable_title_generation_skip: Option<bool>,
+    enable_suggestion_mode_skip: Option<bool>,
+    enable_filepath_extraction_mock: Option<bool>,
+    enable_api_call_logging: Option<bool>,
+    enable_web_server_tools: Option<bool>,
+    web_fetch_allowed_schemes: Option<String>,
+    web_fetch_allow_private_networks: Option<bool>,
+    custom_claude_path: Option<Option<String>>,
+    active_port: Option<Option<u16>>,
+    theme_mode: Option<String>,
+    language: Option<String>,
+}
+
 /// 執行 `default_theme_mode` 對應的處理流程。
 pub fn default_theme_mode() -> String {
     "light".to_string()
@@ -378,6 +420,179 @@ pub fn settings_file() -> PathBuf {
         .join("launcher_settings.json")
 }
 
+const LEGACY_FLAT_SETTING_KEYS: &[&str] = &[
+    "baseUrl",
+    "authScheme",
+    "hasApiKey",
+    "transportType",
+    "realBaseUrl",
+    "realApiKey",
+    "realAuthScheme",
+    "proxyAuthToken",
+    "realModel",
+    "realModelSonnet",
+    "realModelOpus",
+    "realModelHaiku",
+    "realModelRoutes",
+    "realModelReasoningEfforts",
+    "discoveredModels",
+    "modelReasoningOverrides",
+    "model1mOverrides",
+    "model1mPreferOverrides",
+    "modelVisibilityOverrides",
+    "reasoningReplayMode",
+    "enableQuotaCheckMock",
+    "enablePrefixDetection",
+    "enableTitleGenerationSkip",
+    "enableSuggestionModeSkip",
+    "enableFilepathExtractionMock",
+    "enableApiCallLogging",
+    "enableWebServerTools",
+    "webFetchAllowedSchemes",
+    "webFetchAllowPrivateNetworks",
+    "customClaudePath",
+    "activePort",
+    "themeMode",
+    "language",
+];
+
+impl LegacyFlatSettings {
+    fn into_settings(self) -> Settings {
+        let mut settings = Settings::default();
+
+        if let Some(value) = self.base_url {
+            settings.gateway.real_base_url = value;
+        }
+        if let Some(value) = self.auth_scheme {
+            settings.gateway.real_auth_scheme = value;
+        }
+        if let Some(value) = self.real_api_key {
+            settings.gateway.real_api_key = value;
+        }
+        if let Some(value) = self.transport_type {
+            settings.gateway.transport_type = value;
+        }
+        if let Some(value) = self.proxy_auth_token {
+            settings.gateway.proxy_auth_token = value;
+        }
+
+        if let Some(value) = self.real_model {
+            settings.models.real_model = value;
+        }
+        if let Some(value) = self.real_model_sonnet {
+            settings.models.real_model_sonnet = value;
+        }
+        if let Some(value) = self.real_model_opus {
+            settings.models.real_model_opus = value;
+        }
+        if let Some(value) = self.real_model_haiku {
+            settings.models.real_model_haiku = value;
+        }
+        if let Some(value) = self.real_model_routes {
+            settings.models.real_model_routes = value;
+        }
+        if let Some(value) = self.real_model_reasoning_efforts {
+            settings.models.real_model_reasoning_efforts = value;
+        }
+        if let Some(value) = self.discovered_models {
+            settings.models.discovered_models = value;
+        }
+        if let Some(value) = self.model_reasoning_overrides {
+            settings.models.model_reasoning_overrides = value;
+        }
+        if let Some(value) = self.model_1m_overrides {
+            settings.models.model_1m_overrides = value;
+        }
+        if let Some(value) = self.model_1m_prefer_overrides {
+            settings.models.model_1m_prefer_overrides = value;
+        }
+        if let Some(value) = self.model_visibility_overrides {
+            settings.models.model_visibility_overrides = value;
+        }
+        if let Some(value) = self.reasoning_replay_mode {
+            settings.models.reasoning_replay_mode = value;
+        }
+
+        if let Some(value) = self.enable_quota_check_mock {
+            settings.optimizations.enable_quota_check_mock = value;
+        }
+        if let Some(value) = self.enable_prefix_detection {
+            settings.optimizations.enable_prefix_detection = value;
+        }
+        if let Some(value) = self.enable_title_generation_skip {
+            settings.optimizations.enable_title_generation_skip = value;
+        }
+        if let Some(value) = self.enable_suggestion_mode_skip {
+            settings.optimizations.enable_suggestion_mode_skip = value;
+        }
+        if let Some(value) = self.enable_filepath_extraction_mock {
+            settings.optimizations.enable_filepath_extraction_mock = value;
+        }
+        if let Some(value) = self.enable_api_call_logging {
+            settings.optimizations.enable_api_call_logging = value;
+        }
+        if let Some(value) = self.enable_web_server_tools {
+            settings.optimizations.enable_web_server_tools = value;
+        }
+        if let Some(value) = self.web_fetch_allowed_schemes {
+            settings.optimizations.web_fetch_allowed_schemes = value;
+        }
+        if let Some(value) = self.web_fetch_allow_private_networks {
+            settings.optimizations.web_fetch_allow_private_networks = value;
+        }
+
+        if let Some(value) = self.custom_claude_path {
+            settings.desktop.custom_claude_path = value;
+        }
+        if let Some(value) = self.active_port {
+            settings.desktop.active_port = value;
+        }
+
+        if let Some(value) = self.theme_mode {
+            settings.ui.theme_mode = value;
+        }
+        if let Some(value) = self.language {
+            settings.ui.language = value;
+        }
+
+        settings
+    }
+}
+
+fn looks_like_legacy_flat_settings(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+
+    // 含有任何目前格式的分組時，視為損壞或混合格式，不進行猜測式遷移。
+    if ["gateway", "models", "optimizations", "desktop", "ui"]
+        .iter()
+        .any(|key| object.contains_key(*key))
+    {
+        return false;
+    }
+
+    object
+        .keys()
+        .any(|key| LEGACY_FLAT_SETTING_KEYS.contains(&key.as_str()))
+}
+
+fn deserialize_settings_value(value: Value) -> serde_json::Result<(Settings, bool)> {
+    match serde_json::from_value::<Settings>(value.clone()) {
+        Ok(settings) => Ok((settings, false)),
+        Err(nested_error) => {
+            if !looks_like_legacy_flat_settings(&value) {
+                return Err(nested_error);
+            }
+
+            match serde_json::from_value::<LegacyFlatSettings>(value) {
+                Ok(legacy) => Ok((legacy.into_settings(), true)),
+                Err(_) => Err(nested_error),
+            }
+        }
+    }
+}
+
 /// 讀取 `load_launcher_settings` 所需的資料。
 pub fn load_launcher_settings() -> AppResult<Option<Settings>> {
     let path = settings_file();
@@ -386,7 +601,11 @@ pub fn load_launcher_settings() -> AppResult<Option<Settings>> {
     }
     let text = fs::read_to_string(path)?;
     let value = parse_json_text(&text).map_err(AppError::InvalidConfigJson)?;
-    Ok(Some(serde_json::from_value(value)?))
+    let (settings, migrated) = deserialize_settings_value(value)?;
+    if migrated {
+        save_launcher_settings(&settings)?;
+    }
+    Ok(Some(settings))
 }
 
 /// 讀取 `get_launcher_settings` 所需的資料。
@@ -431,5 +650,134 @@ mod tests {
             "proxyAuthToken": "token"
         });
         assert!(serde_json::from_value::<Settings>(value).is_err());
+    }
+
+    #[test]
+    /// 驗證完整扁平公開設定可映射回巢狀設定。
+    fn flat_public_settings_are_mapped_to_nested_settings() {
+        let value = serde_json::json!({
+            "baseUrl": "https://example.com/v1",
+            "authScheme": "bearer",
+            "hasApiKey": true,
+            "transportType": "openai_chat",
+            "realModel": "provider/fallback",
+            "realModelSonnet": "provider/sonnet",
+            "realModelOpus": null,
+            "realModelHaiku": "provider/haiku",
+            "realModelRoutes": {"claude-sonnet": "provider/sonnet"},
+            "realModelReasoningEfforts": {"provider/sonnet": ["low", "high"]},
+            "discoveredModels": ["provider/sonnet"],
+            "modelReasoningOverrides": {"provider/sonnet": "high"},
+            "model1mOverrides": {"provider/sonnet": true},
+            "model1mPreferOverrides": {"provider/sonnet": false},
+            "modelVisibilityOverrides": {"provider/sonnet": true},
+            "reasoningReplayMode": "replay",
+            "enableQuotaCheckMock": false,
+            "enablePrefixDetection": false,
+            "enableTitleGenerationSkip": false,
+            "enableSuggestionModeSkip": true,
+            "enableFilepathExtractionMock": false,
+            "enableApiCallLogging": true,
+            "enableWebServerTools": true,
+            "webFetchAllowedSchemes": "https",
+            "webFetchAllowPrivateNetworks": true,
+            "customClaudePath": "C:\\Claude\\Claude.exe",
+            "activePort": 4321,
+            "themeMode": "dark",
+            "language": "zh-tw"
+        });
+
+        let (settings, migrated) = deserialize_settings_value(value).unwrap();
+
+        assert!(migrated);
+        assert_eq!(settings.gateway.real_base_url, "https://example.com/v1");
+        assert_eq!(settings.gateway.real_auth_scheme, "bearer");
+        assert_eq!(settings.gateway.transport_type, "openai_chat");
+        assert_eq!(
+            settings.models.real_model.as_deref(),
+            Some("provider/fallback")
+        );
+        assert_eq!(settings.models.real_model_opus, None);
+        assert_eq!(
+            settings.models.real_model_routes["claude-sonnet"],
+            "provider/sonnet"
+        );
+        assert_eq!(
+            settings.models.real_model_reasoning_efforts["provider/sonnet"],
+            vec!["low".to_string(), "high".to_string()]
+        );
+        assert_eq!(settings.optimizations.enable_api_call_logging, true);
+        assert_eq!(settings.optimizations.web_fetch_allowed_schemes, "https");
+        assert_eq!(
+            settings.desktop.custom_claude_path.as_deref(),
+            Some("C:\\Claude\\Claude.exe")
+        );
+        assert_eq!(settings.desktop.active_port, Some(4321));
+        assert_eq!(settings.ui.theme_mode, "dark");
+        assert_eq!(settings.ui.language, "zh-tw");
+    }
+
+    #[test]
+    /// 驗證公開的 `hasApiKey` 狀態不會被誤當成密鑰。
+    fn has_api_key_does_not_create_a_secret() {
+        let value = serde_json::json!({
+            "baseUrl": "https://example.com",
+            "hasApiKey": true,
+            "activePort": 4321
+        });
+
+        let (settings, migrated) = deserialize_settings_value(value).unwrap();
+
+        assert!(migrated);
+        assert!(settings.gateway.real_api_key.is_empty());
+        assert_eq!(settings.desktop.active_port, Some(4321));
+    }
+
+    #[test]
+    /// 驗證已知舊版欄位可一併遷移。
+    fn legacy_alias_fields_are_mapped() {
+        let value = serde_json::json!({
+            "realBaseUrl": "https://legacy.example.com",
+            "realAuthScheme": "x-api-key",
+            "realApiKey": "fallback:legacy-secret",
+            "proxyAuthToken": "legacy-proxy-token",
+            "activePort": 3001
+        });
+
+        let (settings, migrated) = deserialize_settings_value(value).unwrap();
+
+        assert!(migrated);
+        assert_eq!(settings.gateway.real_base_url, "https://legacy.example.com");
+        assert_eq!(settings.gateway.real_auth_scheme, "x-api-key");
+        assert_eq!(settings.gateway.real_api_key, "fallback:legacy-secret");
+        assert_eq!(settings.gateway.proxy_auth_token, "legacy-proxy-token");
+        assert_eq!(settings.desktop.active_port, Some(3001));
+    }
+
+    #[test]
+    /// 驗證目前巢狀格式仍然走嚴格解析且不會觸發遷移。
+    fn nested_settings_are_loaded_without_migration() {
+        let value = serde_json::to_value(Settings::default()).unwrap();
+
+        let (_, migrated) = deserialize_settings_value(value).unwrap();
+
+        assert!(!migrated);
+    }
+
+    #[test]
+    /// 驗證無法辨識或型別錯誤的 JSON 仍會被拒絕。
+    fn unknown_or_malformed_flat_settings_are_rejected() {
+        assert!(
+            deserialize_settings_value(serde_json::json!({
+                "unknownSetting": true
+            }))
+            .is_err()
+        );
+        assert!(
+            deserialize_settings_value(serde_json::json!({
+                "activePort": "not-a-port"
+            }))
+            .is_err()
+        );
     }
 }
