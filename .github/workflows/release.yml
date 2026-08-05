@@ -16,7 +16,7 @@ jobs:
     name: 驗證 Release 版本
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 驗證 SemVer
         env:
