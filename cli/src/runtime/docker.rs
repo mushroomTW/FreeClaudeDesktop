@@ -216,104 +216,121 @@ fn run_command(cmd_name: &str, args: &[&str]) -> io::Result<std::process::Output
     cmd.output()
 }
 
+fn collect_container_logs() -> io::Result<String> {
+    let logs_output = compose_output(&["logs"])?;
+    let stderr = String::from_utf8_lossy(&logs_output.stderr)
+        .trim()
+        .to_owned();
+    let stdout = String::from_utf8_lossy(&logs_output.stdout)
+        .trim()
+        .to_owned();
+    let mut logs = String::new();
+    if !stdout.is_empty() {
+        logs.push_str("=== Container STDOUT ===\n");
+        logs.push_str(&stdout);
+    }
+    if !stderr.is_empty() {
+        if !logs.is_empty() {
+            logs.push('\n');
+        }
+        logs.push_str("=== Container STDERR ===\n");
+        logs.push_str(&stderr);
+    }
+    Ok(logs)
+}
+
+#[cfg(not(test))]
+fn check_health_once(client: &reqwest::Client, rt: &tokio::runtime::Runtime) -> bool {
+    rt.block_on(async {
+        match client.get("http://127.0.0.1:3000/healthz").send().await {
+            Ok(resp) => {
+                if resp.status().is_success()
+                    && let Ok(body) = resp.text().await
+                {
+                    return body.contains("\"status\":\"ok\"")
+                        || body.contains("\"status\": \"ok\"");
+                }
+                false
+            }
+            Err(_) => false,
+        }
+    })
+}
+
 /// 執行 `poll_healthz` 對應的處理流程。
 fn poll_healthz() -> io::Result<()> {
     #[cfg(test)]
     {
-        if let Ok(mock_type) = std::env::var("FREECLAUDE_DOCKER_MOCK") {
-            if mock_type == "healthcheck_fail" {
-                let logs_output = compose_output(&["logs"])?;
-                let stderr = String::from_utf8_lossy(&logs_output.stderr)
-                    .trim()
-                    .to_owned();
-                let stdout = String::from_utf8_lossy(&logs_output.stdout)
-                    .trim()
-                    .to_owned();
-
-                let mut logs = String::new();
-                if !stdout.is_empty() {
-                    logs.push_str("=== Container STDOUT ===\n");
-                    logs.push_str(&stdout);
-                }
-                if !stderr.is_empty() {
-                    if !logs.is_empty() {
-                        logs.push('\n');
-                    }
-                    logs.push_str("=== Container STDERR ===\n");
-                    logs.push_str(&stderr);
-                }
-                Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!("docker compose 未通過健康檢查。日誌如下：\n{logs}"),
-                ))
-            } else {
-                Ok(())
-            }
-        } else {
-            Ok(())
+        if let Ok(mock_type) = std::env::var("FREECLAUDE_DOCKER_MOCK")
+            && mock_type == "healthcheck_fail"
+        {
+            let logs = collect_container_logs()?;
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("docker compose 未通過健康檢查。日誌如下：\n{logs}"),
+            ));
         }
+        Ok(())
     }
 
     #[cfg(not(test))]
     {
         let interval = Duration::from_secs(1);
         let max_attempts = 15;
-
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-
         let client = reqwest::Client::builder()
             .timeout(Duration::from_millis(500))
             .build()
             .map_err(io::Error::other)?;
-
         for _ in 1..=max_attempts {
             std::thread::sleep(interval);
-            let success = rt.block_on(async {
-                match client.get("http://127.0.0.1:3000/healthz").send().await {
-                    Ok(resp) => {
-                        if resp.status().is_success()
-                            && let Ok(body) = resp.text().await
-                        {
-                            return body.contains("\"status\":\"ok\"")
-                                || body.contains("\"status\": \"ok\"");
-                        }
-                        false
-                    }
-                    Err(_) => false,
-                }
-            });
-            if success {
+            if check_health_once(&client, &rt) {
                 return Ok(());
             }
         }
-
-        let logs_output = compose_output(&["logs"])?;
-        let stderr = String::from_utf8_lossy(&logs_output.stderr)
-            .trim()
-            .to_owned();
-        let stdout = String::from_utf8_lossy(&logs_output.stdout)
-            .trim()
-            .to_owned();
-
-        let mut logs = String::new();
-        if !stdout.is_empty() {
-            logs.push_str("=== Container STDOUT ===\n");
-            logs.push_str(&stdout);
-        }
-        if !stderr.is_empty() {
-            if !logs.is_empty() {
-                logs.push('\n');
-            }
-            logs.push_str("=== Container STDERR ===\n");
-            logs.push_str(&stderr);
-        }
-
+        let logs = collect_container_logs()?;
         Err(io::Error::new(
             io::ErrorKind::TimedOut,
             format!("容器啟動後未通過健康檢查。容器日誌：\n{logs}"),
         ))
+    }
+}
+
+fn parse_json_value(stdout: &str, containers: &mut Vec<serde_json::Value>) -> bool {
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(stdout) else {
+        return false;
+    };
+    match val {
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                if let Some(c) = extract_container_info(item) {
+                    containers.push(c);
+                }
+            }
+        }
+        serde_json::Value::Object(_) => {
+            if let Some(c) = extract_container_info(val) {
+                containers.push(c);
+            }
+        }
+        _ => {}
+    }
+    true
+}
+
+fn parse_json_lines(stdout: &str, containers: &mut Vec<serde_json::Value>) {
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(item) = serde_json::from_str::<serde_json::Value>(line)
+            && let Some(c) = extract_container_info(item)
+        {
+            containers.push(c);
+        }
     }
 }
 
@@ -323,39 +340,10 @@ fn parse_compose_ps(stdout: &str) -> serde_json::Value {
     if stdout.is_empty() {
         return serde_json::Value::Array(vec![]);
     }
-
     let mut containers = Vec::new();
-
-    if let Ok(val) = serde_json::from_str::<serde_json::Value>(stdout) {
-        match val {
-            serde_json::Value::Array(arr) => {
-                for item in arr {
-                    if let Some(c) = extract_container_info(item) {
-                        containers.push(c);
-                    }
-                }
-            }
-            serde_json::Value::Object(_) => {
-                if let Some(c) = extract_container_info(val) {
-                    containers.push(c);
-                }
-            }
-            _ => {}
-        }
-    } else {
-        for line in stdout.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            if let Ok(item) = serde_json::from_str::<serde_json::Value>(line)
-                && let Some(c) = extract_container_info(item)
-            {
-                containers.push(c);
-            }
-        }
+    if !parse_json_value(stdout, &mut containers) {
+        parse_json_lines(stdout, &mut containers);
     }
-
     serde_json::Value::Array(containers)
 }
 

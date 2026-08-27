@@ -459,60 +459,71 @@ const LEGACY_FLAT_SETTING_KEYS: &[&str] = &[
 impl LegacyFlatSettings {
     fn into_settings(self) -> Settings {
         let mut settings = Settings::default();
+        self.apply_gateway(&mut settings);
+        self.apply_models(&mut settings);
+        self.apply_optimizations(&mut settings);
+        self.apply_desktop_and_ui(&mut settings);
+        settings
+    }
 
-        if let Some(value) = self.base_url {
+    fn apply_gateway(&self, settings: &mut Settings) {
+        if let Some(value) = self.base_url.clone() {
             settings.gateway.real_base_url = value;
         }
-        if let Some(value) = self.auth_scheme {
+        if let Some(value) = self.auth_scheme.clone() {
             settings.gateway.real_auth_scheme = value;
         }
-        if let Some(value) = self.real_api_key {
+        if let Some(value) = self.real_api_key.clone() {
             settings.gateway.real_api_key = value;
         }
-        if let Some(value) = self.transport_type {
+        if let Some(value) = self.transport_type.clone() {
             settings.gateway.transport_type = value;
         }
-        if let Some(value) = self.proxy_auth_token {
+        if let Some(value) = self.proxy_auth_token.clone() {
             settings.gateway.proxy_auth_token = value;
         }
+    }
 
-        if let Some(value) = self.real_model {
+    fn apply_models(&self, settings: &mut Settings) {
+        if let Some(value) = self.real_model.clone() {
             settings.models.real_model = value;
         }
-        if let Some(value) = self.real_model_sonnet {
+        if let Some(value) = self.real_model_sonnet.clone() {
             settings.models.real_model_sonnet = value;
         }
-        if let Some(value) = self.real_model_opus {
+        if let Some(value) = self.real_model_opus.clone() {
             settings.models.real_model_opus = value;
         }
-        if let Some(value) = self.real_model_haiku {
+        if let Some(value) = self.real_model_haiku.clone() {
             settings.models.real_model_haiku = value;
         }
-        if let Some(value) = self.real_model_routes {
+        if let Some(value) = self.real_model_routes.clone() {
             settings.models.real_model_routes = value;
         }
-        if let Some(value) = self.real_model_reasoning_efforts {
+        if let Some(value) = self.real_model_reasoning_efforts.clone() {
             settings.models.real_model_reasoning_efforts = value;
         }
-        if let Some(value) = self.discovered_models {
+        if let Some(value) = self.discovered_models.clone() {
             settings.models.discovered_models = value;
         }
-        if let Some(value) = self.model_reasoning_overrides {
+        if let Some(value) = self.model_reasoning_overrides.clone() {
             settings.models.model_reasoning_overrides = value;
         }
-        if let Some(value) = self.model_1m_overrides {
+        if let Some(value) = self.model_1m_overrides.clone() {
             settings.models.model_1m_overrides = value;
         }
-        if let Some(value) = self.model_1m_prefer_overrides {
+        if let Some(value) = self.model_1m_prefer_overrides.clone() {
             settings.models.model_1m_prefer_overrides = value;
         }
-        if let Some(value) = self.model_visibility_overrides {
+        if let Some(value) = self.model_visibility_overrides.clone() {
             settings.models.model_visibility_overrides = value;
         }
-        if let Some(value) = self.reasoning_replay_mode {
+        if let Some(value) = self.reasoning_replay_mode.clone() {
             settings.models.reasoning_replay_mode = value;
         }
+    }
 
+    fn apply_optimizations(&self, settings: &mut Settings) {
         if let Some(value) = self.enable_quota_check_mock {
             settings.optimizations.enable_quota_check_mock = value;
         }
@@ -534,28 +545,27 @@ impl LegacyFlatSettings {
         if let Some(value) = self.enable_web_server_tools {
             settings.optimizations.enable_web_server_tools = value;
         }
-        if let Some(value) = self.web_fetch_allowed_schemes {
+        if let Some(value) = self.web_fetch_allowed_schemes.clone() {
             settings.optimizations.web_fetch_allowed_schemes = value;
         }
         if let Some(value) = self.web_fetch_allow_private_networks {
             settings.optimizations.web_fetch_allow_private_networks = value;
         }
+    }
 
-        if let Some(value) = self.custom_claude_path {
+    fn apply_desktop_and_ui(&self, settings: &mut Settings) {
+        if let Some(value) = self.custom_claude_path.clone() {
             settings.desktop.custom_claude_path = value;
         }
         if let Some(value) = self.active_port {
             settings.desktop.active_port = value;
         }
-
-        if let Some(value) = self.theme_mode {
+        if let Some(value) = self.theme_mode.clone() {
             settings.ui.theme_mode = value;
         }
-        if let Some(value) = self.language {
+        if let Some(value) = self.language.clone() {
             settings.ui.language = value;
         }
-
-        settings
     }
 }
 

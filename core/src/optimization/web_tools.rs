@@ -284,6 +284,57 @@ async fn execute_web_search(policy: &WebFetchEgressPolicy, input: &Value) -> Str
     fetch_url(policy, &url).await
 }
 
+/// 建立 web_fetch 用的 HTTP client。
+fn build_fetch_client(target: &ResolvedTarget) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
+        .redirect(reqwest::redirect::Policy::none())
+        .resolve(&target.host, target.addr)
+        .build()
+        .map_err(|error| format!("web client build failed: {error}"))
+}
+
+/// 處理重導向回應，回傳下一輪的 URL。
+fn handle_redirect(
+    response: &reqwest::Response,
+    target: &ResolvedTarget,
+    redirects: usize,
+) -> Result<url::Url, String> {
+    if redirects == MAX_REDIRECTS {
+        return Err(format!("web request exceeded {MAX_REDIRECTS} redirects"));
+    }
+    let location = response
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| "web redirect missing Location header".to_string())?;
+    target
+        .url
+        .join(location)
+        .map_err(|error| format!("invalid redirect URL: {error}"))
+}
+
+/// 將成功回應轉為文字輸出。
+async fn format_success_response(response: reqwest::Response, target: ResolvedTarget) -> String {
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string();
+    let bytes = match collect_limited(response).await {
+        Ok(bytes) => bytes,
+        Err(error) => return error,
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let body = truncate_chars(&strip_html_tags(&text), 20_000);
+    format!(
+        "URL: {}\nStatus: {status}\nContent-Type: {content_type}\n\n{body}",
+        target.url
+    )
+}
+
 /// 擷取 `fetch_url` 所需的資料。
 async fn fetch_url(policy: &WebFetchEgressPolicy, url: &str) -> String {
     let mut current = match url::Url::parse(url) {
@@ -295,54 +346,24 @@ async fn fetch_url(policy: &WebFetchEgressPolicy, url: &str) -> String {
             Ok(target) => target,
             Err(error) => return error,
         };
-        let client = match reqwest::Client::builder()
-            .timeout(Duration::from_secs(crate::constants::HTTP_TIMEOUT_SECS))
-            .redirect(reqwest::redirect::Policy::none())
-            .resolve(&target.host, target.addr)
-            .build()
-        {
+        let client = match build_fetch_client(&target) {
             Ok(client) => client,
-            Err(error) => return format!("web client build failed: {error}"),
+            Err(error) => return error,
         };
         let response = match client.get(target.url.clone()).send().await {
             Ok(response) => response,
             Err(error) => return format!("web request failed: {error}"),
         };
         if response.status().is_redirection() {
-            if redirects == MAX_REDIRECTS {
-                return format!("web request exceeded {MAX_REDIRECTS} redirects");
+            match handle_redirect(&response, &target, redirects) {
+                Ok(next_url) => {
+                    current = next_url;
+                    continue;
+                }
+                Err(error) => return error,
             }
-            let Some(location) = response
-                .headers()
-                .get(reqwest::header::LOCATION)
-                .and_then(|value| value.to_str().ok())
-            else {
-                return "web redirect missing Location header".to_string();
-            };
-            current = match target.url.join(location) {
-                Ok(url) => url,
-                Err(error) => return format!("invalid redirect URL: {error}"),
-            };
-            continue;
         }
-
-        let status = response.status();
-        let content_type = response
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("unknown")
-            .to_string();
-        let bytes = match collect_limited(response).await {
-            Ok(bytes) => bytes,
-            Err(error) => return error,
-        };
-        let text = String::from_utf8_lossy(&bytes);
-        let body = truncate_chars(&strip_html_tags(&text), 20_000);
-        return format!(
-            "URL: {}\nStatus: {status}\nContent-Type: {content_type}\n\n{body}",
-            target.url
-        );
+        return format_success_response(response, target).await;
     }
     unreachable!()
 }

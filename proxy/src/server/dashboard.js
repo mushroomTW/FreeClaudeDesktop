@@ -536,26 +536,19 @@
 
       if (currentSort.key) {
         const effortRank = { '': 0, 'none': 1, 'high': 2, 'max': 3 };
-        models.sort((a, b) => {
-          let valA, valB;
-          if (currentSort.key === 'name') {
-            valA = a.toLowerCase();
-            valB = b.toLowerCase();
-          } else if (currentSort.key === 'show') {
-            valA = (settings.modelVisibilityOverrides?.[a] !== false) ? 1 : 0;
-            valB = (settings.modelVisibilityOverrides?.[b] !== false) ? 1 : 0;
-          } else if (currentSort.key === '1m') {
-            valA = (settings.model1mOverrides?.[a] === true) ? 1 : 0;
-            valB = (settings.model1mOverrides?.[b] === true) ? 1 : 0;
-          } else if (currentSort.key === '1m-default') {
-            valA = (settings.model1mPreferOverrides?.[a] === true) ? 1 : 0;
-            valB = (settings.model1mPreferOverrides?.[b] === true) ? 1 : 0;
-          } else if (currentSort.key === 'effort') {
-            const effA = settings.modelReasoningOverrides?.[a] || '';
-            const effB = settings.modelReasoningOverrides?.[b] || '';
-            valA = effortRank[effA] ?? 0;
-            valB = effortRank[effB] ?? 0;
+        const getSortValue = (model) => {
+          switch (currentSort.key) {
+            case 'name': return model.toLowerCase();
+            case 'show': return (settings.modelVisibilityOverrides?.[model] !== false) ? 1 : 0;
+            case '1m': return (settings.model1mOverrides?.[model] === true) ? 1 : 0;
+            case '1m-default': return (settings.model1mPreferOverrides?.[model] === true) ? 1 : 0;
+            case 'effort': return effortRank[settings.modelReasoningOverrides?.[model] || ''] ?? 0;
+            default: return 0;
           }
+        };
+        models.sort((a, b) => {
+          const valA = getSortValue(a);
+          const valB = getSortValue(b);
           if (valA < valB) return currentSort.asc ? -1 : 1;
           if (valA > valB) return currentSort.asc ? 1 : -1;
           return 0;
