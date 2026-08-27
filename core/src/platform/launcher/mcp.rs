@@ -307,3 +307,40 @@ pub fn restore_1p_deployment_mode() -> AppResult<()> {
     write_transaction(writes)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod mcp_tests {
+    use super::*;
+
+    #[test]
+    fn clean_json_text_removes_comments_and_trailing_commas() {
+        let input = r#"
+        {
+            // line comment
+            "a": 1, /* block comment */
+            "b": 2,
+        }
+        "#;
+        let cleaned = clean_json_text(input);
+        let v: Value = serde_json::from_str(&cleaned).expect("cleaned json should parse");
+        assert_eq!(v["a"], 1);
+        assert_eq!(v["b"], 2);
+    }
+
+    #[test]
+    fn strip_json_comments_preserves_strings() {
+        let input = r#"{"key": "value // not a comment"}"#;
+        let out = strip_json_comments(input);
+        assert!(out.contains("not a comment"));
+    }
+
+    #[test]
+    fn strip_trailing_commas_removes_only_trailing() {
+        let input = r#"{"a":1, "b":2,}"#;
+        let out = strip_trailing_commas(input);
+        assert!(!out.contains(",}"));
+        let input2 = r#"[1,2,]"#;
+        let out2 = strip_trailing_commas(input2);
+        assert!(!out2.contains(",]"));
+    }
+}

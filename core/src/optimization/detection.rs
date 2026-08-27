@@ -449,4 +449,23 @@ mod tests {
         .to_string();
         assert!(!is_quota_check_request(&body));
     }
+
+    #[test]
+    fn filepaths_from_grep_handles_flags_and_positionals() {
+        let parts = vec!["grep", "-e", "pattern", "file1.txt", "file2.txt"];
+        let out = filepaths_from_grep(&parts).unwrap();
+        assert!(out.contains("file1.txt"));
+        assert!(out.contains("file2.txt"));
+        let parts2 = vec!["grep", "pattern", "file1.txt"];
+        let out2 = filepaths_from_grep(&parts2).unwrap();
+        assert!(out2.contains("file1.txt"));
+    }
+
+    #[test]
+    fn extract_filepaths_from_command_covers_grep_and_reading() {
+        let out = extract_filepaths_from_command("grep -r pattern file.txt", "output");
+        assert!(out.contains("file.txt") || out.contains("<filepaths>"));
+        let out2 = extract_filepaths_from_command("cat file1.txt file2.txt", "");
+        assert!(out2.contains("file1.txt"));
+    }
 }

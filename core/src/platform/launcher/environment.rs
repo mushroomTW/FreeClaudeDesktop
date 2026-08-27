@@ -206,3 +206,32 @@ pub fn remove_anthropic_base_url_env() -> AppResult<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn restore_env_helpers_cover_branches() {
+        let mut obj = serde_json::Map::new();
+        let mut previous = json!({
+            "autoModeEnabled": {"present": true, "value": false},
+            "envPresent": true,
+            "env": {
+                "ANTHROPIC_BASE_URL": {"present": true, "value": "http://old"},
+                "ENABLE_TOOL_SEARCH": {"present": false, "value": null}
+            }
+        });
+        let prev_obj = previous.as_object().unwrap().clone();
+        // 模擬 previous 結構
+        let prev_val = Value::Object(prev_obj);
+        restore_env_from_previous(&mut obj, &prev_val);
+        assert!(obj.contains_key("autoModeEnabled"));
+
+        let mut obj2 = serde_json::Map::new();
+        obj2.insert("env".to_string(), json!({"ANTHROPIC_BASE_URL": "http://x"}));
+        ensure_env_object(&mut obj2);
+        cleanup_empty_env(&mut obj2, false);
+    }
+}
