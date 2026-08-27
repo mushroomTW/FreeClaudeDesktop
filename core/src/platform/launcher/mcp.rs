@@ -35,9 +35,39 @@ pub fn mcp_config_paths() -> Vec<PathBuf> {
     vec![mirror_profile_dir().join("claude_desktop_config.json")]
 }
 
-#[allow(clippy::cognitive_complexity)] // reason: JSON 註釋清理為單一線性狀態機，拆分後命名僅為 part2 (rust:S3776)
+fn handle_string_char(ch: char, is_escaped: &mut bool, in_string: &mut bool) {
+    if *is_escaped {
+        *is_escaped = false;
+    } else if ch == '\\' {
+        *is_escaped = true;
+    } else if ch == '"' {
+        *in_string = false;
+    }
+}
+
+fn skip_line_comment(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    chars.next();
+    while let Some(&next_ch) = chars.peek() {
+        if next_ch == '\n' || next_ch == '\r' {
+            break;
+        }
+        chars.next();
+    }
+}
+
+fn skip_block_comment(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    chars.next();
+    while let Some(c) = chars.next() {
+        if c == '*'
+            && let Some(&'/') = chars.peek()
+        {
+            chars.next();
+            break;
+        }
+    }
+}
+
 fn strip_json_comments(text: &str) -> String {
-    // NOSONAR
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     let mut in_string = false;
@@ -45,13 +75,7 @@ fn strip_json_comments(text: &str) -> String {
     while let Some(ch) = chars.next() {
         if in_string {
             out.push(ch);
-            if is_escaped {
-                is_escaped = false;
-            } else if ch == '\\' {
-                is_escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
+            handle_string_char(ch, &mut is_escaped, &mut in_string);
             continue;
         }
         if ch == '"' {
@@ -61,24 +85,10 @@ fn strip_json_comments(text: &str) -> String {
         }
         if ch == '/' {
             if let Some(&'/') = chars.peek() {
-                chars.next();
-                while let Some(&next_ch) = chars.peek() {
-                    if next_ch == '\n' || next_ch == '\r' {
-                        break;
-                    }
-                    chars.next();
-                }
+                skip_line_comment(&mut chars);
                 continue;
             } else if let Some(&'*') = chars.peek() {
-                chars.next();
-                while let Some(c) = chars.next() {
-                    if c == '*'
-                        && let Some(&'/') = chars.peek()
-                    {
-                        chars.next();
-                        break;
-                    }
-                }
+                skip_block_comment(&mut chars);
                 continue;
             }
         }
@@ -87,9 +97,21 @@ fn strip_json_comments(text: &str) -> String {
     out
 }
 
-#[allow(clippy::cognitive_complexity)] // reason: 尾逗號清理為單一線性狀態機，拆分無 honest name (rust:S3776)
+fn is_trailing_comma(chars: &std::iter::Peekable<std::str::Chars<'_>>) -> bool {
+    let temp = chars.clone();
+    for next_c in temp {
+        if next_c.is_whitespace() {
+            continue;
+        }
+        if next_c == '}' || next_c == ']' {
+            return true;
+        }
+        break;
+    }
+    false
+}
+
 fn strip_trailing_commas(input: &str) -> String {
-    // NOSONAR
     let mut cleaned = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
     let mut in_string = false;
@@ -97,13 +119,7 @@ fn strip_trailing_commas(input: &str) -> String {
     while let Some(ch) = chars.next() {
         if in_string {
             cleaned.push(ch);
-            if is_escaped {
-                is_escaped = false;
-            } else if ch == '\\' {
-                is_escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
+            handle_string_char(ch, &mut is_escaped, &mut in_string);
             continue;
         }
         if ch == '"' {
@@ -111,21 +127,8 @@ fn strip_trailing_commas(input: &str) -> String {
             cleaned.push(ch);
             continue;
         }
-        if ch == ',' {
-            let temp_chars = chars.clone();
-            let mut trailing = false;
-            for next_c in temp_chars {
-                if next_c.is_whitespace() {
-                    continue;
-                }
-                if next_c == '}' || next_c == ']' {
-                    trailing = true;
-                }
-                break;
-            }
-            if trailing {
-                continue;
-            }
+        if ch == ',' && is_trailing_comma(&chars) {
+            continue;
         }
         cleaned.push(ch);
     }

@@ -275,9 +275,16 @@ fn is_grep_pattern_flag(part: &str) -> bool {
     matches!(part, "-e" | "-f")
 }
 
-#[allow(clippy::cognitive_complexity)] // reason: grep 參數解析為單一線性敘事，拆分後命名僅為 part2 (rust:S3776)
-fn filepaths_from_grep(parts: &[&str]) -> Option<String> {
-    // NOSONAR
+fn handle_grep_flag(part: &str, pattern_provided: &mut bool, skip_next: &mut bool) {
+    if is_grep_flag_with_arg(part) {
+        if is_grep_pattern_flag(part) {
+            *pattern_provided = true;
+        }
+        *skip_next = true;
+    }
+}
+
+fn collect_grep_positionals<'a>(parts: &[&'a str]) -> (Vec<&'a str>, bool) {
     let mut skip_next = false;
     let mut positional: Vec<&str> = Vec::new();
     let mut pattern_provided = false;
@@ -287,16 +294,16 @@ fn filepaths_from_grep(parts: &[&str]) -> Option<String> {
             continue;
         }
         if part.starts_with('-') {
-            if is_grep_flag_with_arg(part) {
-                if is_grep_pattern_flag(part) {
-                    pattern_provided = true;
-                }
-                skip_next = true;
-            }
+            handle_grep_flag(part, &mut pattern_provided, &mut skip_next);
             continue;
         }
         positional.push(*part);
     }
+    (positional, pattern_provided)
+}
+
+fn filepaths_from_grep(parts: &[&str]) -> Option<String> {
+    let (positional, pattern_provided) = collect_grep_positionals(parts);
     let filepaths = if pattern_provided {
         positional
     } else {

@@ -138,6 +138,21 @@ fn restore_env_keys(
     }
 }
 
+fn ensure_env_object(obj: &mut serde_json::Map<String, Value>) {
+    if obj.get("env").is_none() {
+        obj.insert("env".to_string(), json!({}));
+    }
+}
+
+fn cleanup_empty_env(obj: &mut serde_json::Map<String, Value>, env_present: bool) {
+    if let Some(env_obj) = obj.get("env").and_then(Value::as_object)
+        && env_obj.is_empty()
+        && !env_present
+    {
+        obj.remove("env");
+    }
+}
+
 fn restore_env_from_previous(obj: &mut serde_json::Map<String, Value>, previous: &Value) {
     if let Some(auto_mode) = previous.get("autoModeEnabled") {
         restore_previous_setting(obj, "autoModeEnabled", auto_mode);
@@ -146,17 +161,13 @@ fn restore_env_from_previous(obj: &mut serde_json::Map<String, Value>, previous:
         .get("envPresent")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    if obj.get("env").is_none() {
-        obj.insert("env".to_string(), json!({}));
+    ensure_env_object(obj);
+    if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut)
+        && let Some(previous_env) = previous.get("env").and_then(Value::as_object)
+    {
+        restore_env_keys(env_obj, previous_env);
     }
-    if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
-        if let Some(previous_env) = previous.get("env").and_then(Value::as_object) {
-            restore_env_keys(env_obj, previous_env);
-        }
-        if env_obj.is_empty() && !env_present {
-            obj.remove("env");
-        }
-    }
+    cleanup_empty_env(obj, env_present);
 }
 
 fn remove_managed_keys_without_previous(obj: &mut serde_json::Map<String, Value>) -> bool {
