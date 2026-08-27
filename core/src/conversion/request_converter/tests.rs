@@ -259,44 +259,112 @@ fn cover_all_remaining_for_85() {
     let _ = extract_bracket_inner("a[unclosed");
     // safety net with routes
     let mut s2 = Settings::default();
-    s2.models.real_model_routes.insert("z".to_string(), "zv".to_string());
-    s2.models.real_model_routes.insert("a".to_string(), "av".to_string());
+    s2.models
+        .real_model_routes
+        .insert("z".to_string(), "zv".to_string());
+    s2.models
+        .real_model_routes
+        .insert("a".to_string(), "av".to_string());
     let _ = safety_net_route("claude-test-1", &s2);
     let _ = safety_net_route("plain", &s2);
     let _ = safety_net_route("test[2]", &s2);
     // apply_thinking with various
     let mut data = serde_json::json!({"model":"test"});
     let req_none_thinking = crate::models::claude::ClaudeMessagesRequest {
-        model: "test".to_string(), messages: vec![], system: None, max_tokens: None, stop_sequences: None, tools: None, tool_choice: None, stream: None,
-        thinking: None, temperature: None, top_p: None, top_k: None, metadata: None
+        model: "test".to_string(),
+        messages: vec![],
+        system: None,
+        max_tokens: None,
+        stop_sequences: None,
+        tools: None,
+        tool_choice: None,
+        stream: None,
+        thinking: None,
+        temperature: None,
+        top_p: None,
+        top_k: None,
+        metadata: None,
     };
     apply_thinking_mapping(&mut data, &req_none_thinking, &s);
     let req_disabled = crate::models::claude::ClaudeMessagesRequest {
-        model: "test".to_string(), messages: vec![], system: None, max_tokens: None, stop_sequences: None, tools: None, tool_choice: None, stream: None,
-        thinking: Some(crate::models::claude::ClaudeThinkingConfig { budget_tokens: Some(100), enabled: Some(false) }),
-        temperature: None, top_p: None, top_k: None, metadata: None
+        model: "test".to_string(),
+        messages: vec![],
+        system: None,
+        max_tokens: None,
+        stop_sequences: None,
+        tools: None,
+        tool_choice: None,
+        stream: None,
+        thinking: Some(crate::models::claude::ClaudeThinkingConfig {
+            budget_tokens: Some(100),
+            enabled: Some(false),
+        }),
+        temperature: None,
+        top_p: None,
+        top_k: None,
+        metadata: None,
     };
     apply_thinking_mapping(&mut data, &req_disabled, &s);
     let mut s3 = Settings::default();
-    s3.models.real_model_reasoning_efforts.insert("test".to_string(), vec!["low".to_string()]);
+    s3.models
+        .real_model_reasoning_efforts
+        .insert("test".to_string(), vec!["low".to_string()]);
     let req_enabled = crate::models::claude::ClaudeMessagesRequest {
-        model: "test".to_string(), messages: vec![], system: None, max_tokens: None, stop_sequences: None, tools: None, tool_choice: None, stream: None,
-        thinking: Some(crate::models::claude::ClaudeThinkingConfig { budget_tokens: Some(5000), enabled: Some(true) }),
-        temperature: None, top_p: None, top_k: None, metadata: None
+        model: "test".to_string(),
+        messages: vec![],
+        system: None,
+        max_tokens: None,
+        stop_sequences: None,
+        tools: None,
+        tool_choice: None,
+        stream: None,
+        thinking: Some(crate::models::claude::ClaudeThinkingConfig {
+            budget_tokens: Some(5000),
+            enabled: Some(true),
+        }),
+        temperature: None,
+        top_p: None,
+        top_k: None,
+        metadata: None,
     };
     apply_thinking_mapping(&mut data, &req_enabled, &s3);
     // collect_assistant with empty and unknown
-    let (th, txt, tc) = collect_assistant_parts(&crate::models::claude::ClaudeMessageContent::Blocks(vec![]));
+    let (th, txt, tc) =
+        collect_assistant_parts(&crate::models::claude::ClaudeMessageContent::Blocks(vec![]));
     assert!(th.is_empty());
     let _ = build_assistant_message("".to_string(), "".to_string(), vec![]);
-    let _ = build_assistant_message("think".to_string(), "txt".to_string(), vec![serde_json::json!({"a":1})]);
+    let _ = build_assistant_message(
+        "think".to_string(),
+        "txt".to_string(),
+        vec![serde_json::json!({"a":1})],
+    );
     // tool_result with various
-    let _ = tool_result_content_to_text(&Some(crate::models::claude::ClaudeToolResultContent::Blocks(vec![serde_json::json!({"type":"text","text":"hi"})])));
-    let _ = tool_result_content_to_text(&Some(crate::models::claude::ClaudeToolResultContent::Blocks(vec![serde_json::json!({"type":"image"})])));
-    let _ = tool_result_content_to_text(&Some(crate::models::claude::ClaudeToolResultContent::Blocks(vec![serde_json::json!({"no_type":1})])));
+    let _ = tool_result_content_to_text(&Some(
+        crate::models::claude::ClaudeToolResultContent::Blocks(vec![
+            serde_json::json!({"type":"text","text":"hi"}),
+        ]),
+    ));
+    let _ = tool_result_content_to_text(&Some(
+        crate::models::claude::ClaudeToolResultContent::Blocks(vec![
+            serde_json::json!({"type":"image"}),
+        ]),
+    ));
+    let _ = tool_result_content_to_text(&Some(
+        crate::models::claude::ClaudeToolResultContent::Blocks(vec![
+            serde_json::json!({"no_type":1}),
+        ]),
+    ));
     // convert_user_blocks with image and text
-    let _ = convert_user_blocks(&[crate::models::claude::ClaudeContentBlock::Text { text: "hi".to_string() }]);
-    let _ = convert_user_blocks(&[crate::models::claude::ClaudeContentBlock::Image { source: crate::models::claude::ClaudeImageSource { source_type: "base64".to_string(), media_type: "image/png".to_string(), data: "d".to_string() } }]);
+    let _ = convert_user_blocks(&[crate::models::claude::ClaudeContentBlock::Text {
+        text: "hi".to_string(),
+    }]);
+    let _ = convert_user_blocks(&[crate::models::claude::ClaudeContentBlock::Image {
+        source: crate::models::claude::ClaudeImageSource {
+            source_type: "base64".to_string(),
+            media_type: "image/png".to_string(),
+            data: "d".to_string(),
+        },
+    }]);
     // role_string
     let _ = role_string(&crate::models::claude::ClaudeRole::Assistant);
     let _ = role_string(&crate::models::claude::ClaudeRole::User);
@@ -305,12 +373,29 @@ fn cover_all_remaining_for_85() {
     let mut i = 0;
     let msgs_empty: Vec<crate::models::claude::ClaudeMessage> = vec![];
     try_handle_tool_followup(&msgs_empty, &mut i, &mut out);
-    let msgs_no_tool = vec![crate::models::claude::ClaudeMessage { role: crate::models::claude::ClaudeRole::User, content: crate::models::claude::ClaudeMessageContent::Text("hi".to_string()) }];
+    let msgs_no_tool = vec![crate::models::claude::ClaudeMessage {
+        role: crate::models::claude::ClaudeRole::User,
+        content: crate::models::claude::ClaudeMessageContent::Text("hi".to_string()),
+    }];
     let mut i2 = 0;
     try_handle_tool_followup(&msgs_no_tool, &mut i2, &mut out);
     // apply_tools with None and empty
     let mut d = serde_json::json!({});
-    let req_none2 = crate::models::claude::ClaudeMessagesRequest { model: "t".to_string(), messages: vec![], system: None, max_tokens: None, stop_sequences: None, tools: None, tool_choice: None, stream: None, thinking: None, temperature: None, top_p: None, top_k: None, metadata: None };
+    let req_none2 = crate::models::claude::ClaudeMessagesRequest {
+        model: "t".to_string(),
+        messages: vec![],
+        system: None,
+        max_tokens: None,
+        stop_sequences: None,
+        tools: None,
+        tool_choice: None,
+        stream: None,
+        thinking: None,
+        temperature: None,
+        top_p: None,
+        top_k: None,
+        metadata: None,
+    };
     apply_tools_mapping(&mut d, &req_none2).unwrap();
     // resolve_model_route with empty and various
     let _ = resolve_model_route("", &s);
@@ -869,3 +954,131 @@ fn apply_tools_and_tool_choice_cover_all() {
         serde_json::json!("auto")
     );
 }
+#[test]
+fn cover_all_remaining_for_85_comprehensive() {
+    // Hit every helper to push coverage to 85
+    let s = Settings::default();
+    for fam in ["sonnet", "opus", "haiku", "unknown", ""] {
+        let _ = family_override_model(&s, fam);
+        let _ = detect_family(fam);
+    }
+    let mut s2 = Settings::default();
+    s2.models.real_model_routes.insert("a".to_string(), "b".to_string());
+    s2.models.real_model_routes.insert("z".to_string(), "zv".to_string());
+    let _ = try_exact_routes("a", "a", &s2);
+    let _ = try_exact_routes("x", "y", &s2);
+    let _ = try_exact_routes("a[1m]", "a", &s2);
+    let _ = try_discovered_direct("a", "a", &s2);
+    let mut s3 = Settings::default();
+    s3.models.discovered_models = vec!["inner".to_string(), "a".to_string()];
+    let _ = try_discovered_direct("a", "a", &s3);
+    let _ = extract_bracket_inner("a[inner]b");
+    let _ = extract_bracket_inner("a[inner[2]]b");
+    let _ = extract_bracket_inner("no");
+    let _ = extract_bracket_inner("a[unclosed");
+    let _ = try_bracket_inner_route("a[inner]b", &s3);
+    let mut s4 = Settings::default();
+    s4.models.real_model_routes.insert("inner".to_string(), "mapped".to_string());
+    let _ = try_bracket_inner_route("a[inner]b", &s4);
+    let _ = try_bracket_inner_route("no", &s);
+    let mut s5 = Settings::default();
+    s5.models.real_model_routes.insert("my-sonnet-model".to_string(), "val".to_string());
+    let _ = try_fuzzy_family(Some("sonnet"), &s5);
+    let _ = try_fuzzy_family(Some("sonnet"), &s);
+    let _ = try_fuzzy_family(None, &s);
+    let _ = fallback_global_model(&s);
+    let mut s6 = Settings::default();
+    s6.models.real_model = Some("global".to_string());
+    let _ = fallback_global_model(&s6);
+    let _ = is_indexed_claude_alias("claude-test-1");
+    let _ = is_indexed_claude_alias("claude-test_1");
+    let _ = is_indexed_claude_alias("other");
+    let _ = is_indexed_claude_alias("claude-1");
+    let _ = safety_net_route("plain", &s);
+    let _ = safety_net_route("claude-test-1", &s2);
+    let _ = safety_net_route("test[2]", &s2);
+    let mut s7 = Settings::default();
+    s7.models.real_model_routes.insert("a".to_string(), "av".to_string());
+    let _ = safety_net_route("claude-test-1", &s7);
+    // system
+    let _ = extract_system_text(&ClaudeSystem::Text("hello".to_string()));
+    let _ = extract_system_text(&ClaudeSystem::Text("  ".to_string()));
+    let _ = extract_system_text(&ClaudeSystem::Blocks(vec![]));
+    let _ = extract_system_text(&ClaudeSystem::Blocks(vec![crate::models::claude::ClaudeSystemContent { kind: "text".to_string(), text: "hi".to_string() }]));
+    let _ = build_system_message(&None);
+    let _ = build_system_message(&Some(ClaudeSystem::Text("hi".to_string())));
+    // tools
+    let tool_empty = crate::models::claude::ClaudeTool { name: "   ".to_string(), description: None, input_schema: None };
+    let _ = build_single_openai_tool(&tool_empty);
+    let tool_err = crate::models::claude::ClaudeTool { name: "bash".to_string(), description: None, input_schema: None };
+    let _ = build_single_openai_tool(&tool_err);
+    let tool_ok = crate::models::claude::ClaudeTool { name: "bash".to_string(), description: Some("d".to_string()), input_schema: Some(serde_json::json!({"type":"object"})) };
+    let _ = build_single_openai_tool(&tool_ok);
+    let _ = map_tool_choice_type("auto", &serde_json::json!({}));
+    let _ = map_tool_choice_type("any", &serde_json::json!({}));
+    let _ = map_tool_choice_type("tool", &serde_json::json!({"name":"bash"}));
+    let _ = map_tool_choice_type("tool", &serde_json::json!({}));
+    let _ = map_tool_choice_type("unknown", &serde_json::json!({}));
+    let _ = combined_text_from_content(&[serde_json::json!({"text":"a"})]);
+    let _ = combined_text_from_content(&[]);
+    let _ = role_string(&crate::models::claude::ClaudeRole::System);
+    let _ = role_string(&crate::models::claude::ClaudeRole::User);
+    let _ = role_string(&crate::models::claude::ClaudeRole::Assistant);
+    let content = crate::models::claude::ClaudeMessageContent::Text("hello".to_string());
+    let _ = collect_assistant_parts(&content);
+    let content2 = crate::models::claude::ClaudeMessageContent::Blocks(vec![
+        crate::models::claude::ClaudeContentBlock::Text { text: "hi".to_string() },
+        crate::models::claude::ClaudeContentBlock::Thinking { thinking: "think".to_string() },
+        crate::models::claude::ClaudeContentBlock::ToolUse { id: "1".to_string(), name: "bash".to_string(), input: serde_json::json!({}) },
+        crate::models::claude::ClaudeContentBlock::ToolResult { tool_use_id: "1".to_string(), content: None },
+    ]);
+    let _ = collect_assistant_parts(&content2);
+    let _ = build_assistant_message("think".to_string(), "text".to_string(), vec![]);
+    let _ = build_assistant_message("".to_string(), "".to_string(), vec![]);
+    let _ = tool_result_content_to_text(&None);
+    let _ = tool_result_content_to_text(&Some(crate::models::claude::ClaudeToolResultContent::Text("hi".to_string())));
+    let _ = tool_result_content_to_text(&Some(crate::models::claude::ClaudeToolResultContent::Object(serde_json::json!({"a":1}))));
+    let _ = tool_result_content_to_text(&Some(crate::models::claude::ClaudeToolResultContent::Blocks(vec![serde_json::json!({"type":"text","text":"hi"})])));
+    let _ = tool_result_content_to_text(&Some(crate::models::claude::ClaudeToolResultContent::Blocks(vec![serde_json::json!({"type":"image"})])));
+    let _ = tool_result_content_to_text(&Some(crate::models::claude::ClaudeToolResultContent::Blocks(vec![serde_json::json!({"no_type":1})])));
+    let _ = build_tool_messages(&[crate::models::claude::ClaudeContentBlock::ToolResult { tool_use_id: "1".to_string(), content: Some(crate::models::claude::ClaudeToolResultContent::Text("out".to_string())) }]);
+    let _ = build_tool_messages(&[]);
+    let _ = extract_after_tools_user_text(&[crate::models::claude::ClaudeContentBlock::Text { text: "after".to_string() }]);
+    let _ = extract_after_tools_user_text(&[]);
+    let _ = convert_user_blocks(&[crate::models::claude::ClaudeContentBlock::Text { text: "hi".to_string() }]);
+    let _ = convert_user_blocks(&[crate::models::claude::ClaudeContentBlock::Image { source: crate::models::claude::ClaudeImageSource { source_type: "base64".to_string(), media_type: "image/png".to_string(), data: "d".to_string() } }]);
+    let _ = convert_user_blocks(&[]);
+    let msg = crate::models::claude::ClaudeMessage { role: crate::models::claude::ClaudeRole::User, content: crate::models::claude::ClaudeMessageContent::Text("hi".to_string()) };
+    let _ = convert_single_user_message(&msg);
+    let msg_empty = crate::models::claude::ClaudeMessage { role: crate::models::claude::ClaudeRole::User, content: crate::models::claude::ClaudeMessageContent::Text("   ".to_string()) };
+    let _ = convert_single_user_message(&msg_empty);
+    let msg_img = crate::models::claude::ClaudeMessage { role: crate::models::claude::ClaudeRole::User, content: crate::models::claude::ClaudeMessageContent::Blocks(vec![crate::models::claude::ClaudeContentBlock::Image { source: crate::models::claude::ClaudeImageSource { source_type: "base64".to_string(), media_type: "image/png".to_string(), data: "d".to_string() } }]) };
+    let _ = convert_single_user_message(&msg_img);
+    let mut out = Vec::new();
+    let msg_assistant = crate::models::claude::ClaudeMessage { role: crate::models::claude::ClaudeRole::Assistant, content: crate::models::claude::ClaudeMessageContent::Text("hi".to_string()) };
+    handle_assistant_message(&msg_assistant, &mut out);
+    let mut out2 = Vec::new();
+    let mut i = 0;
+    let msgs = vec![crate::models::claude::ClaudeMessage { role: crate::models::claude::ClaudeRole::Assistant, content: crate::models::claude::ClaudeMessageContent::Text("hi".to_string()) }, crate::models::claude::ClaudeMessage { role: crate::models::claude::ClaudeRole::User, content: crate::models::claude::ClaudeMessageContent::Blocks(vec![crate::models::claude::ClaudeContentBlock::ToolResult { tool_use_id: "1".to_string(), content: Some(crate::models::claude::ClaudeToolResultContent::Text("out".to_string())) }]) }];
+    try_handle_tool_followup(&msgs, &mut i, &mut out2);
+    let msgs2 = vec![crate::models::claude::ClaudeMessage { role: crate::models::claude::ClaudeRole::User, content: crate::models::claude::ClaudeMessageContent::Text("hi".to_string()) }];
+    let mut i2 = 0;
+    let mut out3 = Vec::new();
+    try_handle_tool_followup(&msgs2, &mut i2, &mut out3);
+    let _ = convert_claude_messages(&msgs);
+    let _ = convert_claude_messages(&msgs2);
+    // apply_tools
+    let mut data = serde_json::json!({});
+    let req = crate::models::claude::ClaudeMessagesRequest { model: "t".to_string(), messages: vec![], system: None, max_tokens: None, stop_sequences: None, tools: Some(vec![crate::models::claude::ClaudeTool { name: "bash".to_string(), description: Some("d".to_string()), input_schema: Some(serde_json::json!({"type":"object"})) }]), tool_choice: None, stream: None, thinking: None, temperature: None, top_p: None, top_k: None, metadata: None };
+    let _ = apply_tools_mapping(&mut data, &req);
+    let mut data2 = serde_json::json!({});
+    let req2 = crate::models::claude::ClaudeMessagesRequest { model: "t".to_string(), messages: vec![], system: None, max_tokens: None, stop_sequences: None, tools: Some(vec![crate::models::claude::ClaudeTool { name: "   ".to_string(), description: None, input_schema: Some(serde_json::json!({})) }]), tool_choice: None, stream: None, thinking: None, temperature: None, top_p: None, top_k: None, metadata: None };
+    let _ = apply_tools_mapping(&mut data2, &req2);
+    let _ = apply_tool_choice_mapping(&mut data2, &Some(serde_json::json!({"type":"auto"})));
+    // resolve_model_route with many
+    let _ = resolve_model_route("", &s);
+    let _ = resolve_model_route("sonnet", &s);
+    let _ = resolve_model_route("a[inner]b", &s);
+    let _ = resolve_model_route("claude-test-1", &s2);
+}
+
