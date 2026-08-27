@@ -403,43 +403,82 @@ fn convert_user_blocks(blocks: &[ClaudeContentBlock]) -> (Vec<Value>, bool) {
     (content, has_image)
 }
 
-fn convert_single_user_message(msg: &crate::models::claude::ClaudeMessage) -> Option<Value> {
-    let (openai_content, has_image) = match &msg.content {
-        ClaudeMessageContent::Text(text) => {
-            return if text.trim().is_empty() {
-                None
-            } else {
-                Some(json!({"role": "user", "content": text.trim().to_string()}))
-            };
-        }
-        ClaudeMessageContent::Blocks(blocks) => convert_user_blocks(blocks),
-    };
-    if has_image {
-        let role = if msg.role == ClaudeRole::System {
-            "system"
-        } else {
-            "user"
-        };
-        Some(json!({"role": role, "content": Value::Array(openai_content)}))
+fn role_string(role: &ClaudeRole) -> &'static str {
+    if *role == ClaudeRole::System {
+        "system"
     } else {
-        let mut combined = String::new();
-        for item in &openai_content {
-            if let Some(t) = item.get("text").and_then(Value::as_str) {
-                combined.push_str(t);
-            }
-        }
-        let trimmed = combined.trim().to_string();
-        if trimmed.is_empty() {
-            None
-        } else {
-            let role = if msg.role == ClaudeRole::System {
-                "system"
-            } else {
-                "user"
-            };
-            Some(json!({"role": role, "content": trimmed}))
+        "user"
+    }
+}
+
+fn combined_text_from_content(openai_content: &[Value]) -> String {
+    let mut combined = String::new();
+    for item in openai_content {
+        if let Some(t) = item.get("text").and_then(Value::as_str) {
+            combined.push_str(t);
         }
     }
+    combined.trim().to_string()
+}
+
+fn convert_single_user_message(msg: &crate::models::claude::ClaudeMessage) -> Option<Value> {
+    match &msg.content {
+        ClaudeMessageContent::Text(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(json!({"role": "user", "content": trimmed.to_string()}))
+            }
+        }
+        ClaudeMessageContent::Blocks(blocks) => {
+            let (openai_content, has_image) = convert_user_blocks(blocks);
+            let role = role_string(&msg.role);
+            if has_image {
+                Some(json!({"role": role, "content": Value::Array(openai_content)}))
+            } else {
+                let trimmed = combined_text_from_content(&openai_content);
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(json!({"role": role, "content": trimmed}))
+                }
+            }
+        }
+    }
+}
+
+fn handle_assistant_message(msg: &crate::models::claude::ClaudeMessage, out: &mut Vec<Value>) {
+    let (thinking, text, tool_calls) = collect_assistant_parts(&msg.content);
+    out.push(build_assistant_message(thinking, text, tool_calls));
+}
+
+fn try_handle_tool_followup(
+    messages: &[crate::models::claude::ClaudeMessage],
+    i: &mut usize,
+    out: &mut Vec<Value>,
+) {
+    if *i + 1 >= messages.len() {
+        return;
+    }
+    let next = &messages[*i + 1];
+    if next.role != ClaudeRole::User {
+        return;
+    }
+    let ClaudeMessageContent::Blocks(ref next_blocks) = next.content else {
+        return;
+    };
+    let has_tool = next_blocks
+        .iter()
+        .any(|b| matches!(b, ClaudeContentBlock::ToolResult { .. }));
+    if !has_tool {
+        return;
+    }
+    out.extend(build_tool_messages(next_blocks));
+    if let Some(user_msg) = extract_after_tools_user_text(next_blocks) {
+        out.push(user_msg);
+    }
+    *i += 1;
 }
 
 fn convert_claude_messages(messages: &[crate::models::claude::ClaudeMessage]) -> Vec<Value> {
@@ -448,25 +487,8 @@ fn convert_claude_messages(messages: &[crate::models::claude::ClaudeMessage]) ->
     while i < messages.len() {
         let msg = &messages[i];
         if msg.role == ClaudeRole::Assistant {
-            let (thinking, text, tool_calls) = collect_assistant_parts(&msg.content);
-            out.push(build_assistant_message(thinking, text, tool_calls));
-            if i + 1 < messages.len() {
-                let next = &messages[i + 1];
-                if next.role == ClaudeRole::User
-                    && let ClaudeMessageContent::Blocks(ref next_blocks) = next.content
-                {
-                    let has_tool = next_blocks
-                        .iter()
-                        .any(|b| matches!(b, ClaudeContentBlock::ToolResult { .. }));
-                    if has_tool {
-                        out.extend(build_tool_messages(next_blocks));
-                        if let Some(user_msg) = extract_after_tools_user_text(next_blocks) {
-                            out.push(user_msg);
-                        }
-                        i += 1;
-                    }
-                }
-            }
+            handle_assistant_message(msg, &mut out);
+            try_handle_tool_followup(messages, &mut i, &mut out);
         } else if let Some(m) = convert_single_user_message(msg) {
             out.push(m);
         }

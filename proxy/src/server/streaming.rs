@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use axum::body::Bytes;
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -322,6 +323,105 @@ async fn handle_tool_calls_delta(
 }
 
 #[allow(clippy::too_many_arguments)]
+async fn process_data_line(
+    data_str: &str,
+    sent_start: &mut bool,
+    sent_stop: &mut bool,
+    thinking_open: &mut bool,
+    text_open: &mut bool,
+    content_block_index: &mut u64,
+    active_tools: &mut HashMap<u64, ToolCallState>,
+    detected_finish_reason: &mut Option<String>,
+    final_usage: &mut Option<Value>,
+    msg_id: &str,
+    req_model: &str,
+    reasoning_mode: ReasoningReplayMode,
+    tx: &mpsc::Sender<Result<Bytes, std::convert::Infallible>>,
+) -> bool {
+    if data_str == "[DONE]" {
+        handle_done_event(
+            *sent_start,
+            sent_stop,
+            thinking_open,
+            text_open,
+            content_block_index,
+            active_tools,
+            detected_finish_reason,
+            final_usage,
+            tx,
+        )
+        .await;
+        return true;
+    }
+    let chunk_val: Value = match serde_json::from_str(data_str) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    if let Some(u) = chunk_val.get("usage") {
+        *final_usage = Some(u.clone());
+    }
+    let choices = chunk_val
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|c| c.first());
+    let delta_obj = choices
+        .and_then(|c| c.get("delta"))
+        .or_else(|| choices.and_then(|c| c.get("message")));
+    let delta_content = delta_obj
+        .and_then(|d| d.get("content"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let delta_reasoning = delta_obj
+        .and_then(|d| d.get("reasoning_content").or_else(|| d.get("reasoning")))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let finish_reason = choices
+        .and_then(|c| c.get("finish_reason"))
+        .and_then(Value::as_str);
+
+    handle_reasoning_delta(
+        delta_reasoning,
+        reasoning_mode,
+        sent_start,
+        msg_id,
+        req_model,
+        text_open,
+        thinking_open,
+        content_block_index,
+        tx,
+    )
+    .await;
+    handle_text_delta(
+        delta_content,
+        sent_start,
+        msg_id,
+        req_model,
+        thinking_open,
+        text_open,
+        content_block_index,
+        tx,
+    )
+    .await;
+    if let Some(tool_calls) = delta_obj
+        .and_then(|d| d.get("tool_calls"))
+        .and_then(Value::as_array)
+    {
+        handle_tool_calls_delta(
+            tool_calls,
+            active_tools,
+            thinking_open,
+            text_open,
+            content_block_index,
+            tx,
+        )
+        .await;
+    }
+    if let Some(fr) = finish_reason {
+        *detected_finish_reason = Some(fr.to_string());
+    }
+    false
+}
+
 async fn handle_done_event(
     sent_start: bool,
     sent_stop: &mut bool,
@@ -409,86 +509,24 @@ async fn convert_stream_inner(
             }
             if trimmed.starts_with("data:") {
                 let data_str = trimmed.strip_prefix("data:").unwrap().trim();
-                if data_str == "[DONE]" {
-                    handle_done_event(
-                        sent_start,
-                        &mut sent_stop,
-                        &mut thinking_block_open,
-                        &mut text_block_open,
-                        &mut content_block_index,
-                        &active_tools,
-                        &detected_finish_reason,
-                        &final_usage,
-                        &tx,
-                    )
-                    .await;
-                    break;
-                }
-                let chunk_val: Value = match serde_json::from_str(data_str) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                if let Some(u) = chunk_val.get("usage") {
-                    final_usage = Some(u.clone());
-                }
-                let choices = chunk_val
-                    .get("choices")
-                    .and_then(Value::as_array)
-                    .and_then(|c| c.first());
-                let delta_obj = choices
-                    .and_then(|c| c.get("delta"))
-                    .or_else(|| choices.and_then(|c| c.get("message")));
-                let delta_content = delta_obj
-                    .and_then(|d| d.get("content"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let delta_reasoning = delta_obj
-                    .and_then(|d| d.get("reasoning_content").or_else(|| d.get("reasoning")))
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let finish_reason = choices
-                    .and_then(|c| c.get("finish_reason"))
-                    .and_then(Value::as_str);
-
-                handle_reasoning_delta(
-                    delta_reasoning,
+                let should_break = process_data_line(
+                    data_str,
+                    &mut sent_start,
+                    &mut sent_stop,
+                    &mut thinking_block_open,
+                    &mut text_block_open,
+                    &mut content_block_index,
+                    &mut active_tools,
+                    &mut detected_finish_reason,
+                    &mut final_usage,
+                    &msg_id,
+                    &req_model,
                     reasoning_mode,
-                    &mut sent_start,
-                    &msg_id,
-                    &req_model,
-                    &mut text_block_open,
-                    &mut thinking_block_open,
-                    &mut content_block_index,
                     &tx,
                 )
                 .await;
-                handle_text_delta(
-                    delta_content,
-                    &mut sent_start,
-                    &msg_id,
-                    &req_model,
-                    &mut thinking_block_open,
-                    &mut text_block_open,
-                    &mut content_block_index,
-                    &tx,
-                )
-                .await;
-                if let Some(tool_calls) = delta_obj
-                    .and_then(|d| d.get("tool_calls"))
-                    .and_then(Value::as_array)
-                {
-                    handle_tool_calls_delta(
-                        tool_calls,
-                        &mut active_tools,
-                        &mut thinking_block_open,
-                        &mut text_block_open,
-                        &mut content_block_index,
-                        &tx,
-                    )
-                    .await;
-                }
-                if let Some(fr) = finish_reason {
-                    detected_finish_reason = Some(fr.to_string());
+                if should_break {
+                    break;
                 }
             }
         }
