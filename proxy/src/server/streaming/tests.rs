@@ -654,8 +654,12 @@ async fn cover_all_streaming_comprehensive_for_85() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
     // build_usage
     let _ = build_usage_json(&None);
-    let _ = build_usage_json(&Some(serde_json::json!({"prompt_tokens":1,"completion_tokens":2})));
-    let _ = build_usage_json(&Some(serde_json::json!({"prompt_tokens":1,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":5}})));
+    let _ = build_usage_json(&Some(
+        serde_json::json!({"prompt_tokens":1,"completion_tokens":2}),
+    ));
+    let _ = build_usage_json(&Some(
+        serde_json::json!({"prompt_tokens":1,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":5}}),
+    ));
     // ensure_message
     let mut sent_start = false;
     ensure_message_start(&mut sent_start, "msg", "model", &tx).await;
@@ -682,30 +686,123 @@ async fn cover_all_streaming_comprehensive_for_85() {
     let mut text_open2 = false;
     let mut thinking_open2 = false;
     let mut idx2 = 0;
-    handle_reasoning_delta("", ReasoningReplayMode::Separate, &mut sent_start2, "msg", "model", &mut text_open2, &mut thinking_open2, &mut idx2, &tx).await;
-    handle_reasoning_delta("think", ReasoningReplayMode::Inline, &mut sent_start2, "msg", "model", &mut text_open2, &mut thinking_open2, &mut idx2, &tx).await;
-    handle_reasoning_delta("think2", ReasoningReplayMode::Separate, &mut sent_start2, "msg", "model", &mut text_open2, &mut thinking_open2, &mut idx2, &tx).await;
+    handle_reasoning_delta(
+        "",
+        ReasoningReplayMode::Separate,
+        &mut sent_start2,
+        "msg",
+        "model",
+        &mut text_open2,
+        &mut thinking_open2,
+        &mut idx2,
+        &tx,
+    )
+    .await;
+    handle_reasoning_delta(
+        "think",
+        ReasoningReplayMode::Inline,
+        &mut sent_start2,
+        "msg",
+        "model",
+        &mut text_open2,
+        &mut thinking_open2,
+        &mut idx2,
+        &tx,
+    )
+    .await;
+    handle_reasoning_delta(
+        "think2",
+        ReasoningReplayMode::Separate,
+        &mut sent_start2,
+        "msg",
+        "model",
+        &mut text_open2,
+        &mut thinking_open2,
+        &mut idx2,
+        &tx,
+    )
+    .await;
     // handle_text
-    handle_text_delta("", &mut sent_start2, "msg", "model", &mut thinking_open2, &mut text_open2, &mut idx2, &tx).await;
-    handle_text_delta("hi", &mut sent_start2, "msg", "model", &mut thinking_open2, &mut text_open2, &mut idx2, &tx).await;
+    handle_text_delta(
+        "",
+        &mut sent_start2,
+        "msg",
+        "model",
+        &mut thinking_open2,
+        &mut text_open2,
+        &mut idx2,
+        &tx,
+    )
+    .await;
+    handle_text_delta(
+        "hi",
+        &mut sent_start2,
+        "msg",
+        "model",
+        &mut thinking_open2,
+        &mut text_open2,
+        &mut idx2,
+        &tx,
+    )
+    .await;
     // handle_tool_calls
-    let mut active: std::collections::HashMap<u64, ToolCallState> = std::collections::HashMap::new();
-    handle_tool_calls_delta(&[], &mut active, &mut thinking_open2, &mut text_open2, &mut idx2, &tx).await;
-    let tool_calls = vec![serde_json::json!({"index":0,"id":"id1","function":{"name":"bash","arguments":"{}"}})];
-    handle_tool_calls_delta(&tool_calls, &mut active, &mut thinking_open2, &mut text_open2, &mut idx2, &tx).await;
+    let mut active: std::collections::HashMap<u64, ToolCallState> =
+        std::collections::HashMap::new();
+    handle_tool_calls_delta(
+        &[],
+        &mut active,
+        &mut thinking_open2,
+        &mut text_open2,
+        &mut idx2,
+        &tx,
+    )
+    .await;
+    let tool_calls =
+        vec![serde_json::json!({"index":0,"id":"id1","function":{"name":"bash","arguments":"{}"}})];
+    handle_tool_calls_delta(
+        &tool_calls,
+        &mut active,
+        &mut thinking_open2,
+        &mut text_open2,
+        &mut idx2,
+        &tx,
+    )
+    .await;
     // handle_done with various
     let mut sent_stop = false;
     let mut th3 = false;
     let mut txt3 = false;
     let mut idx3 = 0;
     let active3 = std::collections::HashMap::new();
-    let r = handle_done_event(false, &mut sent_stop, &mut th3, &mut txt3, &mut idx3, &active3, &None, &None, &tx).await;
+    let r = handle_done_event(
+        false,
+        &mut sent_stop,
+        &mut th3,
+        &mut txt3,
+        &mut idx3,
+        &active3,
+        &None,
+        &None,
+        &tx,
+    )
+    .await;
     assert!(!r);
     let mut sent_stop2 = false;
     let mut th4 = true;
     let mut txt4 = true;
     let mut idx4 = 0;
-    let r2 = handle_done_event(true, &mut sent_stop2, &mut th4, &mut txt4, &mut idx4, &active3, &Some("tool_calls".to_string()), &Some(serde_json::json!({"prompt_tokens":1})), &tx).await;
+    let r2 = handle_done_event(
+        true,
+        &mut sent_stop2,
+        &mut th4,
+        &mut txt4,
+        &mut idx4,
+        &active3,
+        &Some("tool_calls".to_string()),
+        &Some(serde_json::json!({"prompt_tokens":1})),
+        &tx,
+    )
+    .await;
     assert!(r2);
     // process_data_line
     let mut sent_start3 = false;
@@ -716,12 +813,71 @@ async fn cover_all_streaming_comprehensive_for_85() {
     let mut active3b = std::collections::HashMap::new();
     let mut finish3 = None;
     let mut usage3 = None;
-    let _ = process_data_line("invalid json", &mut sent_start3, &mut sent_stop3, &mut thinking_open3, &mut text_open3, &mut idx3b, &mut active3b, &mut finish3, &mut usage3, "msg", "model", ReasoningReplayMode::Separate, &tx).await;
-    let _ = process_data_line(r#"{"choices":[{"delta":{"content":"hi"}}]}"#, &mut sent_start3, &mut sent_stop3, &mut thinking_open3, &mut text_open3, &mut idx3b, &mut active3b, &mut finish3, &mut usage3, "msg", "model", ReasoningReplayMode::Separate, &tx).await;
+    let _ = process_data_line(
+        "invalid json",
+        &mut sent_start3,
+        &mut sent_stop3,
+        &mut thinking_open3,
+        &mut text_open3,
+        &mut idx3b,
+        &mut active3b,
+        &mut finish3,
+        &mut usage3,
+        "msg",
+        "model",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
+    let _ = process_data_line(
+        r#"{"choices":[{"delta":{"content":"hi"}}]}"#,
+        &mut sent_start3,
+        &mut sent_stop3,
+        &mut thinking_open3,
+        &mut text_open3,
+        &mut idx3b,
+        &mut active3b,
+        &mut finish3,
+        &mut usage3,
+        "msg",
+        "model",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
     let _ = process_data_line(r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"id1","function":{"name":"bash","arguments":"{}"}}]}}]}"#, &mut sent_start3, &mut sent_stop3, &mut thinking_open3, &mut text_open3, &mut idx3b, &mut active3b, &mut finish3, &mut usage3, "msg", "model", ReasoningReplayMode::Separate, &tx).await;
-    let _ = process_data_line(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#, &mut sent_start3, &mut sent_stop3, &mut thinking_open3, &mut text_open3, &mut idx3b, &mut active3b, &mut finish3, &mut usage3, "msg", "model", ReasoningReplayMode::Separate, &tx).await;
-    let _ = process_data_line("[DONE]", &mut sent_start3, &mut sent_stop3, &mut thinking_open3, &mut text_open3, &mut idx3b, &mut active3b, &mut finish3, &mut usage3, "msg", "model", ReasoningReplayMode::Separate, &tx).await;
+    let _ = process_data_line(
+        r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        &mut sent_start3,
+        &mut sent_stop3,
+        &mut thinking_open3,
+        &mut text_open3,
+        &mut idx3b,
+        &mut active3b,
+        &mut finish3,
+        &mut usage3,
+        "msg",
+        "model",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
+    let _ = process_data_line(
+        "[DONE]",
+        &mut sent_start3,
+        &mut sent_stop3,
+        &mut thinking_open3,
+        &mut text_open3,
+        &mut idx3b,
+        &mut active3b,
+        &mut finish3,
+        &mut usage3,
+        "msg",
+        "model",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
     drop(tx);
     while let Some(_) = rx.recv().await {}
 }
-

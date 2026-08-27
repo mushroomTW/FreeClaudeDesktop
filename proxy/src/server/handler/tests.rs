@@ -562,3 +562,59 @@ async fn test_companion_forwarding_success() {
         }
     }
 }
+#[test]
+fn cover_handler_new_helpers_for_85() {
+    // log_headers with various sensitive and non-sensitive headers
+    let mut headers = HeaderMap::new();
+    headers.insert("authorization", "Bearer token".parse().unwrap());
+    headers.insert("x-api-key", "key".parse().unwrap());
+    headers.insert("content-type", "application/json".parse().unwrap());
+    headers.insert("custom", "value".parse().unwrap());
+    headers.insert("origin", "http://example.com".parse().unwrap());
+    log_headers(&headers);
+    let empty_headers = HeaderMap::new();
+    log_headers(&empty_headers);
+
+    // is_anthropic_native
+    let mut s = Settings::default();
+    s.gateway.transport_type = "anthropic_messages".to_string();
+    assert!(is_anthropic_native(&s));
+    s.gateway.transport_type = "".to_string();
+    s.gateway.real_base_url = "https://api.anthropic.com/v1".to_string();
+    assert!(is_anthropic_native(&s));
+    s.gateway.real_base_url = "https://example.com".to_string();
+    assert!(!is_anthropic_native(&s));
+
+    // extract_req_model
+    assert_eq!(extract_req_model(r#"{"model":"test-model"}"#), "test-model");
+    assert_eq!(extract_req_model("invalid json"), "unknown");
+    assert_eq!(extract_req_model(r#"{"no_model":1}"#), "unknown");
+
+    // build_target_url
+    let mut s2 = Settings::default();
+    s2.gateway.real_base_url = "https://api.openai.com/v1".to_string();
+    assert!(build_target_url(&s2, true).is_ok());
+    assert!(build_target_url(&s2, false).is_ok());
+    s2.gateway.real_base_url = "not a url".to_string();
+    assert!(build_target_url(&s2, true).is_err());
+
+    // build_proxy_body
+    let mut s3 = Settings::default();
+    let body = r#"{"model":"test","messages":[{"role":"user","content":"hi"}]}"#;
+    let (b, is_stream) = build_proxy_body(body, &s3, true).unwrap();
+    assert!(!b.is_empty());
+    let (b2, is_stream2) = build_proxy_body(body, &s3, false).unwrap();
+    assert!(!b2.is_empty());
+    assert!(!is_stream2);
+
+    // handle_probe_response with no probe
+    let result = handle_probe_response(
+        "no probe",
+        "test",
+        &s3,
+        1,
+        &serde_json::json!({}),
+        std::time::Instant::now(),
+    );
+    assert!(result.is_none());
+}
