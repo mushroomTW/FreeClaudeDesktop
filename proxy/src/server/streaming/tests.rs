@@ -135,11 +135,61 @@ async fn ensure_message_and_block_helpers_cover() {
 }
 
 #[tokio::test]
+async fn handle_done_event_covers_branches() {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    let mut sent_stop = false;
+    let mut thinking_open = true;
+    let mut text_open = true;
+    let mut idx = 0;
+    let active = std::collections::HashMap::new();
+    let finish = Some("tool_calls".to_string());
+    let usage = serde_json::json!({"prompt_tokens":1,"completion_tokens":1});
+    // sent_start false -> should return false and not send
+    let r = handle_done_event(
+        false,
+        &mut sent_stop,
+        &mut thinking_open,
+        &mut text_open,
+        &mut idx,
+        &active,
+        &finish,
+        &Some(usage.clone()),
+        &tx,
+    )
+    .await;
+    assert!(!r);
+    // sent_start true, with tool_calls finish
+    let mut thinking_open2 = true;
+    let mut text_open2 = true;
+    let mut sent_stop2 = false;
+    let mut idx2 = 0;
+    let r2 = handle_done_event(
+        true,
+        &mut sent_stop2,
+        &mut thinking_open2,
+        &mut text_open2,
+        &mut idx2,
+        &active,
+        &finish,
+        &Some(usage),
+        &tx,
+    )
+    .await;
+    assert!(r2);
+    assert!(sent_stop2);
+    drop(tx);
+    while let Some(_) = rx.recv().await {}
+}
+
+#[tokio::test]
 async fn stream_error_path_is_covered() {
     // Force convert_stream_inner to error by providing a stream that yields an error
     use futures::stream;
     let err_stream = stream::once(async {
-        Err::<axum::body::Bytes, std::io::Error>(std::io::Error::new(std::io::ErrorKind::Other, "mock error"))
+        Err::<axum::body::Bytes, std::io::Error>(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "mock error",
+        ))
     });
     let body = reqwest::Body::wrap_stream(err_stream);
     let http_resp = HttpResponse::builder().body(body).unwrap();

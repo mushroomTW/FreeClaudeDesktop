@@ -246,6 +246,50 @@ fn anthropic_to_openai_covers_image_and_tool_flow() {
 }
 
 #[test]
+fn anthropic_to_openai_covers_all_optional_fields() {
+    let mut s = Settings::default();
+    s.models.real_model_reasoning_efforts.insert(
+        "claude-test".to_string(),
+        vec!["low".to_string(), "high".to_string()],
+    );
+    let body = json!({
+        "model": "claude-test",
+        "max_tokens": 100,
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "stream": true,
+        "stop_sequences": ["stop"],
+        "thinking": {"type": "enabled", "budget_tokens": 2000},
+        "tool_choice": {"type": "auto"},
+        "system": "sys",
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [{"name": "bash", "description": "d", "input_schema": {"type": "object"}}]
+    });
+    let (converted, is_stream) = anthropic_to_openai_request(&body.to_string(), &s).unwrap();
+    assert!(is_stream);
+    let v: Value = serde_json::from_str(&converted).unwrap();
+    assert_eq!(v["temperature"], 0.7);
+    assert_eq!(v["top_p"], 0.9);
+    assert!(v.get("stop").is_some());
+    assert!(v.get("reasoning_effort").is_some());
+    // tool_choice any
+    let body2 = json!({"model":"claude-test","messages":[{"role":"user","content":"hi"}],"tool_choice":{"type":"any"}});
+    let (c2, _) = anthropic_to_openai_request(&body2.to_string(), &s).unwrap();
+    let v2: Value = serde_json::from_str(&c2).unwrap();
+    assert_eq!(v2["tool_choice"], "required");
+    // tool_choice tool with name
+    let body3 = json!({"model":"claude-test","messages":[{"role":"user","content":"hi"}],"tool_choice":{"type":"tool","name":"bash"}});
+    let (c3, _) = anthropic_to_openai_request(&body3.to_string(), &s).unwrap();
+    let v3: Value = serde_json::from_str(&c3).unwrap();
+    assert_eq!(v3["tool_choice"]["function"]["name"], "bash");
+    // system blocks
+    let body4 = json!({"model":"claude-test","system":[{"type":"text","text":"sys block"}],"messages":[{"role":"user","content":"hi"}]});
+    let (c4, _) = anthropic_to_openai_request(&body4.to_string(), &s).unwrap();
+    let v4: Value = serde_json::from_str(&c4).unwrap();
+    assert_eq!(v4["messages"][0]["role"], "system");
+}
+
+#[test]
 fn convert_helpers_cover_text_and_empty() {
     let msg = crate::models::claude::ClaudeMessage {
         role: crate::models::claude::ClaudeRole::User,
