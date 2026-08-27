@@ -92,6 +92,54 @@ async fn stream_handles_reasoning_after_text_content() {
     assert!(out.contains("{\"type\":\"content_block_stop\",\"index\":2}"));
 }
 
+#[test]
+fn build_usage_json_covers_cached_tokens() {
+    let usage = serde_json::json!({
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "prompt_tokens_details": {"cached_tokens": 3}
+    });
+    let s = build_usage_json(&Some(usage));
+    assert!(s.contains("cache_read_input_tokens"));
+    let s2 = build_usage_json(&None);
+    assert!(s2.contains("input_tokens"));
+}
+
+#[tokio::test]
+async fn stream_covers_tool_calls_and_inline_reasoning() {
+    let app = Router::new().route(
+        "/",
+        get(|| async {
+            axum::response::Response::builder()
+                .header("Content-Type", "text/event-stream")
+                .body(axum::body::Body::from(concat!(
+                    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"toolu_1\",\"function\":{\"name\":\"bash\",\"arguments\":\"{\\\"cmd\\\":\\\"ls\\\"}\"}}]}}]}\n\n",
+                    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"more\"}}]}}]}\n\n",
+                    "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"inline think\"}}]}\n\n",
+                    "data: [DONE]\n\n"
+                )))
+                .unwrap()
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let response = reqwest::get(format!("http://{addr}/")).await.unwrap();
+    let mut rx = start_sse_stream_conversion(
+        response,
+        "claude-test".to_string(),
+        Some(ReasoningReplayMode::Inline),
+    );
+    let mut out = String::new();
+    while let Some(Ok(b)) = rx.recv().await {
+        out.push_str(&String::from_utf8_lossy(&b));
+    }
+    assert!(out.contains("tool_use") || out.contains("input_json_delta"));
+    assert!(out.contains("antThinking") || out.contains("thinking"));
+}
+
 #[tokio::test]
 /// 驗證 `stream_does_not_break_early_on_finish_reason_and_includes_usage` 的行為符合預期。
 async fn stream_does_not_break_early_on_finish_reason_and_includes_usage() {

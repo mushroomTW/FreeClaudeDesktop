@@ -227,3 +227,38 @@ fn resolve_model_route_prefers_family_override_over_dynamic_route() {
         Some("nemotron-3-super-120b".to_string())
     );
 }
+
+#[test]
+fn anthropic_to_openai_covers_image_and_tool_flow() {
+    let settings = Settings::default();
+    let body = json!({
+        "model": "claude-3-5-sonnet",
+        "messages": [
+            {"role": "user", "content": [{"type": "text", "text": "hi"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "abcd"}}]},
+            {"role": "assistant", "content": [{"type": "thinking", "thinking": "think"}, {"type": "text", "text": "hello"}, {"type": "tool_use", "id": "toolu_1", "name": "bash", "input": {}}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": [{"type": "text", "text": "output"}]}, {"type": "text", "text": "after"}]}
+        ],
+        "tools": [{"name": "bash", "description": "run", "input_schema": {"type": "object"}}]
+    });
+    let (converted, _) = anthropic_to_openai_request(&body.to_string(), &settings).unwrap();
+    let v: Value = serde_json::from_str(&converted).unwrap();
+    assert!(v["messages"].as_array().unwrap().len() >= 3);
+}
+
+#[test]
+fn convert_helpers_cover_text_and_empty() {
+    let msg = crate::models::claude::ClaudeMessage {
+        role: crate::models::claude::ClaudeRole::User,
+        content: crate::models::claude::ClaudeMessageContent::Text("   ".to_string()),
+    };
+    assert!(convert_single_user_message(&msg).is_none());
+    let msg2 = crate::models::claude::ClaudeMessage {
+        role: crate::models::claude::ClaudeRole::User,
+        content: crate::models::claude::ClaudeMessageContent::Blocks(vec![
+            crate::models::claude::ClaudeContentBlock::Text {
+                text: "hello".to_string(),
+            },
+        ]),
+    };
+    assert!(convert_single_user_message(&msg2).is_some());
+}
