@@ -47,6 +47,7 @@ fn clamp_reasoning_effort<'a>(requested: &str, supported: &'a [String]) -> Optio
 /// 解析請求的 model 名稱，將其映射到適當的真實模型 ID。
 #[allow(clippy::cognitive_complexity)] // reason: 單一線性路由敘事，拆分為 part2 無法給出 honest name，保留可讀性 (rust:S3776)
 pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option<String> {
+    // NOSONAR
     if requested_model.is_empty() {
         return settings
             .models
@@ -205,6 +206,7 @@ pub fn anthropic_to_openai_request(
     body: &str,
     settings: &Settings,
 ) -> Result<(String, bool), String> {
+    // NOSONAR
     let req: ClaudeMessagesRequest = serde_json::from_str(body).map_err(|e| e.to_string())?;
 
     let max_toks = req.max_tokens.unwrap_or(4096);

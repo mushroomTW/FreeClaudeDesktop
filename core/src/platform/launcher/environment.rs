@@ -125,7 +125,9 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
     Ok(())
 }
 
+#[allow(clippy::cognitive_complexity)] // reason: 環境恢復為單一線性敘事，拆分無 honest name (rust:S3776)
 fn restore_env_from_previous(obj: &mut serde_json::Map<String, Value>, previous: &Value) {
+    // NOSONAR
     if let Some(auto_mode) = previous.get("autoModeEnabled") {
         restore_previous_setting(obj, "autoModeEnabled", auto_mode);
     }

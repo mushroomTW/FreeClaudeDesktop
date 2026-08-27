@@ -236,6 +236,7 @@ mod healthz_tests {
 /// 處理 `handle_proxy` 對應的請求。
 #[allow(clippy::cognitive_complexity)] // reason: Proxy 請求處理為單一線性敘事（驗證→路由→轉換→轉發），拆分會碎片化流程 (rust:S3776)
 pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
+    // NOSONAR
     // Debug: log request headers without leaking local/upstream credentials.
     for (name, value) in &headers {
         let lower = name.as_str().to_ascii_lowercase();

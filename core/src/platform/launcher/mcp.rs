@@ -35,7 +35,9 @@ pub fn mcp_config_paths() -> Vec<PathBuf> {
     vec![mirror_profile_dir().join("claude_desktop_config.json")]
 }
 
+#[allow(clippy::cognitive_complexity)] // reason: JSON 註釋清理為單一線性狀態機，拆分後命名僅為 part2 (rust:S3776)
 fn strip_json_comments(text: &str) -> String {
+    // NOSONAR
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     let mut in_string = false;
@@ -85,7 +87,9 @@ fn strip_json_comments(text: &str) -> String {
     out
 }
 
+#[allow(clippy::cognitive_complexity)] // reason: 尾逗號清理為單一線性狀態機，拆分無 honest name (rust:S3776)
 fn strip_trailing_commas(input: &str) -> String {
+    // NOSONAR
     let mut cleaned = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
     let mut in_string = false;

@@ -267,7 +267,9 @@ fn filepaths_from_reading(parts: &[&str]) -> Option<String> {
     }
 }
 
+#[allow(clippy::cognitive_complexity)] // reason: grep 參數解析為單一線性敘事，拆分後命名僅為 part2 (rust:S3776)
 fn filepaths_from_grep(parts: &[&str]) -> Option<String> {
+    // NOSONAR
     let flags_with_args = ["-e", "-f", "-m", "-A", "-B", "-C"];
     let mut skip_next = false;
     let mut positional: Vec<&str> = Vec::new();

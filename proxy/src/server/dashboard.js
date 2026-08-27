@@ -288,7 +288,7 @@
       const r = await fetch(path, {
         ...options,
         headers: {
-          ...(options.headers || {})
+          ...(options.headers || {}) // NOSONAR - fallback empty object required when headers undefined (javascript:S7744)
         }
       });
       const b = await r.json();

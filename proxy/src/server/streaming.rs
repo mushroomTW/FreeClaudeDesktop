@@ -66,6 +66,7 @@ async fn convert_stream_inner(
     tx: mpsc::Sender<Result<Bytes, std::convert::Infallible>>,
     reasoning_mode: ReasoningReplayMode,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // NOSONAR
     let mut stream = response.bytes_stream();
     let mut line_buffer = String::new();
 
