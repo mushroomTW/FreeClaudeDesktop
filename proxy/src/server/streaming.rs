@@ -59,6 +59,7 @@ pub fn start_sse_stream_conversion(
 }
 
 /// 轉換或更新 `convert_stream_inner` 所處理的內容。
+#[allow(clippy::cognitive_complexity)] // reason: SSE 串流狀態機為單一線性敘事，拆分後最佳命名僅為 part2，保留完整流程可讀性 (rust:S3776)
 async fn convert_stream_inner(
     response: reqwest::Response,
     req_model: String,

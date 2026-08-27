@@ -45,6 +45,7 @@ fn clamp_reasoning_effort<'a>(requested: &str, supported: &'a [String]) -> Optio
 }
 
 /// 解析請求的 model 名稱，將其映射到適當的真實模型 ID。
+#[allow(clippy::cognitive_complexity)] // reason: 單一線性路由敘事，拆分為 part2 無法給出 honest name，保留可讀性 (rust:S3776)
 pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option<String> {
     if requested_model.is_empty() {
         return settings
@@ -199,6 +200,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
 }
 
 /// 執行 `anthropic_to_openai_request` 對應的處理流程。
+#[allow(clippy::cognitive_complexity)] // reason: 協議轉換為單一線性敘事（messages/tools/system 多欄位映射），拆分會迫使讀者在多個 helpers 間重組順序 (rust:S3776)
 pub fn anthropic_to_openai_request(
     body: &str,
     settings: &Settings,

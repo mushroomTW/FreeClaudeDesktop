@@ -35,14 +35,11 @@ pub fn mcp_config_paths() -> Vec<PathBuf> {
     vec![mirror_profile_dir().join("claude_desktop_config.json")]
 }
 
-/// 正規化 `clean_json_text` 所處理的資料。
-pub fn clean_json_text(input: &str) -> String {
-    let text = input.strip_prefix("\u{feff}").unwrap_or(input);
+fn strip_json_comments(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     let mut in_string = false;
     let mut is_escaped = false;
-
     while let Some(ch) = chars.next() {
         if in_string {
             out.push(ch);
@@ -55,13 +52,11 @@ pub fn clean_json_text(input: &str) -> String {
             }
             continue;
         }
-
         if ch == '"' {
             in_string = true;
             out.push(ch);
             continue;
         }
-
         if ch == '/' {
             if let Some(&'/') = chars.peek() {
                 chars.next();
@@ -85,16 +80,17 @@ pub fn clean_json_text(input: &str) -> String {
                 continue;
             }
         }
-
         out.push(ch);
     }
+    out
+}
 
-    let mut cleaned = String::with_capacity(out.len());
-    let mut out_chars = out.chars().peekable();
-    in_string = false;
-    is_escaped = false;
-
-    while let Some(ch) = out_chars.next() {
+fn strip_trailing_commas(input: &str) -> String {
+    let mut cleaned = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    let mut in_string = false;
+    let mut is_escaped = false;
+    while let Some(ch) = chars.next() {
         if in_string {
             cleaned.push(ch);
             if is_escaped {
@@ -106,15 +102,13 @@ pub fn clean_json_text(input: &str) -> String {
             }
             continue;
         }
-
         if ch == '"' {
             in_string = true;
             cleaned.push(ch);
             continue;
         }
-
         if ch == ',' {
-            let temp_chars = out_chars.clone();
+            let temp_chars = chars.clone();
             let mut trailing = false;
             for next_c in temp_chars {
                 if next_c.is_whitespace() {
@@ -129,11 +123,16 @@ pub fn clean_json_text(input: &str) -> String {
                 continue;
             }
         }
-
         cleaned.push(ch);
     }
-
     cleaned
+}
+
+/// 正規化 `clean_json_text` 所處理的資料。
+pub fn clean_json_text(input: &str) -> String {
+    let text = input.strip_prefix("\u{feff}").unwrap_or(input);
+    let without_comments = strip_json_comments(text);
+    strip_trailing_commas(&without_comments)
 }
 
 /// 讀取 `read_json_config` 所需的資料。
