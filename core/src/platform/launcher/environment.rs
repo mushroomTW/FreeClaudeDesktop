@@ -125,9 +125,20 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
     Ok(())
 }
 
-#[allow(clippy::cognitive_complexity)] // reason: 環境恢復為單一線性敘事，拆分無 honest name (rust:S3776)
+fn restore_env_keys(
+    env_obj: &mut serde_json::Map<String, Value>,
+    previous_env: &serde_json::Map<String, Value>,
+) {
+    for key in MANAGED_CLAUDE_ENV_KEYS {
+        if let Some(previous_value) = previous_env.get(key) {
+            restore_previous_setting(env_obj, key, previous_value);
+        } else {
+            env_obj.remove(key);
+        }
+    }
+}
+
 fn restore_env_from_previous(obj: &mut serde_json::Map<String, Value>, previous: &Value) {
-    // NOSONAR
     if let Some(auto_mode) = previous.get("autoModeEnabled") {
         restore_previous_setting(obj, "autoModeEnabled", auto_mode);
     }
@@ -140,13 +151,7 @@ fn restore_env_from_previous(obj: &mut serde_json::Map<String, Value>, previous:
     }
     if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
         if let Some(previous_env) = previous.get("env").and_then(Value::as_object) {
-            for key in MANAGED_CLAUDE_ENV_KEYS {
-                if let Some(previous_value) = previous_env.get(key) {
-                    restore_previous_setting(env_obj, key, previous_value);
-                } else {
-                    env_obj.remove(key);
-                }
-            }
+            restore_env_keys(env_obj, previous_env);
         }
         if env_obj.is_empty() && !env_present {
             obj.remove("env");
