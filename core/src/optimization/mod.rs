@@ -11,7 +11,10 @@ use serde_json::{Value, json};
 use std::time::{Duration, SystemTime};
 
 use crate::config::Settings;
-use detection::*;
+use detection::{
+    extract_command_prefix, extract_filepaths, is_quota_check_request, is_suggestion_mode_request,
+    is_title_generation_request,
+};
 
 /// 本機最佳化命中後產生的傳輸中立結果。
 #[derive(Debug, Clone, PartialEq)]

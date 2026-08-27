@@ -150,13 +150,14 @@
                       <span data-i18n="conn_custom_path_title">使用自訂 Claude.exe 路徑</span>
                       <span class="switch-desc" data-i18n="conn_custom_path_desc">啟用後使用下方自訂的 Claude.exe 路徑</span>
                     </div>
-                    <label class="switch">
-                      <input type="checkbox" id="useCustomClaudePath">
+                    <label class="switch" for="useCustomClaudePath" aria-label="使用自訂 Claude.exe 路徑">
+                      <input type="checkbox" id="useCustomClaudePath" aria-label="使用自訂 Claude.exe 路徑">
                       <span class="slider"></span>
                     </label>
                   </div>
                   <div class="form-group Dashboard-inline-style-5">
-                    <input type="text" id="customClaudePath" placeholder="C:\Program Files\Claude\Claude.exe" disabled>
+                    <label for="customClaudePath" class="Dashboard-inline-style-5" data-i18n="conn_custom_path_title">自訂 Claude.exe 路徑</label>
+                    <input type="text" id="customClaudePath" placeholder="C:\Program Files\Claude\Claude.exe" disabled aria-label="自訂 Claude.exe 路徑">
                   </div>
                 </div>
 
@@ -216,7 +217,8 @@
                 <p class="section-desc" data-i18n="models_discovered_desc">勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬上下文支援；「預設 1M」讓第一個模型預設選用 1M。</p>
                 
                 <div class="Dashboard-inline-style-14">
-                  <input class="Dashboard-inline-style-15" type="text" id="modelSearchInput" placeholder="搜尋模型名稱 (例如: claude, gpt, gemini, free)..." data-i18n-placeholder="models_search_placeholder">
+                  <label for="modelSearchInput" class="Dashboard-inline-style-15" data-i18n="models_search_placeholder">搜尋模型</label>
+                  <input class="Dashboard-inline-style-15" type="text" id="modelSearchInput" placeholder="搜尋模型名稱 (例如: claude, gpt, gemini, free)..." data-i18n-placeholder="models_search_placeholder" aria-label="搜尋模型名稱">
                 </div>
                 
                 <div class="table-container">
@@ -367,7 +369,8 @@
                   </div>
                 </div>
 
-                <select id="themeMode" class="hidden">
+                <label for="themeMode" class="hidden" aria-hidden="true">主題模式</label>
+                <select id="themeMode" class="hidden" aria-label="主題模式">
                   <option value="light">明亮 (Light)</option>
                   <option value="dark">深色 (Dark)</option>
                   <option value="system">系統 (System)</option>

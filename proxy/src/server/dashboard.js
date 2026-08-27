@@ -80,7 +80,6 @@
         'confirm_restore': '⚠ 還原為官方設定會停止 Claude Desktop，並移除 FreeClaudeDesktop 套用的設定。確定要繼續嗎？',
         'restore_title': '已還原為原版',
         'restore_desc': '官方 Claude Desktop 設定已恢復。請從原本的捷徑重新啟動 Claude Desktop。',
-        'conn_detecting': '偵測中...',
         'detected_online': '已偵測 Claude Desktop',
         'detected_offline': '未偵測到安裝路徑，將使用預設路徑',
         'detected_failed': '無法偵測安裝路徑',
@@ -285,13 +284,10 @@
       $('loadingOverlay').style.display = show ? 'flex' : 'none';
     }
 
-    const headers = () => ({});
-
     async function request(path, options = {}) {
       const r = await fetch(path, {
         ...options,
         headers: {
-          ...headers(),
           ...(options.headers || {})
         }
       });
@@ -314,9 +310,9 @@
       const root = document.documentElement;
       if (theme === 'system') {
         const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        root.dataset.theme = isDark ? 'dark' : 'light';
       } else {
-        root.setAttribute('data-theme', theme);
+        root.dataset.theme = theme;
       }
 
       document.querySelectorAll('.theme-btn').forEach(btn => {
@@ -369,9 +365,9 @@
     async function load() {
       showLoading(true);
       $('detectedClaudeDot').className = 'status-dot offline';
-      $('detectedClaudeStatus').setAttribute('data-i18n', 'conn_detecting');
+      $('detectedClaudeStatus').dataset.i18n = 'conn_detecting';
       $('detectedClaudeStatus').textContent = t('conn_detecting');
-      $('detectedClaudePath').setAttribute('data-i18n', 'conn_detecting');
+      $('detectedClaudePath').dataset.i18n = 'conn_detecting';
       $('detectedClaudePath').textContent = t('conn_detecting');
       try {
         const [settings, status] = await Promise.all([
@@ -451,25 +447,26 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ method: 'DetectClaude' })
           });
-          if (detectRes && detectRes.result && detectRes.result.path) {
+          if (detectRes?.result?.path) {
             $('detectedClaudeDot').className = 'status-dot online';
-            $('detectedClaudeStatus').setAttribute('data-i18n', 'detected_online');
+            $('detectedClaudeStatus').dataset.i18n = 'detected_online';
             $('detectedClaudeStatus').textContent = t('detected_online');
-            $('detectedClaudePath').removeAttribute('data-i18n');
+            delete $('detectedClaudePath').dataset.i18n;
             $('detectedClaudePath').textContent = detectRes.result.path;
           } else {
             $('detectedClaudeDot').className = 'status-dot offline';
-            $('detectedClaudeStatus').setAttribute('data-i18n', 'detected_offline_title');
+            $('detectedClaudeStatus').dataset.i18n = 'detected_offline_title';
             $('detectedClaudeStatus').textContent = t('detected_offline_title');
-            $('detectedClaudePath').setAttribute('data-i18n', 'detected_offline');
+            $('detectedClaudePath').dataset.i18n = 'detected_offline';
             $('detectedClaudePath').textContent = t('detected_offline');
           }
         } catch (err) {
           $('detectedClaudeDot').className = 'status-dot failed';
-          $('detectedClaudeStatus').setAttribute('data-i18n', 'detected_failed_title');
+          $('detectedClaudeStatus').dataset.i18n = 'detected_failed_title';
           $('detectedClaudeStatus').textContent = t('detected_failed_title');
-          $('detectedClaudePath').setAttribute('data-i18n', 'detected_failed');
+          $('detectedClaudePath').dataset.i18n = 'detected_failed';
           $('detectedClaudePath').textContent = t('detected_failed');
+          console.warn('DetectClaude 失敗:', err);
         }
 
         showToast(t('toast_load_success'));
@@ -545,17 +542,17 @@
             valA = a.toLowerCase();
             valB = b.toLowerCase();
           } else if (currentSort.key === 'show') {
-            valA = (settings.modelVisibilityOverrides && settings.modelVisibilityOverrides[a] !== false) ? 1 : 0;
-            valB = (settings.modelVisibilityOverrides && settings.modelVisibilityOverrides[b] !== false) ? 1 : 0;
+            valA = (settings.modelVisibilityOverrides?.[a] !== false) ? 1 : 0;
+            valB = (settings.modelVisibilityOverrides?.[b] !== false) ? 1 : 0;
           } else if (currentSort.key === '1m') {
-            valA = (settings.model1mOverrides && settings.model1mOverrides[a] === true) ? 1 : 0;
-            valB = (settings.model1mOverrides && settings.model1mOverrides[b] === true) ? 1 : 0;
+            valA = (settings.model1mOverrides?.[a] === true) ? 1 : 0;
+            valB = (settings.model1mOverrides?.[b] === true) ? 1 : 0;
           } else if (currentSort.key === '1m-default') {
-            valA = (settings.model1mPreferOverrides && settings.model1mPreferOverrides[a] === true) ? 1 : 0;
-            valB = (settings.model1mPreferOverrides && settings.model1mPreferOverrides[b] === true) ? 1 : 0;
+            valA = (settings.model1mPreferOverrides?.[a] === true) ? 1 : 0;
+            valB = (settings.model1mPreferOverrides?.[b] === true) ? 1 : 0;
           } else if (currentSort.key === 'effort') {
-            const effA = (settings.modelReasoningOverrides && settings.modelReasoningOverrides[a]) || '';
-            const effB = (settings.modelReasoningOverrides && settings.modelReasoningOverrides[b]) || '';
+            const effA = settings.modelReasoningOverrides?.[a] || '';
+            const effB = settings.modelReasoningOverrides?.[b] || '';
             valA = effortRank[effA] ?? 0;
             valB = effortRank[effB] ?? 0;
           }
@@ -573,10 +570,10 @@
       models.forEach(model => {
         const tr = document.createElement('tr');
 
-        const isVisible = settings.modelVisibilityOverrides && settings.modelVisibilityOverrides[model] !== false;
-        const is1m = settings.model1mOverrides && settings.model1mOverrides[model] === true;
-        const is1mPrefer = is1m && settings.model1mPreferOverrides && settings.model1mPreferOverrides[model] === true;
-        const effort = (settings.modelReasoningOverrides && settings.modelReasoningOverrides[model]) || '';
+        const isVisible = settings.modelVisibilityOverrides?.[model] !== false;
+        const is1m = settings.model1mOverrides?.[model] === true;
+        const is1mPrefer = is1m && settings.model1mPreferOverrides?.[model] === true;
+        const effort = settings.modelReasoningOverrides?.[model] || '';
 
         tr.innerHTML = `
           <td class="Dashboard-inline-style-24">${model}</td>
@@ -650,7 +647,7 @@
         const allChecked = Array.from(checkboxes).every(cb => cb.checked);
         checkboxes.forEach(cb => {
           cb.checked = !allChecked;
-          if (loadedSettings && loadedSettings.modelVisibilityOverrides) {
+          if (loadedSettings?.modelVisibilityOverrides) {
             loadedSettings.modelVisibilityOverrides[cb.dataset.model] = !allChecked;
           }
         });
@@ -665,7 +662,7 @@
         const allChecked = Array.from(checkboxes).every(cb => cb.checked);
         checkboxes.forEach(cb => {
           cb.checked = !allChecked;
-          if (loadedSettings && loadedSettings.model1mOverrides) {
+          if (loadedSettings?.model1mOverrides) {
             loadedSettings.model1mOverrides[cb.dataset.model] = !allChecked;
           }
           const prefer = Array.from(document.querySelectorAll('.model-1m-prefer'))
@@ -673,7 +670,7 @@
           if (prefer) {
             prefer.disabled = allChecked;
             prefer.checked = !allChecked;
-            if (loadedSettings && loadedSettings.model1mPreferOverrides) {
+            if (loadedSettings?.model1mPreferOverrides) {
               loadedSettings.model1mPreferOverrides[cb.dataset.model] = !allChecked;
             }
           }

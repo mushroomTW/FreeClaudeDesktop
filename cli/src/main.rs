@@ -9,7 +9,9 @@ use std::time::Duration;
 use std::{io, process::Command as ProcessCommand};
 
 use clap::Parser;
-use cli_args::*;
+use cli_args::{
+    AutostartCommand, Cli, Command, InstallArgs, PurgeArgs, Runtime, UninstallArgs, UpdateArgs,
+};
 use serde_json::Value;
 
 #[tokio::main]
