@@ -414,3 +414,76 @@ async fn stream_does_not_break_early_on_finish_reason_and_includes_usage() {
     assert!(out.contains("\"stop_reason\":\"end_turn\""));
     assert!(out.contains("event: message_stop"));
 }
+
+#[tokio::test]
+async fn cover_streaming_remaining_helpers() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(10);
+    let mut sent_start = false;
+    let mut text_open = false;
+    let mut thinking_open = false;
+    let mut idx = 0;
+    handle_reasoning_delta(
+        "",
+        ReasoningReplayMode::Separate,
+        &mut sent_start,
+        "msg",
+        "model",
+        &mut text_open,
+        &mut thinking_open,
+        &mut idx,
+        &tx,
+    )
+    .await;
+    assert!(!sent_start);
+    handle_text_delta(
+        "",
+        &mut sent_start,
+        "msg",
+        "model",
+        &mut thinking_open,
+        &mut text_open,
+        &mut idx,
+        &tx,
+    )
+    .await;
+    let mut active: std::collections::HashMap<u64, ToolCallState> =
+        std::collections::HashMap::new();
+    handle_tool_calls_delta(
+        &[],
+        &mut active,
+        &mut thinking_open,
+        &mut text_open,
+        &mut idx,
+        &tx,
+    )
+    .await;
+    assert!(build_usage_json(&None).contains("input_tokens"));
+    let usage = serde_json::json!({"prompt_tokens":1,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":5}});
+    assert!(build_usage_json(&Some(usage)).contains("cache_read"));
+    let mut closed = false;
+    let mut idx2 = 5;
+    close_thinking_if_needed(&mut closed, &mut idx2, &tx).await;
+    assert_eq!(idx2, 5);
+    let mut closed2 = false;
+    close_text_if_needed(&mut closed2, &mut idx2, &tx).await;
+    assert_eq!(idx2, 5);
+    // handle_done with sent_start false
+    let mut sent_stop = false;
+    let mut th = false;
+    let mut txt = false;
+    let mut idx3 = 0;
+    let active2 = std::collections::HashMap::new();
+    let r = handle_done_event(
+        false,
+        &mut sent_stop,
+        &mut th,
+        &mut txt,
+        &mut idx3,
+        &active2,
+        &None,
+        &None,
+        &tx,
+    )
+    .await;
+    assert!(!r);
+}
