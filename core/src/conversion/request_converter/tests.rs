@@ -261,4 +261,100 @@ fn convert_helpers_cover_text_and_empty() {
         ]),
     };
     assert!(convert_single_user_message(&msg2).is_some());
+    // image branch
+    let msg_img = crate::models::claude::ClaudeMessage {
+        role: crate::models::claude::ClaudeRole::User,
+        content: crate::models::claude::ClaudeMessageContent::Blocks(vec![
+            crate::models::claude::ClaudeContentBlock::Image {
+                source: crate::models::claude::ClaudeImageSource {
+                    source_type: "base64".to_string(),
+                    media_type: "image/png".to_string(),
+                    data: "abcd".to_string(),
+                },
+            },
+        ]),
+    };
+    assert!(convert_single_user_message(&msg_img).is_some());
+    // system role
+    let msg_sys = crate::models::claude::ClaudeMessage {
+        role: crate::models::claude::ClaudeRole::System,
+        content: crate::models::claude::ClaudeMessageContent::Blocks(vec![
+            crate::models::claude::ClaudeContentBlock::Text {
+                text: "sys".to_string(),
+            },
+        ]),
+    };
+    assert!(convert_single_user_message(&msg_sys).is_some());
+}
+
+#[test]
+fn apply_tools_and_tool_choice_cover_all() {
+    let mut data = serde_json::json!({});
+    let req = crate::models::claude::ClaudeMessagesRequest {
+        model: "test".to_string(),
+        messages: vec![],
+        system: None,
+        max_tokens: None,
+        stop_sequences: None,
+        tools: Some(vec![crate::models::claude::ClaudeTool {
+            name: "bash".to_string(),
+            description: Some("run".to_string()),
+            input_schema: Some(serde_json::json!({"type":"object"})),
+        }]),
+        tool_choice: None,
+        stream: None,
+        thinking: None,
+        temperature: None,
+        top_p: None,
+        top_k: None,
+        metadata: None,
+    };
+    apply_tools_mapping(&mut data, &req).unwrap();
+    assert!(data.get("tools").is_some());
+    // empty name tool should be skipped
+    let mut data2 = serde_json::json!({});
+    let req2 = crate::models::claude::ClaudeMessagesRequest {
+        model: "test".to_string(),
+        messages: vec![],
+        system: None,
+        max_tokens: None,
+        stop_sequences: None,
+        tools: Some(vec![crate::models::claude::ClaudeTool {
+            name: "   ".to_string(),
+            description: None,
+            input_schema: Some(serde_json::json!({})),
+        }]),
+        tool_choice: None,
+        stream: None,
+        thinking: None,
+        temperature: None,
+        top_p: None,
+        top_k: None,
+        metadata: None,
+    };
+    apply_tools_mapping(&mut data2, &req2).unwrap();
+    assert!(data2.get("tools").is_none());
+    // tool_choice
+    let mut data3 = serde_json::json!({});
+    apply_tool_choice_mapping(&mut data3, &Some(serde_json::json!({"type":"auto"})));
+    assert_eq!(data3["tool_choice"], "auto");
+    let mut data4 = serde_json::json!({});
+    apply_tool_choice_mapping(&mut data4, &Some(serde_json::json!({"type":"any"})));
+    assert_eq!(data4["tool_choice"], "required");
+    let mut data5 = serde_json::json!({});
+    apply_tool_choice_mapping(
+        &mut data5,
+        &Some(serde_json::json!({"type":"tool","name":"bash"})),
+    );
+    assert_eq!(data5["tool_choice"]["function"]["name"], "bash");
+    let mut data6 = serde_json::json!({});
+    apply_tool_choice_mapping(&mut data6, &Some(serde_json::json!({"type":"tool"})));
+    assert_eq!(data6["tool_choice"], "auto");
+    let mut data7 = serde_json::json!({});
+    apply_tool_choice_mapping(&mut data7, &Some(serde_json::json!({"type":"unknown"})));
+    assert_eq!(data7["tool_choice"], "auto");
+    assert_eq!(
+        map_tool_choice_type("auto", &serde_json::json!({})),
+        serde_json::json!("auto")
+    );
 }

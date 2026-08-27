@@ -103,6 +103,140 @@ fn build_usage_json_covers_cached_tokens() {
     assert!(s.contains("cache_read_input_tokens"));
     let s2 = build_usage_json(&None);
     assert!(s2.contains("input_tokens"));
+    let usage_no_cache = serde_json::json!({"prompt_tokens": 1, "completion_tokens": 1});
+    let s3 = build_usage_json(&Some(usage_no_cache));
+    assert!(s3.contains("input_tokens"));
+}
+
+#[tokio::test]
+async fn process_data_line_covers_all_branches() {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+    let mut sent_start = false;
+    let mut sent_stop = false;
+    let mut thinking_open = false;
+    let mut text_open = false;
+    let mut idx = 0u64;
+    let mut active: std::collections::HashMap<u64, ToolCallState> =
+        std::collections::HashMap::new();
+    let mut finish = None;
+    let mut usage = None;
+    // invalid JSON -> should continue
+    let r = process_data_line(
+        "not json",
+        &mut sent_start,
+        &mut sent_stop,
+        &mut thinking_open,
+        &mut text_open,
+        &mut idx,
+        &mut active,
+        &mut finish,
+        &mut usage,
+        "msg_1",
+        "claude-test",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
+    assert!(!r);
+    // usage only
+    let r2 = process_data_line(
+        r#"{"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}"#,
+        &mut sent_start,
+        &mut sent_stop,
+        &mut thinking_open,
+        &mut text_open,
+        &mut idx,
+        &mut active,
+        &mut finish,
+        &mut usage,
+        "msg_1",
+        "claude-test",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
+    assert!(!r2);
+    assert!(usage.is_some());
+    // content
+    let r3 = process_data_line(
+        r#"{"choices":[{"delta":{"content":"hi"}}]}"#,
+        &mut sent_start,
+        &mut sent_stop,
+        &mut thinking_open,
+        &mut text_open,
+        &mut idx,
+        &mut active,
+        &mut finish,
+        &mut usage,
+        "msg_1",
+        "claude-test",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
+    assert!(!r3);
+    // reasoning
+    let r4 = process_data_line(
+        r#"{"choices":[{"delta":{"reasoning_content":"think"}}]}"#,
+        &mut sent_start,
+        &mut sent_stop,
+        &mut thinking_open,
+        &mut text_open,
+        &mut idx,
+        &mut active,
+        &mut finish,
+        &mut usage,
+        "msg_1",
+        "claude-test",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
+    assert!(!r4);
+    // tool_calls
+    let r5 = process_data_line(r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_1","function":{"name":"bash","arguments":"{}"}}]}}]}"#, &mut sent_start, &mut sent_stop, &mut thinking_open, &mut text_open, &mut idx, &mut active, &mut finish, &mut usage, "msg_1", "claude-test", ReasoningReplayMode::Separate, &tx).await;
+    assert!(!r5);
+    // finish reason
+    let r6 = process_data_line(
+        r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        &mut sent_start,
+        &mut sent_stop,
+        &mut thinking_open,
+        &mut text_open,
+        &mut idx,
+        &mut active,
+        &mut finish,
+        &mut usage,
+        "msg_1",
+        "claude-test",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
+    assert!(!r6);
+    assert_eq!(finish, Some("stop".to_string()));
+    // DONE
+    sent_start = true;
+    let r7 = process_data_line(
+        "[DONE]",
+        &mut sent_start,
+        &mut sent_stop,
+        &mut thinking_open,
+        &mut text_open,
+        &mut idx,
+        &mut active,
+        &mut finish,
+        &mut usage,
+        "msg_1",
+        "claude-test",
+        ReasoningReplayMode::Separate,
+        &tx,
+    )
+    .await;
+    assert!(r7);
+    drop(tx);
+    // drain
+    while let Some(_) = rx.recv().await {}
 }
 
 #[tokio::test]
