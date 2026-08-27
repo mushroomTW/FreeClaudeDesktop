@@ -487,3 +487,54 @@ async fn cover_streaming_remaining_helpers() {
     .await;
     assert!(!r);
 }
+#[tokio::test]
+async fn cover_all_streaming_for_85() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(100);
+    let mut sent_start = false;
+    let mut text_open = false;
+    let mut thinking_open = false;
+    let mut idx = 0;
+    handle_reasoning_delta("", ReasoningReplayMode::Separate, &mut sent_start, "msg", "model", &mut text_open, &mut thinking_open, &mut idx, &tx).await;
+    handle_reasoning_delta("think", ReasoningReplayMode::Inline, &mut sent_start, "msg", "model", &mut text_open, &mut thinking_open, &mut idx, &tx).await;
+    let mut sent_start2 = false;
+    let mut text_open2 = true;
+    let mut thinking_open2 = false;
+    let mut idx2 = 1;
+    handle_reasoning_delta("think2", ReasoningReplayMode::Separate, &mut sent_start2, "msg", "model", &mut text_open2, &mut thinking_open2, &mut idx2, &tx).await;
+    handle_text_delta("", &mut sent_start, "msg", "model", &mut thinking_open, &mut text_open, &mut idx, &tx).await;
+    handle_text_delta("hello", &mut sent_start, "msg", "model", &mut thinking_open, &mut text_open, &mut idx, &tx).await;
+    let mut active: std::collections::HashMap<u64, ToolCallState> = std::collections::HashMap::new();
+    handle_tool_calls_delta(&[], &mut active, &mut thinking_open, &mut text_open, &mut idx, &tx).await;
+    let tool_calls = vec![serde_json::json!({"index":0,"id":"id1","function":{"name":"bash","arguments":"{}"}})];
+    handle_tool_calls_delta(&tool_calls, &mut active, &mut thinking_open, &mut text_open, &mut idx, &tx).await;
+    assert!(build_usage_json(&None).contains("input_tokens"));
+    let usage = serde_json::json!({"prompt_tokens":1,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":5}});
+    assert!(build_usage_json(&Some(usage.clone())).contains("cache_read"));
+    let mut closed = false;
+    let mut idx2b = 5;
+    close_thinking_if_needed(&mut closed, &mut idx2b, &tx).await;
+    close_text_if_needed(&mut closed, &mut idx2b, &tx).await;
+    let mut sent_stop = false;
+    let mut th = false;
+    let mut txt = false;
+    let mut idx3 = 0;
+    let active2 = std::collections::HashMap::new();
+    let r = handle_done_event(false, &mut sent_stop, &mut th, &mut txt, &mut idx3, &active2, &None, &None, &tx).await;
+    assert!(!r);
+    let mut sent_start3 = false;
+    let mut sent_stop3 = false;
+    let mut thinking_open3 = false;
+    let mut text_open3 = false;
+    let mut idx3b = 0;
+    let mut active3 = std::collections::HashMap::new();
+    let mut finish3 = None;
+    let mut usage3 = None;
+    let _ = process_data_line("invalid json", &mut sent_start3, &mut sent_stop3, &mut thinking_open3, &mut text_open3, &mut idx3b, &mut active3, &mut finish3, &mut usage3, "msg", "model", ReasoningReplayMode::Separate, &tx).await;
+    let _ = process_data_line(r#"{"choices":[{"delta":{"content":"hi"}}]}"#, &mut sent_start3, &mut sent_stop3, &mut thinking_open3, &mut text_open3, &mut idx3b, &mut active3, &mut finish3, &mut usage3, "msg", "model", ReasoningReplayMode::Separate, &tx).await;
+    let mut th2 = false;
+    emit_thinking_block_start(&mut th2, 0, &tx).await;
+    let mut txt2 = false;
+    emit_text_block_start(&mut txt2, 0, &tx).await;
+    ensure_message_start(&mut sent_start, "msg2", "model2", &tx).await;
+}
+
