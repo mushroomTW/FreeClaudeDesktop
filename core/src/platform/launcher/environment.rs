@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn restore_env_helpers_cover_branches() {
         let mut obj = serde_json::Map::new();
-        let mut previous = json!({
+        let previous = json!({
             "autoModeEnabled": {"present": true, "value": false},
             "envPresent": true,
             "env": {
