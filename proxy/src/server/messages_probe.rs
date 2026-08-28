@@ -238,3 +238,133 @@ fn bounded_preview(body: &str) -> String {
     }
     preview
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    /// 覆蓋 `request_diagnostic` 各 system 型別與缺失欄位分支。
+    fn request_diagnostic_covers_system_types() {
+        assert!(request_diagnostic("not json").is_none());
+        let d = request_diagnostic(r#"{"messages":[{"role":"user"}],"max_tokens":5,"stream":true,"tools":[],"system":"s"}"#).unwrap();
+        assert!(d.contains("system=text"));
+        let d = request_diagnostic(r#"{"messages":[],"system":[{"x":1}]}"#).unwrap();
+        assert!(d.contains("system=array"));
+        let d = request_diagnostic(r#"{"messages":[],"system":5}"#).unwrap();
+        assert!(d.contains("system=other"));
+        let d = request_diagnostic(r#"{"messages":[]}"#).unwrap();
+        assert!(d.contains("system=none"));
+        assert!(d.contains("tools=false"));
+    }
+
+    #[test]
+    /// 覆蓋 `try_probe_response` 的攔截與放行條件。
+    fn try_probe_response_covers_gate_conditions() {
+        // 非 JSON → None
+        assert!(try_probe_response("garbage", "m").is_none());
+        // 有 user 內容 → None
+        let with_user = r#"{"messages":[{"role":"user","content":"hi"}],"max_tokens":1}"#;
+        assert!(try_probe_response(with_user, "m").is_none());
+        // max_tokens > 5 → None
+        let big = r#"{"messages":[],"max_tokens":9}"#;
+        assert!(try_probe_response(big, "m").is_none());
+        // body 太長 → None
+        let long_body = format!(
+            "{{\"messages\":[],\"max_tokens\":1,\"pad\":\"{}\"}}",
+            "x".repeat(500)
+        );
+        assert!(try_probe_response(&long_body, "m").is_none());
+        // content 為 null 的 user 訊息可視為無內容 → 但 messages 非空 → None
+        let null_content = r#"{"messages":[{"role":"user","content":null}],"max_tokens":1}"#;
+        assert!(try_probe_response(null_content, "m").is_none());
+        // 合法探測（非串流）
+        let probe = r#"{"messages":[],"max_tokens":1}"#;
+        let resp = try_probe_response(probe, "m").expect("應攔截");
+        assert_eq!(resp.status(), StatusCode::OK);
+        // 合法探測（串流）
+        let probe_stream = r#"{"messages":[],"max_tokens":1,"stream":true}"#;
+        let resp = try_probe_response(probe_stream, "m").expect("應攔截");
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            resp.headers()
+                .get("content-type")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("text/event-stream")
+        );
+    }
+
+    #[tokio::test]
+    /// 覆蓋串流探測本體內容序列。
+    async fn stream_probe_response_body_contains_events() {
+        let resp =
+            try_probe_response(r#"{"messages":[],"max_tokens":1,"stream":true}"#, "m").unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("message_start"));
+        assert!(text.contains("content_block_delta"));
+        assert!(text.contains("message_stop"));
+    }
+
+    #[test]
+    /// 覆蓋 `is_short_connection_probe` 的拒絕分支。
+    fn short_probe_covers_rejections() {
+        // 非 JSON
+        assert!(!is_short_connection_probe("garbage"));
+        // 無 user role
+        assert!(!is_short_connection_probe(
+            r#"{"messages":[{"role":"assistant","content":"hi"}],"max_tokens":1}"#
+        ));
+        // 兩則訊息
+        assert!(!is_short_connection_probe(
+            r#"{"messages":[{"role":"user","content":"hi"},{"role":"user","content":"x"}],"max_tokens":1}"#
+        ));
+        // stream=true
+        assert!(!is_short_connection_probe(
+            r#"{"messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":true}"#
+        ));
+        // 有 system
+        assert!(!is_short_connection_probe(
+            r#"{"messages":[{"role":"user","content":"hi"}],"max_tokens":1,"system":"s"}"#
+        ));
+    }
+
+    #[test]
+    /// 覆蓋 `non_stream_probe_response` 結構。
+    fn non_stream_probe_response_shape() {
+        let resp = non_stream_probe_response("model-x");
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[test]
+    /// 覆蓋 `bounded_preview` 的縮減與空值分支。
+    fn bounded_preview_covers_branches() {
+        assert_eq!(super::bounded_preview(""), "<empty>");
+        assert_eq!(super::bounded_preview("short"), "short");
+        let long = "a".repeat(MAX_UPSTREAM_ERROR_PREVIEW_CHARS + 10);
+        let prev = super::bounded_preview(&long);
+        assert!(prev.ends_with("..."));
+        assert!(prev.chars().count() < long.len() + 4);
+    }
+
+    #[tokio::test]
+    /// 覆蓋 `invalid_openai_response` 的空本文分支。
+    async fn invalid_openai_response_empty_body_branch() {
+        let resp = invalid_openai_response(
+            reqwest::StatusCode::OK,
+            "   ",
+            "parse error",
+            r#"{"model":"x","messages":[{"role":"user","content":"long content beyond probe"}],"max_tokens":128}"#,
+            "m",
+        );
+        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+        let body = axum::body::to_bytes(resp.into_body(), 8192).await.unwrap();
+        let v: Value = serde_json::from_slice(&body).unwrap();
+        assert!(v["error"].as_str().unwrap().contains("本文為空"));
+        assert_eq!(v["responseBody"], "<empty>");
+    }
+}

@@ -35,105 +35,111 @@ pub fn mcp_config_paths() -> Vec<PathBuf> {
     vec![mirror_profile_dir().join("claude_desktop_config.json")]
 }
 
-/// 正規化 `clean_json_text` 所處理的資料。
-pub fn clean_json_text(input: &str) -> String {
-    let text = input.strip_prefix("\u{feff}").unwrap_or(input);
+fn handle_string_char(ch: char, is_escaped: &mut bool, in_string: &mut bool) {
+    if *is_escaped {
+        *is_escaped = false;
+    } else if ch == '\\' {
+        *is_escaped = true;
+    } else if ch == '"' {
+        *in_string = false;
+    }
+}
+
+fn skip_line_comment(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    chars.next();
+    while let Some(&next_ch) = chars.peek() {
+        if next_ch == '\n' || next_ch == '\r' {
+            break;
+        }
+        chars.next();
+    }
+}
+
+fn skip_block_comment(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    chars.next();
+    while let Some(c) = chars.next() {
+        if c == '*'
+            && let Some(&'/') = chars.peek()
+        {
+            chars.next();
+            break;
+        }
+    }
+}
+
+fn strip_json_comments(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     let mut in_string = false;
     let mut is_escaped = false;
-
     while let Some(ch) = chars.next() {
         if in_string {
             out.push(ch);
-            if is_escaped {
-                is_escaped = false;
-            } else if ch == '\\' {
-                is_escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
+            handle_string_char(ch, &mut is_escaped, &mut in_string);
             continue;
         }
-
         if ch == '"' {
             in_string = true;
             out.push(ch);
             continue;
         }
-
         if ch == '/' {
             if let Some(&'/') = chars.peek() {
-                chars.next();
-                while let Some(&next_ch) = chars.peek() {
-                    if next_ch == '\n' || next_ch == '\r' {
-                        break;
-                    }
-                    chars.next();
-                }
+                skip_line_comment(&mut chars);
                 continue;
             } else if let Some(&'*') = chars.peek() {
-                chars.next();
-                while let Some(c) = chars.next() {
-                    if c == '*'
-                        && let Some(&'/') = chars.peek()
-                    {
-                        chars.next();
-                        break;
-                    }
-                }
+                skip_block_comment(&mut chars);
                 continue;
             }
         }
-
         out.push(ch);
     }
+    out
+}
 
-    let mut cleaned = String::with_capacity(out.len());
-    let mut out_chars = out.chars().peekable();
-    in_string = false;
-    is_escaped = false;
-
-    while let Some(ch) = out_chars.next() {
-        if in_string {
-            cleaned.push(ch);
-            if is_escaped {
-                is_escaped = false;
-            } else if ch == '\\' {
-                is_escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
+fn is_trailing_comma(chars: &std::iter::Peekable<std::str::Chars<'_>>) -> bool {
+    let temp = chars.clone();
+    for next_c in temp {
+        if next_c.is_whitespace() {
             continue;
         }
+        if next_c == '}' || next_c == ']' {
+            return true;
+        }
+        break;
+    }
+    false
+}
 
+fn strip_trailing_commas(input: &str) -> String {
+    let mut cleaned = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    let mut in_string = false;
+    let mut is_escaped = false;
+    while let Some(ch) = chars.next() {
+        if in_string {
+            cleaned.push(ch);
+            handle_string_char(ch, &mut is_escaped, &mut in_string);
+            continue;
+        }
         if ch == '"' {
             in_string = true;
             cleaned.push(ch);
             continue;
         }
-
-        if ch == ',' {
-            let temp_chars = out_chars.clone();
-            let mut trailing = false;
-            for next_c in temp_chars {
-                if next_c.is_whitespace() {
-                    continue;
-                }
-                if next_c == '}' || next_c == ']' {
-                    trailing = true;
-                }
-                break;
-            }
-            if trailing {
-                continue;
-            }
+        if ch == ',' && is_trailing_comma(&chars) {
+            continue;
         }
-
         cleaned.push(ch);
     }
-
     cleaned
+}
+
+/// 正規化 `clean_json_text` 所處理的資料。
+pub fn clean_json_text(input: &str) -> String {
+    let text = input.strip_prefix("\u{feff}").unwrap_or(input);
+    let without_comments = strip_json_comments(text);
+    strip_trailing_commas(&without_comments)
 }
 
 /// 讀取 `read_json_config` 所需的資料。
@@ -300,4 +306,41 @@ pub fn restore_1p_deployment_mode() -> AppResult<()> {
     }
     write_transaction(writes)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod mcp_tests {
+    use super::*;
+
+    #[test]
+    fn clean_json_text_removes_comments_and_trailing_commas() {
+        let input = r#"
+        {
+            // line comment
+            "a": 1, /* block comment */
+            "b": 2,
+        }
+        "#;
+        let cleaned = clean_json_text(input);
+        let v: Value = serde_json::from_str(&cleaned).expect("cleaned json should parse");
+        assert_eq!(v["a"], 1);
+        assert_eq!(v["b"], 2);
+    }
+
+    #[test]
+    fn strip_json_comments_preserves_strings() {
+        let input = r#"{"key": "value // not a comment"}"#;
+        let out = strip_json_comments(input);
+        assert!(out.contains("not a comment"));
+    }
+
+    #[test]
+    fn strip_trailing_commas_removes_only_trailing() {
+        let input = r#"{"a":1, "b":2,}"#;
+        let out = strip_trailing_commas(input);
+        assert!(!out.contains(",}"));
+        let input2 = r#"[1,2,]"#;
+        let out2 = strip_trailing_commas(input2);
+        assert!(!out2.contains(",]"));
+    }
 }

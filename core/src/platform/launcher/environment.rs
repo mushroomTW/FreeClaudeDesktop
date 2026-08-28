@@ -125,53 +125,113 @@ pub fn apply_anthropic_base_url_env(port: u16) -> AppResult<()> {
     Ok(())
 }
 
+fn restore_env_keys(
+    env_obj: &mut serde_json::Map<String, Value>,
+    previous_env: &serde_json::Map<String, Value>,
+) {
+    for key in MANAGED_CLAUDE_ENV_KEYS {
+        if let Some(previous_value) = previous_env.get(key) {
+            restore_previous_setting(env_obj, key, previous_value);
+        } else {
+            env_obj.remove(key);
+        }
+    }
+}
+
+fn ensure_env_object(obj: &mut serde_json::Map<String, Value>) {
+    if obj.get("env").is_none() {
+        obj.insert("env".to_string(), json!({}));
+    }
+}
+
+fn cleanup_empty_env(obj: &mut serde_json::Map<String, Value>, env_present: bool) {
+    if let Some(env_obj) = obj.get("env").and_then(Value::as_object)
+        && env_obj.is_empty()
+        && !env_present
+    {
+        obj.remove("env");
+    }
+}
+
+fn restore_env_from_previous(obj: &mut serde_json::Map<String, Value>, previous: &Value) {
+    if let Some(auto_mode) = previous.get("autoModeEnabled") {
+        restore_previous_setting(obj, "autoModeEnabled", auto_mode);
+    }
+    let env_present = previous
+        .get("envPresent")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    ensure_env_object(obj);
+    if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut)
+        && let Some(previous_env) = previous.get("env").and_then(Value::as_object)
+    {
+        restore_env_keys(env_obj, previous_env);
+    }
+    cleanup_empty_env(obj, env_present);
+}
+
+fn remove_managed_keys_without_previous(obj: &mut serde_json::Map<String, Value>) -> bool {
+    let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) else {
+        return false;
+    };
+    let mut changed = false;
+    for key in MANAGED_CLAUDE_ENV_KEYS {
+        if env_obj.remove(key).is_some() {
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// 清理或還原 `remove_anthropic_base_url_env` 所管理的資料。
 pub fn remove_anthropic_base_url_env() -> AppResult<()> {
     let path = claude_settings_json_path();
-    if path.exists() {
-        let text = std::fs::read_to_string(&path)?;
-        let mut data = serde_json::from_str::<Value>(&text).map_err(AppError::InvalidConfigJson)?;
-        let mut changed = false;
-        if let Some(obj) = data.as_object_mut() {
-            if let Some(previous) = obj.remove(PREVIOUS_CLAUDE_SETTINGS_KEY) {
-                changed = true;
-                if let Some(auto_mode) = previous.get("autoModeEnabled") {
-                    restore_previous_setting(obj, "autoModeEnabled", auto_mode);
-                }
-
-                let env_present = previous
-                    .get("envPresent")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(true);
-                if obj.get("env").is_none() {
-                    obj.insert("env".to_string(), json!({}));
-                }
-                if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
-                    if let Some(previous_env) = previous.get("env").and_then(Value::as_object) {
-                        for key in MANAGED_CLAUDE_ENV_KEYS {
-                            if let Some(previous_value) = previous_env.get(key) {
-                                restore_previous_setting(env_obj, key, previous_value);
-                            } else {
-                                env_obj.remove(key);
-                            }
-                        }
-                    }
-                    if env_obj.is_empty() && !env_present {
-                        obj.remove("env");
-                    }
-                }
-            } else if let Some(env_obj) = obj.get_mut("env").and_then(Value::as_object_mut) {
-                for key in MANAGED_CLAUDE_ENV_KEYS {
-                    if env_obj.remove(key).is_some() {
-                        changed = true;
-                    }
-                }
-            }
-        }
-        if changed {
-            let content = serde_json::to_string_pretty(&data)?;
-            write_transaction(vec![PendingWrite::new(path, content.into_bytes())])?;
+    if !path.exists() {
+        return Ok(());
+    }
+    let text = std::fs::read_to_string(&path)?;
+    let mut data = serde_json::from_str::<Value>(&text).map_err(AppError::InvalidConfigJson)?;
+    let mut changed = false;
+    if let Some(obj) = data.as_object_mut() {
+        if let Some(previous) = obj.remove(PREVIOUS_CLAUDE_SETTINGS_KEY) {
+            changed = true;
+            restore_env_from_previous(obj, &previous);
+        } else {
+            changed = remove_managed_keys_without_previous(obj);
         }
     }
+    if changed {
+        let content = serde_json::to_string_pretty(&data)?;
+        write_transaction(vec![PendingWrite::new(path, content.into_bytes())])?;
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn restore_env_helpers_cover_branches() {
+        let mut obj = serde_json::Map::new();
+        let previous = json!({
+            "autoModeEnabled": {"present": true, "value": false},
+            "envPresent": true,
+            "env": {
+                "ANTHROPIC_BASE_URL": {"present": true, "value": "http://old"},
+                "ENABLE_TOOL_SEARCH": {"present": false, "value": null}
+            }
+        });
+        let prev_obj = previous.as_object().unwrap().clone();
+        // 模擬 previous 結構
+        let prev_val = Value::Object(prev_obj);
+        restore_env_from_previous(&mut obj, &prev_val);
+        assert!(obj.contains_key("autoModeEnabled"));
+
+        let mut obj2 = serde_json::Map::new();
+        obj2.insert("env".to_string(), json!({"ANTHROPIC_BASE_URL": "http://x"}));
+        ensure_env_object(&mut obj2);
+        cleanup_empty_env(&mut obj2, false);
+    }
 }

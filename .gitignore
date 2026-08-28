@@ -5,6 +5,7 @@ launcher_settings.json
 target/
 .omo
 .codex-target/
+.scannerwork/
 .omc/
 .agents
 .claude

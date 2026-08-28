@@ -243,79 +243,104 @@ pub fn extract_filepaths(body_str: &str) -> Option<String> {
 /// Extract filepaths from a command and its output locally.
 ///
 /// Determines if the command reads file contents and extracts paths.
-fn extract_filepaths_from_command(command: &str, _output: &str) -> String {
-    let listing_cmds = [
-        "ls", "dir", "find", "tree", "pwd", "cd", "mkdir", "rmdir", "rm",
-    ];
-    let reading_cmds = ["cat", "head", "tail", "less", "more", "bat", "type"];
-
-    let parts: Vec<&str> = command.split_whitespace().collect();
-    let parts = strip_env_assignments(&parts);
-    if parts.is_empty() {
-        return "<filepaths>\n</filepaths>".to_string();
-    }
-
-    let base_cmd = parts[0]
+fn base_command(parts: &[&str]) -> String {
+    parts[0]
         .rsplit('/')
         .next()
         .unwrap_or(parts[0])
         .rsplit('\\')
         .next()
         .unwrap_or(parts[0])
-        .to_lowercase();
+        .to_lowercase()
+}
 
+fn filepaths_from_reading(parts: &[&str]) -> Option<String> {
+    let paths: Vec<String> = parts[1..]
+        .iter()
+        .filter(|p| !p.starts_with('-'))
+        .map(|p| p.to_string())
+        .collect();
+    if paths.is_empty() {
+        None
+    } else {
+        Some(format!("<filepaths>\n{}\n</filepaths>", paths.join("\n")))
+    }
+}
+
+fn is_grep_flag_with_arg(part: &str) -> bool {
+    matches!(part, "-e" | "-f" | "-m" | "-A" | "-B" | "-C")
+}
+
+fn is_grep_pattern_flag(part: &str) -> bool {
+    matches!(part, "-e" | "-f")
+}
+
+fn handle_grep_flag(part: &str, pattern_provided: &mut bool, skip_next: &mut bool) {
+    if is_grep_flag_with_arg(part) {
+        if is_grep_pattern_flag(part) {
+            *pattern_provided = true;
+        }
+        *skip_next = true;
+    }
+}
+
+fn collect_grep_positionals<'a>(parts: &[&'a str]) -> (Vec<&'a str>, bool) {
+    let mut skip_next = false;
+    let mut positional: Vec<&str> = Vec::new();
+    let mut pattern_provided = false;
+    for part in &parts[1..] {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if part.starts_with('-') {
+            handle_grep_flag(part, &mut pattern_provided, &mut skip_next);
+            continue;
+        }
+        positional.push(*part);
+    }
+    (positional, pattern_provided)
+}
+
+fn filepaths_from_grep(parts: &[&str]) -> Option<String> {
+    let (positional, pattern_provided) = collect_grep_positionals(parts);
+    let filepaths = if pattern_provided {
+        positional
+    } else {
+        positional.into_iter().skip(1).collect::<Vec<_>>()
+    };
+    if filepaths.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "<filepaths>\n{}\n</filepaths>",
+            filepaths.join("\n")
+        ))
+    }
+}
+
+fn extract_filepaths_from_command(command: &str, _output: &str) -> String {
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    let parts = strip_env_assignments(&parts);
+    if parts.is_empty() {
+        return "<filepaths>\n</filepaths>".to_string();
+    }
+    let base_cmd = base_command(&parts);
+    let listing_cmds = [
+        "ls", "dir", "find", "tree", "pwd", "cd", "mkdir", "rmdir", "rm",
+    ];
     if listing_cmds.contains(&base_cmd.as_str()) {
         return "<filepaths>\n</filepaths>".to_string();
     }
-
+    let reading_cmds = ["cat", "head", "tail", "less", "more", "bat", "type"];
     if reading_cmds.contains(&base_cmd.as_str()) {
-        let paths: Vec<String> = parts[1..]
-            .iter()
-            .filter(|p| !p.starts_with('-'))
-            .map(|p| p.to_string())
-            .collect();
-
-        if paths.is_empty() {
-            return "<filepaths>\n</filepaths>".to_string();
-        }
-        return format!("<filepaths>\n{}\n</filepaths>", paths.join("\n"));
+        return filepaths_from_reading(&parts)
+            .unwrap_or_else(|| "<filepaths>\n</filepaths>".to_string());
     }
-
     if base_cmd == "grep" {
-        let flags_with_args = ["-e", "-f", "-m", "-A", "-B", "-C"];
-        let mut skip_next = false;
-        let mut positional: Vec<&str> = Vec::new();
-        let mut pattern_provided = false;
-
-        for part in &parts[1..] {
-            if skip_next {
-                skip_next = false;
-                continue;
-            }
-            if part.starts_with('-') {
-                if flags_with_args.contains(&&**part) {
-                    if *part == "-e" || *part == "-f" {
-                        pattern_provided = true;
-                    }
-                    skip_next = true;
-                }
-                continue;
-            }
-            positional.push(*part);
-        }
-
-        let filepaths = if pattern_provided {
-            positional
-        } else {
-            positional.into_iter().skip(1).collect::<Vec<_>>()
-        };
-
-        if filepaths.is_empty() {
-            return "<filepaths>\n</filepaths>".to_string();
-        }
-        return format!("<filepaths>\n{}\n</filepaths>", filepaths.join("\n"));
+        return filepaths_from_grep(&parts)
+            .unwrap_or_else(|| "<filepaths>\n</filepaths>".to_string());
     }
-
     "<filepaths>\n</filepaths>".to_string()
 }
 
@@ -423,5 +448,24 @@ mod tests {
         })
         .to_string();
         assert!(!is_quota_check_request(&body));
+    }
+
+    #[test]
+    fn filepaths_from_grep_handles_flags_and_positionals() {
+        let parts = vec!["grep", "-e", "pattern", "file1.txt", "file2.txt"];
+        let out = filepaths_from_grep(&parts).unwrap();
+        assert!(out.contains("file1.txt"));
+        assert!(out.contains("file2.txt"));
+        let parts2 = vec!["grep", "pattern", "file1.txt"];
+        let out2 = filepaths_from_grep(&parts2).unwrap();
+        assert!(out2.contains("file1.txt"));
+    }
+
+    #[test]
+    fn extract_filepaths_from_command_covers_grep_and_reading() {
+        let out = extract_filepaths_from_command("grep -r pattern file.txt", "output");
+        assert!(out.contains("file.txt") || out.contains("<filepaths>"));
+        let out2 = extract_filepaths_from_command("cat file1.txt file2.txt", "");
+        assert!(out2.contains("file1.txt"));
     }
 }

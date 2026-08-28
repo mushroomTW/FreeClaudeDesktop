@@ -339,6 +339,67 @@ pub fn normalize_models_response_with_overrides(
     )
 }
 
+fn model_base_name(name: &str) -> &str {
+    for suffix in ["-1m", "-1M", " 1m", " 1M"] {
+        if let Some(base) = name.strip_suffix(suffix) {
+            return base;
+        }
+    }
+    name
+}
+
+fn parse_provider_models(raw_data: Vec<Value>) -> Vec<ProviderModel> {
+    let mut models = Vec::with_capacity(raw_data.len());
+    for item in raw_data {
+        match serde_json::from_value::<ProviderModel>(item) {
+            Ok(model) if !provider_model_id(&model).is_empty() => models.push(model),
+            Ok(_) => {}
+            Err(err) => tracing::warn!("[models parse] 跳過單一異常模型解析: {err}"),
+        }
+    }
+    models
+}
+
+fn sort_and_dedup_models(models: &mut [ProviderModel]) {
+    models.sort_by(|a, b| {
+        model_priority(a).cmp(&model_priority(b)).then_with(|| {
+            let a_id = provider_model_id(a);
+            let b_id = provider_model_id(b);
+            a.name
+                .as_deref()
+                .unwrap_or(&a_id)
+                .cmp(b.name.as_deref().unwrap_or(&b_id))
+        })
+    });
+}
+
+fn filter_1m_variants(models: &mut Vec<ProviderModel>, m1_overrides: &HashMap<String, bool>) {
+    let base_1m_set: std::collections::HashSet<String> = models
+        .iter()
+        .filter_map(|m| {
+            let pid = provider_model_id(m);
+            if m1_overrides.get(&pid).copied().unwrap_or(false) {
+                Some(model_base_name(&pid).to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    if base_1m_set.is_empty() {
+        return;
+    }
+    let ids_1m: std::collections::HashSet<String> = models
+        .iter()
+        .map(provider_model_id)
+        .filter(|pid| m1_overrides.get(pid.as_str()).copied().unwrap_or(false))
+        .collect();
+    models.retain(|m| {
+        let pid = provider_model_id(m);
+        let base = model_base_name(&pid);
+        !base_1m_set.contains(base) || ids_1m.contains(&pid)
+    });
+}
+
 /// 正規化 `normalize_models_response_with_overrides_and_prefer1m` 所處理的資料。
 pub fn normalize_models_response_with_overrides_and_prefer1m(
     provider_response: Value,
@@ -351,65 +412,10 @@ pub fn normalize_models_response_with_overrides_and_prefer1m(
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-
-    let mut models: Vec<ProviderModel> = Vec::with_capacity(raw_data.len());
-    for item in raw_data {
-        match serde_json::from_value::<ProviderModel>(item) {
-            Ok(model) => {
-                if !provider_model_id(&model).is_empty() {
-                    models.push(model);
-                }
-            }
-            Err(err) => {
-                tracing::warn!("[models parse] 跳過單一異常模型解析: {err}");
-            }
-        }
-    }
-    models.sort_by(|a, b| {
-        model_priority(a).cmp(&model_priority(b)).then_with(|| {
-            let a_id = provider_model_id(a);
-            let b_id = provider_model_id(b);
-            a.name
-                .as_deref()
-                .unwrap_or(&a_id)
-                .cmp(b.name.as_deref().unwrap_or(&b_id))
-        })
-    });
+    let mut models = parse_provider_models(raw_data);
+    sort_and_dedup_models(&mut models);
     models.dedup_by(|a, b| provider_model_id(a) == provider_model_id(b));
-
-    /// 執行 `model_base_name` 對應的處理流程。
-    fn model_base_name(name: &str) -> &str {
-        for suffix in ["-1m", "-1M", " 1m", " 1M"] {
-            if let Some(base) = name.strip_suffix(suffix) {
-                return base;
-            }
-        }
-        name
-    }
-
-    let base_1m_set: std::collections::HashSet<String> = models
-        .iter()
-        .filter_map(|m| {
-            let pid = provider_model_id(m);
-            if m1_overrides.get(&pid).copied().unwrap_or(false) {
-                Some(model_base_name(&pid).to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
-    let ids_1m: std::collections::HashSet<String> = models
-        .iter()
-        .map(provider_model_id)
-        .filter(|pid| m1_overrides.get(pid.as_str()).copied().unwrap_or(false))
-        .collect();
-    if !base_1m_set.is_empty() {
-        models.retain(|m| {
-            let pid = provider_model_id(m);
-            let base = model_base_name(&pid);
-            !base_1m_set.contains(base) || ids_1m.contains(&pid)
-        });
-    }
+    filter_1m_variants(&mut models, m1_overrides);
 
     let mut reasoning_effort_routes = std::collections::HashMap::new();
     let data: Vec<_> = models

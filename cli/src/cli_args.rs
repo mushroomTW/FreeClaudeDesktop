@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "freeclaude", about = "FreeClaudeDesktop 管理工具")]
@@ -10,9 +10,9 @@ pub(crate) struct Cli {
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
     Install(InstallArgs),
-    Start(RuntimeArgs),
-    Stop(RuntimeArgs),
-    Status(RuntimeArgs),
+    Start(HiddenRuntimeArgs),
+    Stop(HiddenRuntimeArgs),
+    Status(HiddenRuntimeArgs),
     Configure,
     #[command(name = "launch-claude")]
     LaunchClaude,
@@ -30,38 +30,38 @@ pub(crate) enum Command {
 
 #[derive(Debug, Args)]
 pub(crate) struct InstallArgs {
-    #[arg(long, value_enum, default_value_t = Runtime::Native)]
-    pub(crate) runtime: Runtime,
     #[arg(long)]
     pub(crate) no_autostart: bool,
+    /// 已移除：Docker runtime。保留隱藏參數以提供友善遷移錯誤。
+    #[arg(long, hide = true)]
+    pub(crate) runtime: Option<String>,
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct RuntimeArgs {
-    #[arg(long, value_enum, default_value_t = Runtime::Native)]
-    pub(crate) runtime: Runtime,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub(crate) enum Runtime {
-    Native,
-    Docker,
+pub(crate) struct HiddenRuntimeArgs {
+    /// 已移除：Docker runtime。保留隱藏參數以提供友善遷移錯誤。
+    #[arg(long, hide = true)]
+    pub(crate) runtime: Option<String>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct UpdateArgs {
     #[arg(long)]
     pub(crate) check: bool,
-    #[arg(long, value_enum, default_value_t = Runtime::Native)]
-    pub(crate) runtime: Runtime,
+    /// 已移除：Docker runtime。
+    #[arg(long, hide = true)]
+    pub(crate) runtime: Option<String>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct UninstallArgs {
-    #[arg(long, value_enum, default_value_t = Runtime::Native)]
-    pub(crate) runtime: Runtime,
-    #[arg(long)]
+    /// 已移除：Docker runtime。
+    #[arg(long, hide = true)]
+    pub(crate) runtime: Option<String>,
+    /// 已移除：Docker image 清理。
+    #[arg(long, hide = true)]
     pub(crate) purge_image: bool,
+    /// 保留隱藏的 --yes 以相容舊腳本，uninstall 本身不需確認。
     #[arg(long, hide = true)]
     pub(crate) yes: bool,
 }
