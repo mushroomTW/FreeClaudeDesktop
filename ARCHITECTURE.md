@@ -32,7 +32,9 @@ flowchart LR
     PROVIDER --> GW --> PX --> CD
 ```
 
-The proxy is the protocol boundary. It accepts Claude-compatible requests, while the gateway adapter sends OpenAI-compatible requests upstream. The companion connection lets the Web Dashboard coordinate with the host-side CLI process without putting host-control logic inside the proxy container.
+The proxy is the protocol boundary. It accepts Claude-compatible requests, while the gateway adapter sends OpenAI-compatible requests upstream. The companion connection lets the Web Dashboard coordinate with the host-side CLI process without putting host-control logic inside the proxy.
+
+> **Migration note (v1.x):** Docker runtime has been removed. The project now ships only the native runtime; `FREECLAUDE_COMPOSE_FILE` / `FREECLAUDE_DOCKER_MEMORY_LIMIT` and `Dockerfile`/`compose.yaml` are no longer supported. If port 3000 remains occupied after upgrading, run `docker compose down` manually to clean up orphan containers.
 
 ## Message execution flow
 
