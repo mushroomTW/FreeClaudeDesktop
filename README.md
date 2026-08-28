@@ -43,7 +43,7 @@ Claude Desktop speaks the Anthropic Messages API. FreeClaudeDesktop sits between
 
 The proxy is the protocol boundary. Settings and secrets stay on your machine: non-secret config in the local settings store, API keys in the OS keyring (never returned by the Dashboard API).
 
-For a deeper walk-through, see [ARCHITECTURE.md](ARCHITECTURE.md).
+For a deeper walk-through, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Features
 
@@ -199,11 +199,10 @@ FreeClaudeDesktop/
 ├── proxy/       # freeclaude-proxy — Axum routes, gateway forwarding, SSE conversion, dashboard
 ├── cli/         # freeclaude — install/lifecycle/profile/autostart/companion orchestration
 ├── packages/freeclaudedesktop/  # npm wrapper (bin/freecd) + platform optionalDependencies
-├── docs/        # docs assets
-└── ARCHITECTURE.md
+└── docs/        # project documentation (ARCHITECTURE.md, EXTENSIONS_AND_SKILLS.md)
 ```
 
-Crate dependency direction: `proxy` → `core`, `cli` → `core` (+ `proxy` for server handle). See [ARCHITECTURE.md](ARCHITECTURE.md) for runtime topology, message execution flow, model discovery/routing, and state ownership diagrams.
+Crate dependency direction: `proxy` → `core`, `cli` → `core` (+ `proxy` for server handle). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for runtime topology, message execution flow, model discovery/routing, and state ownership diagrams.
 
 Key design notes:
 
@@ -212,7 +211,7 @@ Key design notes:
 
 ## Extensions & Local Optimizations
 
-Detailed in [EXTENSIONS_AND_SKILLS.md](EXTENSIONS_AND_SKILLS.md) (Traditional Chinese). Summary of toggles in Dashboard → Optimizations:
+Detailed in [docs/EXTENSIONS_AND_SKILLS.md](docs/EXTENSIONS_AND_SKILLS.md) (Traditional Chinese). Summary of toggles in Dashboard → Optimizations:
 
 | Optimization | What it does |
 |---|---|
@@ -239,7 +238,7 @@ CI runs on `ubuntu-latest`, `macos-15`, `windows-latest`.
 
 Release builds for six targets (`x86_64`/`aarch64` × Linux/macOS/Windows) via `scripts/pack-platform.mjs` → `dist/npm/`; publish with `pnpm@10.15.0` (`packageManager` in `package.json`).
 
-SonarQube local analysis: see [SONARQUBE.md](SONARQUBE.md) (`sonar-project.properties` at repo root).
+SonarQube local analysis uses `sonar-project.properties` at the repo root (see `sonar-project.properties`).
 
 ## Security
 
@@ -271,9 +270,8 @@ npm uninstall -g @mushroomtw/freeclaudedesktop
 
 ## Project Links
 
-- [Architecture](ARCHITECTURE.md)
-- [Extensions & Skills](EXTENSIONS_AND_SKILLS.md)
-- [SonarQube Setup](SONARQUBE.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Extensions & Skills](docs/EXTENSIONS_AND_SKILLS.md)
 - [Issue tracker](https://github.com/mushroomTW/FreeClaudeDesktop/issues)
 
 ## License

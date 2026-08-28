@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the internal structure and execution paths of FreeClaudeDesktop. For installation, operation, supported platforms, and security guidance, see [README.md](README.md).
+This document describes the internal structure and execution paths of FreeClaudeDesktop. For installation, operation, supported platforms, and security guidance, see [../README.md](../README.md).
 
 ## Crate boundaries
 

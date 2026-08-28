@@ -43,7 +43,7 @@ Claude Desktop 使用 Anthropic Messages API。FreeClaudeDesktop 位於 Claude D
 
 Proxy 是協定邊界。設定與密鑰保留在本機：非機敏設定存放於本地 settings store，API Key 存放於作業系統 keyring（`GET /settings` 與 Dashboard API 永遠不會回傳）。
 
-更完整的流程請見 [ARCHITECTURE.md](ARCHITECTURE.md)。
+更完整的流程請見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 功能
 
@@ -199,11 +199,10 @@ FreeClaudeDesktop/
 ├── proxy/       # freeclaude-proxy — Axum 路由、Gateway 轉送、SSE 轉換、Dashboard
 ├── cli/         # freeclaude — install / lifecycle / profile / autostart / companion 協調
 ├── packages/freeclaudedesktop/  # npm 包裝（bin/freecd）與平台 optionalDependencies
-├── docs/        # 文件資源
-└── ARCHITECTURE.md
+└── docs/        # 專案文件（ARCHITECTURE.md、EXTENSIONS_AND_SKILLS.md）
 ```
 
-Crate 依賴方向：`proxy` → `core`、`cli` → `core`（+ `proxy` 的 server handle）。詳見 [ARCHITECTURE.md](ARCHITECTURE.md) 的 runtime 拓撲、訊息執行流程、模型探索/路由與狀態持有圖。
+Crate 依賴方向：`proxy` → `core`、`cli` → `core`（+ `proxy` 的 server handle）。詳見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 的 runtime 拓撲、訊息執行流程、模型探索/路由與狀態持有圖。
 
 關鍵設計：
 
@@ -212,7 +211,7 @@ Crate 依賴方向：`proxy` → `core`、`cli` → `core`（+ `proxy` 的 serve
 
 ## 擴充與本地優化
 
-詳見 [EXTENSIONS_AND_SKILLS.md](EXTENSIONS_AND_SKILLS.md)。Dashboard → Optimizations 可切換：
+詳見 [docs/EXTENSIONS_AND_SKILLS.md](docs/EXTENSIONS_AND_SKILLS.md)。Dashboard → Optimizations 可切換：
 
 | 優化 | 說明 |
 |---|---|
@@ -239,7 +238,7 @@ CI 於 `ubuntu-latest`、`macos-15`、`windows-latest` 執行。
 
 Release 針對六個 target（`x86_64`/`aarch64` × Linux/macOS/Windows）透過 `scripts/pack-platform.mjs` → `dist/npm/` 建置；以 `pnpm@10.15.0`（`package.json` 的 `packageManager`）發布。
 
-本地 SonarQube 分析請見 [SONARQUBE.md](SONARQUBE.md)（專案根目錄的 `sonar-project.properties`）。
+本地 SonarQube 分析使用專案根目錄的 `sonar-project.properties`。
 
 ## 安全性
 
@@ -271,9 +270,8 @@ npm uninstall -g @mushroomtw/freeclaudedesktop
 
 ## 專案連結
 
-- [架構](ARCHITECTURE.md)
-- [擴充與本地技能功能介紹](EXTENSIONS_AND_SKILLS.md)
-- [SonarQube 設定](SONARQUBE.md)
+- [架構](docs/ARCHITECTURE.md)
+- [擴充與本地技能功能介紹](docs/EXTENSIONS_AND_SKILLS.md)
 - [Issue tracker](https://github.com/mushroomTW/FreeClaudeDesktop/issues)
 
 ## 授權

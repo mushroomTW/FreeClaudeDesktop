@@ -6,10 +6,7 @@ target/
 .omo
 .codex-target/
 .scannerwork/
-.omc/
 .agents
 .claude
 AGENTS.md
 CLAUDE.md
-docs
-.superpowers
