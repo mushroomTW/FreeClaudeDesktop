@@ -329,7 +329,7 @@ fn cover_all_remaining_for_85() {
     };
     apply_thinking_mapping(&mut data, &req_enabled, &s3);
     // collect_assistant with empty and unknown
-    let (th, txt, tc) =
+    let (th, _txt, _tc) =
         collect_assistant_parts(&crate::models::claude::ClaudeMessageContent::Blocks(vec![]));
     assert!(th.is_empty());
     let _ = build_assistant_message("".to_string(), "".to_string(), vec![]);
@@ -1218,7 +1218,7 @@ fn cover_all_remaining_for_85_comprehensive() {
         metadata: None,
     };
     let _ = apply_tools_mapping(&mut data2, &req2);
-    let _ = apply_tool_choice_mapping(&mut data2, &Some(serde_json::json!({"type":"auto"})));
+    apply_tool_choice_mapping(&mut data2, &Some(serde_json::json!({"type":"auto"})));
     // resolve_model_route with many
     let _ = resolve_model_route("", &s);
     let _ = resolve_model_route("sonnet", &s);

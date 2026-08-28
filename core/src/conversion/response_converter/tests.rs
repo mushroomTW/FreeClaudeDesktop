@@ -482,6 +482,165 @@ fn models_response_keeps_same_name_variants_when_neither_1m_enabled() {
 }
 
 #[test]
+/// 驗證 `is_allowed_origin` 涵蓋剩餘分支。
+fn is_allowed_origin_covers_remaining_branches() {
+    assert!(is_allowed_origin(Some(""), 3000));
+    assert!(!is_allowed_origin(Some("not a url"), 3000));
+    assert!(is_allowed_origin(Some("null"), 3000));
+    assert!(!is_allowed_origin(Some("http://localhost:9999"), 3000));
+    assert!(is_allowed_origin(Some("https://sub.claude.ai"), 3000));
+    assert!(is_allowed_origin(Some("https://deep.sub.claude.com"), 3000));
+    // 已知寬鬆行為：只要是 localhost 且同埠即放行，不限 scheme（file://、app://、ftp:// 皆同）。
+    // 這是 CORS 對本地代理的刻意寬鬆，非安全邊界。
+    assert!(is_allowed_origin(Some("https://localhost:3000"), 3000));
+    assert!(!is_allowed_origin(Some("https://localhost:4000"), 3000));
+}
+
+#[test]
+/// 驗證各 Gateway URL 正規化函式的成功與失敗分支。
+fn normalize_url_helpers_cover_all_rules() {
+    let u = normalize_messages_url("https://gateway.example.com/v1").unwrap();
+    assert!(u.ends_with("/messages"));
+    let bad = normalize_messages_url("http://evil.example").unwrap_err();
+    assert!(bad.contains("HTTPS"));
+    let local = normalize_messages_url("http://127.0.0.1:4000").unwrap();
+    assert!(local.ends_with("/messages"));
+    assert!(normalize_messages_url("not a url").is_err());
+    let mu = normalize_models_url("https://gateway.example.com/v1").unwrap();
+    assert!(mu.ends_with("/models"));
+    let miu = normalize_model_info_url("https://gateway.example.com").unwrap();
+    assert!(miu.contains("model/info"));
+    let ccu = normalize_chat_completions_url("https://gateway.example.com").unwrap();
+    assert!(ccu.ends_with("/chat/completions"));
+    let ccu2 =
+        normalize_chat_completions_url("https://gateway.example.com/v1/chat/completions").unwrap();
+    assert!(ccu2.ends_with("/chat/completions"));
+    let u2 = normalize_messages_url("https://user:pass@host.example/v1/").unwrap();
+    assert!(u2.contains("user:pass@"));
+    assert!(u2.ends_with("/messages"));
+    // ::1 / [::1] 也視為 localhost
+    let u3 = normalize_messages_url("http://localhost:4000").unwrap();
+    assert!(u3.starts_with("http://localhost"));
+    assert!(normalize_messages_url("ftp://localhost").is_err());
+}
+
+#[test]
+/// 驗證 `prepare_proxy_body` 的模型映射與原樣轉發分支。
+fn prepare_proxy_body_covers_mapping_and_passthrough() {
+    let settings = Settings::default();
+    // 非 JSON body 原樣回傳
+    assert_eq!(prepare_proxy_body("garbage", &settings), "garbage");
+    // 有 model 且可被 resolve
+    let out = prepare_proxy_body(r#"{"model":"claude-3-haiku","messages":[]}"#, &settings);
+    assert!(out.contains("messages"));
+    // 無 model 欄位 → 仍為合法 JSON 且保留 messages
+    let out2 = prepare_proxy_body(r#"{"messages":[]}"#, &settings);
+    let out2_val: Value = serde_json::from_str(&out2).expect("應為合法 JSON");
+    assert!(out2_val.get("messages").is_some());
+}
+
+#[test]
+/// 驗證 `rewrite_stale_model_request` 的錯誤與預設回退分支。
+fn rewrite_stale_model_request_covers_error_and_no_route() {
+    let settings = {
+        let mut s = Settings::default();
+        s.models.real_model = Some("real-backup".to_string());
+        s
+    };
+    assert!(rewrite_stale_model_request("not json", &settings, "x").is_none());
+    // body 無 model 欄位 → None
+    assert!(rewrite_stale_model_request(r#"{"messages":[]}"#, &settings, "x").is_none());
+    let r = rewrite_stale_model_request(r#"{"model":"stale-x","messages":[]}"#, &settings, "req-1")
+        .unwrap();
+    assert_eq!(r.fallback_model, "real-backup");
+    assert_eq!(r.updated_body["model"], "real-backup");
+    // 全部都是 stale 且 fallback 為空 → None
+    let empty_settings = Settings::default();
+    assert!(
+        rewrite_stale_model_request(r#"{"model":"stale-x"}"#, &empty_settings, "req-1").is_none()
+    );
+}
+
+// ── openai_to_anthropic_response 分支 ────────────────────────────────
+
+#[test]
+/// 驗證 `openai_to_anthropic_response` 的 tool_calls、reasoning 與多選項分支。
+fn openai_to_anthropic_response_covers_tool_and_reasoning() {
+    let openai_res = json!({
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": null,
+                "reasoning_content": "think",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "f", "arguments": "{\"a\":1}"}
+                }]
+            },
+            "finish_reason": "tool_calls"
+        }],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2}
+    });
+    let converted = openai_to_anthropic_response(&openai_res.to_string(), "claude-x").unwrap();
+    assert_eq!(converted["stop_reason"], "tool_use");
+    let types: Vec<&str> = converted["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["type"].as_str())
+        .collect();
+    assert!(types.contains(&"tool_use"));
+    assert!(types.contains(&"thinking"));
+
+    // 無 choices → 空 content 回傳 end_turn（涵蓋 first_choice None 分支）
+    let empty = openai_to_anthropic_response(r#"{"choices":[]}"#, "m").unwrap();
+    assert_eq!(empty["stop_reason"], "end_turn");
+    // 錯誤 JSON
+    assert!(openai_to_anthropic_response("garbage", "m").is_err());
+}
+
+#[test]
+/// 驗證 reasoning effort / capability 產生輔助函式的各種分支。
+fn reasoning_helpers_cover_mappings() {
+    let levels = override_reasoning_levels("low");
+    assert!(!levels.is_empty());
+    let levels2 = override_reasoning_levels("none");
+    assert_eq!(levels2, vec!["none".to_string()]);
+}
+
+#[test]
+/// 驗證 `models_response` 的綜合分支（空 data、重複、max reasoning）。
+fn models_response_covers_edge_cases() {
+    let normalized = normalize_models_response(json!({"data": []})).unwrap();
+    assert_eq!(normalized.data.len(), 0);
+    // 無 model_name/id 的項目會被 parse_provider_models 跳過
+    let n2 = normalize_models_response(json!({"data": [{"model_info": {}}]})).unwrap();
+    assert!(n2.data.is_empty(), "缺 id/model_name 的項目應被跳過");
+}
+
+#[test]
+/// 驗證 `build_inference_models` 與 `apply_model_visibility` 的基本分支。
+fn inference_models_and_visibility_cover_basic() {
+    let normalized = normalize_models_response(json!({
+        "data": [{
+            "model_name": "m1",
+            "model_info": {"supports_reasoning_effort": false, "reasoning_effort_levels": ["none"]}
+        }]
+    }))
+    .unwrap();
+    let inf = build_inference_models(&normalized.data);
+    assert_eq!(inf.len(), 1);
+    let mut vis = HashMap::new();
+    vis.insert("m1".to_string(), false);
+    let mut n = normalized.clone();
+    apply_model_visibility(&mut n, &vis);
+    assert_eq!(n.data.len(), 0);
+}
+
+// ── 既有測試（保留）─────────────────────────────────────────────
+
+#[test]
 /// 驗證 `model_visibility_hides_model_and_its_routes_but_defaults_to_visible` 的行為符合預期。
 fn model_visibility_hides_model_and_its_routes_but_defaults_to_visible() {
     let mut normalized = normalize_models_response(json!({

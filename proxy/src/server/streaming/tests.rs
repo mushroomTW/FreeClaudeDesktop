@@ -131,7 +131,7 @@ async fn ensure_message_and_block_helpers_cover() {
     assert!(!text_open2);
     assert_eq!(idx, 1);
     drop(tx);
-    while let Some(_) = rx.recv().await {}
+    while rx.recv().await.is_some() {}
 }
 
 #[tokio::test]
@@ -178,7 +178,7 @@ async fn handle_done_event_covers_branches() {
     assert!(r2);
     assert!(sent_stop2);
     drop(tx);
-    while let Some(_) = rx.recv().await {}
+    while rx.recv().await.is_some() {}
 }
 
 #[tokio::test]
@@ -186,10 +186,7 @@ async fn stream_error_path_is_covered() {
     // Force convert_stream_inner to error by providing a stream that yields an error
     use futures::stream;
     let err_stream = stream::once(async {
-        Err::<axum::body::Bytes, std::io::Error>(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "mock error",
-        ))
+        Err::<axum::body::Bytes, std::io::Error>(std::io::Error::other("mock error"))
     });
     let body = reqwest::Body::wrap_stream(err_stream);
     let http_resp = HttpResponse::builder().body(body).unwrap();
@@ -336,7 +333,7 @@ async fn process_data_line_covers_all_branches() {
     assert!(r7);
     drop(tx);
     // drain
-    while let Some(_) = rx.recv().await {}
+    while rx.recv().await.is_some() {}
 }
 
 #[tokio::test]
@@ -879,5 +876,5 @@ async fn cover_all_streaming_comprehensive_for_85() {
     )
     .await;
     drop(tx);
-    while let Some(_) = rx.recv().await {}
+    while rx.recv().await.is_some() {}
 }

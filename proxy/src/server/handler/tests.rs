@@ -599,9 +599,9 @@ fn cover_handler_new_helpers_for_85() {
     assert!(build_target_url(&s2, true).is_err());
 
     // build_proxy_body
-    let mut s3 = Settings::default();
+    let s3 = Settings::default();
     let body = r#"{"model":"test","messages":[{"role":"user","content":"hi"}]}"#;
-    let (b, is_stream) = build_proxy_body(body, &s3, true).unwrap();
+    let (b, _is_stream) = build_proxy_body(body, &s3, true).unwrap();
     assert!(!b.is_empty());
     let (b2, is_stream2) = build_proxy_body(body, &s3, false).unwrap();
     assert!(!b2.is_empty());
@@ -617,4 +617,410 @@ fn cover_handler_new_helpers_for_85() {
         std::time::Instant::now(),
     );
     assert!(result.is_none());
+}
+
+/// 由純文字建立可測試的 reqwest::Response（使用 http::Response 轉換）。
+fn fake_response(status: u16, body: &str, ctype: &str) -> reqwest::Response {
+    reqwest::Response::from(
+        axum::http::Response::builder()
+            .status(status)
+            .header("content-type", ctype)
+            .body(reqwest::Body::from(body.to_string()))
+            .unwrap(),
+    )
+}
+
+#[tokio::test]
+async fn openai_non_stream_success_covers_all_branches() {
+    let settings = Settings::default();
+    let headers = HeaderMap::new();
+    let probe_body = r#"{"model":"m","messages":[{"role":"user","content":"Hi"}],"max_tokens":1}"#;
+    let normal_body = r#"{"model":"m","messages":[{"role":"user","content":"A normal request"}],"max_tokens":128}"#;
+
+    let ok_json = r#"{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}"#;
+    let resp = fake_response(200, ok_json, "application/json");
+    let out = handle_openai_non_stream_success(
+        resp,
+        StatusCode::OK,
+        200,
+        normal_body,
+        "m",
+        &settings,
+        "key",
+        normal_body,
+        "http://x/chat/completions",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::OK);
+
+    let resp = fake_response(200, "", "application/json");
+    let out = handle_openai_non_stream_success(
+        resp,
+        StatusCode::OK,
+        200,
+        probe_body,
+        "m",
+        &settings,
+        "key",
+        probe_body,
+        "http://x/chat/completions",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::OK);
+
+    let resp = fake_response(200, "", "application/json");
+    let out = handle_openai_non_stream_success(
+        resp,
+        StatusCode::OK,
+        200,
+        normal_body,
+        "m",
+        &settings,
+        "key",
+        normal_body,
+        "http://x/chat/completions",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::BAD_GATEWAY);
+
+    let resp = fake_response(200, "gateway said plain text", "text/plain");
+    let out = handle_openai_non_stream_success(
+        resp,
+        StatusCode::OK,
+        200,
+        normal_body,
+        "m",
+        &settings,
+        "key",
+        normal_body,
+        "http://x/chat/completions",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::BAD_GATEWAY);
+
+    let resp = fake_response(200, "gateway said plain text", "text/plain");
+    let out = handle_openai_non_stream_success(
+        resp,
+        StatusCode::OK,
+        200,
+        probe_body,
+        "m",
+        &settings,
+        "key",
+        probe_body,
+        "http://x/chat/completions",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn openai_error_covers_retry_and_fallback() {
+    let settings = Settings::default();
+    let headers = HeaderMap::new();
+    let body = r#"{"model":"m","messages":[{"role":"user","content":"hi"}],"max_tokens":8}"#;
+
+    let resp = fake_response(
+        429,
+        r#"{"error":{"message":"rate limited"}}"#,
+        "application/json",
+    );
+    let out = handle_openai_error(
+        resp,
+        StatusCode::TOO_MANY_REQUESTS,
+        429,
+        &settings,
+        "key",
+        body,
+        "m",
+        "http://unreachable.invalid/x",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let resp = fake_response(500, "boom", "text/plain");
+    let out = handle_openai_error(
+        resp,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        500,
+        &settings,
+        "key",
+        body,
+        "m",
+        "http://unreachable.invalid/x",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn anthropic_passthrough_covers_success_and_error() {
+    let settings = Settings::default();
+    let headers = HeaderMap::new();
+    let body = r#"{"model":"m","messages":[{"role":"user","content":"hi"}],"max_tokens":8}"#;
+
+    let resp = fake_response(
+        200,
+        r#"{"id":"msg_1","type":"message"}"#,
+        "application/json",
+    );
+    let out = handle_anthropic_passthrough(
+        resp,
+        StatusCode::OK,
+        &settings,
+        "key",
+        body,
+        "m",
+        "http://x/messages",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::OK);
+    let txt = axum::body::to_bytes(out.into_body(), 8192).await.unwrap();
+    assert!(String::from_utf8_lossy(&txt).contains("msg_1"));
+
+    let resp = fake_response(500, "upstream broke", "text/plain");
+    let out = handle_anthropic_passthrough(
+        resp,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        &settings,
+        "key",
+        body,
+        "m",
+        "http://unreachable.invalid/messages",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let txt = axum::body::to_bytes(out.into_body(), 8192).await.unwrap();
+    assert!(String::from_utf8_lossy(&txt).contains("upstream broke"));
+
+    let resp = fake_response(
+        429,
+        r#"{"type":"error","error":{"type":"rate_limit","message":"slow down"}}"#,
+        "application/json",
+    );
+    let out = handle_anthropic_passthrough(
+        resp,
+        StatusCode::TOO_MANY_REQUESTS,
+        &settings,
+        "key",
+        body,
+        "m",
+        "http://unreachable.invalid/messages",
+        &headers,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn openai_stream_response_covers_success_and_failure() {
+    let settings = Settings::default();
+    let headers = HeaderMap::new();
+    let body = r#"{"model":"m","messages":[{"role":"user","content":"hi"}],"max_tokens":8}"#;
+
+    let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n";
+    let resp = fake_response(200, sse, "text/event-stream");
+    let out = handle_openai_stream_response(
+        resp,
+        200,
+        StatusCode::OK,
+        &settings,
+        "key",
+        body,
+        "m",
+        "http://x/chat/completions",
+        &headers,
+        true,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::OK);
+    assert!(
+        out.headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("text/event-stream")
+    );
+
+    let resp = fake_response(500, "boom", "text/plain");
+    let out = handle_openai_stream_response(
+        resp,
+        500,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        &settings,
+        "key",
+        body,
+        "m",
+        "http://unreachable.invalid/chat/completions",
+        &headers,
+        true,
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn dispatch_upstream_covers_network_error() {
+    let settings = Settings::default();
+    let headers = HeaderMap::new();
+    let body = r#"{"model":"m","messages":[{"role":"user","content":"hi"}],"max_tokens":8}"#;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(500))
+        .build()
+        .unwrap();
+    let req = client
+        .post("http://127.0.0.1:1/x")
+        .header("content-type", "application/json")
+        .body(body.to_string());
+
+    let out = dispatch_upstream(
+        req,
+        &settings,
+        "key",
+        body,
+        "m",
+        "http://127.0.0.1:1/x",
+        &headers,
+        body,
+        true,
+        false,
+        false,
+        1,
+        &serde_json::json!({}),
+        std::time::Instant::now(),
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn dispatch_upstream_covers_anthropic_path() {
+    let mut settings = Settings::default();
+    settings.optimizations.enable_api_call_logging = true;
+    let headers = HeaderMap::new();
+    let body = r#"{"model":"m","messages":[{"role":"user","content":"hi"}],"max_tokens":8}"#;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(500))
+        .build()
+        .unwrap();
+    let req = client
+        .post("http://127.0.0.1:1/x")
+        .header("content-type", "application/json")
+        .body(body.to_string());
+
+    let out = dispatch_upstream(
+        req,
+        &settings,
+        "key",
+        body,
+        "m",
+        "http://127.0.0.1:1/x",
+        &headers,
+        body,
+        false,
+        false,
+        true,
+        2,
+        &serde_json::json!({"a":1}),
+        std::time::Instant::now(),
+    )
+    .await;
+    assert_eq!(out.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[test]
+fn api_request_summary_covers_branches() {
+    let s = api_request_summary(
+        r#"{"model":"m","messages":[{"role":"user"}],"tools":[{}],"system":"x","max_tokens":5,"stream":true}"#,
+    );
+    assert_eq!(s["model"], "m");
+    assert_eq!(s["toolCount"], 1);
+    assert_eq!(s["hasSystem"], true);
+    assert_eq!(s["validJson"], true);
+    assert_eq!(s["stream"], true);
+    assert_eq!(s["maxTokens"], 5);
+    let s = api_request_summary("garbage");
+    assert_eq!(s["validJson"], false);
+    assert_eq!(s["model"], "unknown");
+    assert_eq!(s["messageCount"], 0);
+}
+
+#[test]
+fn redacted_url_and_outcome_cover_branches() {
+    assert_eq!(redacted_url("https://h/p?q=1#f"), "https://h/p");
+    assert_eq!(redacted_url("https://h/p"), "https://h/p");
+
+    record_api_outcome(ApiOutcome {
+        enabled: false,
+        call_id: 0,
+        request: &json!({}),
+        target_url: "http://x",
+        transport: "local",
+        outcome: "test",
+        elapsed_ms: 0,
+        status: None,
+        content_type: None,
+        error: None,
+    });
+    record_api_outcome(ApiOutcome {
+        enabled: true,
+        call_id: 99,
+        request: &json!({"k":"v"}),
+        target_url: "http://x/p?secret=1",
+        transport: "local",
+        outcome: "probe",
+        elapsed_ms: 3,
+        status: Some(200),
+        content_type: Some("application/json"),
+        error: Some("boom"),
+    });
+}
+
+#[test]
+fn reasoning_mode_and_sse_cover_branches() {
+    let mut s = Settings::default();
+    s.models.reasoning_replay_mode = "inline".to_string();
+    assert!(matches!(
+        reasoning_mode_from(&s),
+        Some(ReasoningReplayMode::Inline)
+    ));
+    s.models.reasoning_replay_mode = "separate".to_string();
+    assert!(matches!(
+        reasoning_mode_from(&s),
+        Some(ReasoningReplayMode::Separate)
+    ));
+    s.models.reasoning_replay_mode = "other".to_string();
+    assert!(reasoning_mode_from(&s).is_none());
+
+    let (tx, rx) = mpsc::channel::<Result<axum::body::Bytes, std::convert::Infallible>>(2);
+    drop(tx);
+    let resp = sse_stream_response(rx);
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn root_icon_healthz_cover() {
+    let r = handle_root().await.into_response();
+    assert_eq!(r.status(), StatusCode::OK);
+    let b = axum::body::to_bytes(r.into_body(), 4096).await.unwrap();
+    assert!(String::from_utf8_lossy(&b).contains("proxy is running"));
+
+    let r = handle_app_icon().await.into_response();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(r.headers().get("content-type").unwrap(), "image/png");
+
+    let j = handle_healthz().await;
+    assert_eq!(j.0["status"], "ok");
 }
