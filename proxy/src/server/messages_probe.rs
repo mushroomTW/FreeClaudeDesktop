@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime};
 
 pub(crate) const MAX_UPSTREAM_ERROR_PREVIEW_CHARS: usize = 4096;
 
-/// 產生不含使用者內容的安全請求摘要。
+/// 產生不含使用者內容的安全請求摘要（支援 system: String / Array 兩種格式）。
 pub(crate) fn request_diagnostic(body: &str) -> Option<String> {
     let value = serde_json::from_str::<Value>(body).ok()?;
     let messages = value
@@ -22,14 +22,22 @@ pub(crate) fn request_diagnostic(body: &str) -> Option<String> {
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let tools = value.get("tools").is_some();
-    let system_type = match value.get("system") {
-        Some(Value::String(_)) => "text",
-        Some(Value::Array(_)) => "array",
-        Some(_) => "other",
-        None => "none",
+    // 使用與 detection.rs 相同的邏輯判斷 system 類型與字元數，避免 Array 格式被誤標為 other
+    let (system_type, system_chars) = match value.get("system") {
+        Some(Value::String(s)) => ("text", s.len()),
+        Some(Value::Array(arr)) => {
+            let chars: usize = arr
+                .iter()
+                .filter_map(|item| item.get("text").and_then(Value::as_str))
+                .map(|t| t.len())
+                .sum();
+            ("array", chars)
+        }
+        Some(_) => ("other", 0),
+        None => ("none", 0),
     };
     Some(format!(
-        "msgs={messages}, max_tokens={max_tokens}, stream={stream}, tools={tools}, system={system_type}, body_len={}",
+        "msgs={messages}, max_tokens={max_tokens}, stream={stream}, tools={tools}, system={system_type}({system_chars} chars), body_len={}",
         body.len()
     ))
 }

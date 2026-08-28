@@ -2,6 +2,7 @@
     let loadedSettings = null;
     let launchAfterSave = false;
 
+    // i18n 對照：需與 core/src/core/config.rs:Language::tr 保持同步
     const translations = {
       'zh-tw': {
         'nav_connection': '連線設定',
@@ -45,6 +46,8 @@
         'ext_suggest_skip_desc': '直接回傳空建議，減少無用 API 請求',
         'ext_filepath_title': '本機檔案路徑提取',
         'ext_filepath_desc': '由命令輸出中進行本地路徑分析',
+        'ext_safety_title': '關閉安全檢查思考',
+        'ext_safety_desc': '安全分類請求不使用高推理強度，僅關閉 thinking',
         'api_log_title': 'API 呼叫紀錄',
         'api_log_enable_title': 'API 呼叫紀錄',
         'api_log_enable_desc': '記錄模型、狀態與耗時；不保存提示詞、回應內容或 API Key。最多保留 5 個 10 MiB 檔案。',
@@ -52,6 +55,14 @@
         'ext_web_tools_desc': '允許本地執行 web_search 與 web_fetch 抓取工具',
         'ext_web_fetch_schemes': 'Web Fetch 允許 URL Schemes (以逗號分隔)',
         'ext_web_fetch_private': '允許 web_fetch 存取私有網路 (Private Networks)',
+        'mcp_bundled_detecting': '偵測中...',
+        'mcp_bundled_yes': '已偵測官方 Bundled Skills（`resources/bundled-skills`）',
+        'mcp_bundled_no': '未偵測 Bundled Skills（不影響使用）',
+        'mcp_server_count': 'MCP 伺服器：',
+        'mcp_with_bundled': '含官方技能',
+        'mcp_custom_only': '僅自訂 MCP',
+        'mcp_click_hint': '點擊展開/收合清單',
+        'mcp_no_servers': '無 MCP 伺服器',
         'opt_title': '進階設定',
         'opt_transport': '傳輸協定',
         'opt_transport_openai': 'OpenAI Chat 格式轉換',
@@ -141,6 +152,8 @@
         'ext_suggest_skip_desc': 'Return empty suggestions to reduce API usage',
         'ext_filepath_title': 'Filepath Extraction',
         'ext_filepath_desc': 'Extract filepaths locally from command output',
+        'ext_safety_title': 'Disable Safety Classifier Thinking',
+        'ext_safety_desc': 'Strip thinking from safety checks, keep the check itself',
         'api_log_title': 'API Call Logs',
         'api_log_enable_title': 'API Call Logging',
         'api_log_enable_desc': 'Logs models, status, and timing only. Prompts, responses, and API keys are excluded. Keeps at most five 10 MiB files.',
@@ -148,6 +161,14 @@
         'ext_web_tools_desc': 'Enable local execution of web_search and web_fetch',
         'ext_web_fetch_schemes': 'Allowed URL Schemes (comma separated)',
         'ext_web_fetch_private': 'Allow web_fetch to access private networks',
+        'mcp_bundled_detecting': 'Detecting...',
+        'mcp_bundled_yes': 'Bundled Skills detected (`resources/bundled-skills`)',
+        'mcp_bundled_no': 'No Bundled Skills detected (optional)',
+        'mcp_server_count': 'MCP servers:',
+        'mcp_with_bundled': 'with bundled skills',
+        'mcp_custom_only': 'custom MCP only',
+        'mcp_click_hint': 'Click to expand/collapse',
+        'mcp_no_servers': 'No MCP servers',
         'opt_title': 'Advanced Settings',
         'opt_transport': 'Transport Protocol',
         'opt_transport_openai': 'OpenAI Chat Format Conversion',
@@ -420,6 +441,7 @@
         $('enableTitleGenerationSkip').checked = settings.enableTitleGenerationSkip !== false;
         $('enableSuggestionModeSkip').checked = settings.enableSuggestionModeSkip !== false;
         $('enableFilepathExtractionMock').checked = settings.enableFilepathExtractionMock !== false;
+        $('enableSafetyCheckSkip').checked = settings.enableSafetyCheckSkip !== false;
         $('enableApiCallLogging').checked = settings.enableApiCallLogging === true;
 
         $('enableWebServerTools').checked = settings.enableWebServerTools === true;
@@ -439,6 +461,50 @@
         $('language').value = settings.language || 'zh-tw';
         applyLanguage($('language').value);
         renderModelsTable(settings);
+
+        // MCP Bundled Skills 偵測（對應 ClaudeSource resources/bundled-skills）
+        try {
+          const mcp = status.mcp || {};
+          const hasBundled = mcp.hasBundledSkills === true;
+          const count = typeof mcp.serverCount === 'number' ? mcp.serverCount : 0;
+          const names = Array.isArray(mcp.serverNames) ? mcp.serverNames : [];
+          const dot = $('mcpBundledDot');
+          const txt = $('mcpBundledText');
+          const cnt = $('mcpServerCount');
+          const list = $('mcpServerList');
+          if (dot && txt && cnt) {
+            // 已偵測 → 綠點；未偵測但有 MCP 伺服器 → 灰點（中性，僅提示）；兩者皆無 → 黃點提示
+            if (hasBundled) dot.className = 'status-dot online';
+            else if (count > 0) dot.className = 'status-dot neutral';
+            else dot.className = 'status-dot offline';
+            txt.textContent = hasBundled ? t('mcp_bundled_yes') : t('mcp_bundled_no');
+            txt.removeAttribute('data-i18n');
+            const suffix = count > 0 ? ` — ${hasBundled ? t('mcp_with_bundled') : t('mcp_custom_only')}` : '';
+            const hint = count > 0 ? ' ▸' : '';
+            cnt.textContent = `${t('mcp_server_count')} ${count}${suffix}${hint}`;
+            cnt.removeAttribute('data-i18n');
+            cnt.title = count > 0 ? (t('mcp_click_hint') || '點擊展開/收合清單') : '';
+            if (list) {
+              if (names.length > 0) {
+                list.innerHTML = names.map(n => `<span style="display:inline-block; background:var(--bg-hover); border:1px solid var(--border-color); border-radius:4px; padding:2px 8px; margin:2px 4px 2px 0;">${n}</span>`).join('');
+              } else {
+                list.innerHTML = `<span style="opacity:0.6;">${t('mcp_no_servers') || '無 MCP 伺服器'}</span>`;
+              }
+            }
+            // 點擊展開/收合
+            if (cnt && list && !cnt._mcpBound) {
+              cnt._mcpBound = true;
+              cnt.addEventListener('click', () => {
+                if (count === 0) return;
+                list.classList.toggle('hidden');
+                const expanded = !list.classList.contains('hidden');
+                cnt.textContent = `${t('mcp_server_count')} ${count}${suffix}${expanded ? ' ▾' : ' ▸'}`;
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('MCP status render failed', e);
+        }
 
         // Detect Claude Path via RPC
         try {
@@ -756,6 +822,7 @@
           enableTitleGenerationSkip: $('enableTitleGenerationSkip').checked,
           enableSuggestionModeSkip: $('enableSuggestionModeSkip').checked,
           enableFilepathExtractionMock: $('enableFilepathExtractionMock').checked,
+          enableSafetyCheckSkip: $('enableSafetyCheckSkip').checked,
           enableApiCallLogging: $('enableApiCallLogging').checked,
 
           enableWebServerTools: $('enableWebServerTools').checked,

@@ -146,13 +146,19 @@ fn is_public_ip(ip: IpAddr) -> bool {
             if let Some(mapped) = ip.to_ipv4_mapped() {
                 return is_public_ipv4(mapped);
             }
-            let first = ip.segments()[0];
+            let seg = ip.segments();
+            let first = seg[0];
+            // 額外阻擋 NAT64 64:ff9b::/96 與 64:ff9b:1::/48，以及 IPv4 映射前綴 ::ffff:0:0/96
+            let is_nat64 = first == 0x0064 && seg[1] == 0xff9b;
+            let is_ipv4_mapped_prefix = seg[0] == 0 && seg[1] == 0 && seg[2] == 0 && seg[3] == 0 && seg[4] == 0 && seg[5] == 0xffff;
             !(ip.is_loopback()
                 || ip.is_unspecified()
                 || ip.is_multicast()
                 || (first & 0xfe00) == 0xfc00
                 || (first & 0xffc0) == 0xfe80
-                || (ip.segments()[0] == 0x2001 && ip.segments()[1] == 0x0db8))
+                || (seg[0] == 0x2001 && seg[1] == 0x0db8)
+                || is_nat64
+                || is_ipv4_mapped_prefix)
         }
     }
 }

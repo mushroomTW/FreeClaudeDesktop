@@ -15,8 +15,53 @@ FreeClaudeDesktop is a cross-platform command-line launcher and local API proxy 
 
 > [繁體中文](README_zh.md)
 
+## Screenshots
+
+> Click a section to expand — 4 Console pages are collapsed by default to save space.
+
+<details>
+<summary><strong>Connection Settings</strong> — API Provider, Gateway URL, API Key and Claude path detection</summary>
+<br>
+
+<p align="center">
+  <img src="docs/images/console-connection.png" alt="FreeClaude Console - Connection Settings" width="800" />
+</p>
+
+</details>
+
+<details>
+<summary><strong>Model Settings</strong> — Alias routing (Sonnet / Opus / Haiku) and discovered models</summary>
+<br>
+
+<p align="center">
+  <img src="docs/images/console-model-settings.png" alt="FreeClaude Console - Model Settings" width="800" />
+</p>
+
+</details>
+
+<details>
+<summary><strong>Request Optimization &amp; Tools</strong> — Quota mock, prefix detection, title/suggestion skip</summary>
+<br>
+
+<p align="center">
+  <img src="docs/images/console-optimization.png" alt="FreeClaude Console - Request Optimization & Tools" width="800" />
+</p>
+
+</details>
+
+<details>
+<summary><strong>Advanced Settings</strong> — API call logging, transport protocol and thinking mode</summary>
+<br>
+
+<p align="center">
+  <img src="docs/images/console-advanced.png" alt="FreeClaude Console - Advanced Settings" width="800" />
+</p>
+
+</details>
+
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [About](#about)
 - [Features](#features)
 - [Quick Start](#quick-start)
@@ -211,7 +256,7 @@ Key design notes:
 
 ## Extensions & Local Optimizations
 
-Detailed in [docs/EXTENSIONS_AND_SKILLS.md](docs/EXTENSIONS_AND_SKILLS.md) (Traditional Chinese). Summary of toggles in Dashboard → Optimizations:
+Detailed in [docs/EXTENSIONS_AND_SKILLS.md](docs/EXTENSIONS_AND_SKILLS.md). Summary of toggles in Dashboard → Optimizations:
 
 | Optimization | What it does |
 |---|---|

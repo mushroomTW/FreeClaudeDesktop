@@ -35,6 +35,21 @@ pub fn mcp_config_paths() -> Vec<PathBuf> {
     vec![mirror_profile_dir().join("claude_desktop_config.json")]
 }
 
+/// 檢查本機是否可探測到 Claude 的 `bundled-skills`（對應 ClaudeSource `resources/bundled-skills`）
+pub fn has_bundled_skills() -> bool {
+    // 嘗試從已知安裝路徑推斷
+    for base in crate::platform::launcher::known_claude_paths() {
+        if let Some(parent) = base.parent() {
+            let candidate = parent.join("resources").join("bundled-skills");
+            if candidate.exists() {
+                return true;
+            }
+        }
+    }
+    // Store 版額外路徑：透過檢測已解包的資源目錄
+    false
+}
+
 fn handle_string_char(ch: char, is_escaped: &mut bool, in_string: &mut bool) {
     if *is_escaped {
         *is_escaped = false;

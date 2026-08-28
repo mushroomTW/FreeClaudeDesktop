@@ -38,6 +38,7 @@ pub fn create_router(port: u16) -> Router {
             get(super::handler::handle_companion_websocket),
         )
         .route("/v1/messages", post(super::handler::handle_proxy))
+        .route("/v1/messages/count_tokens", post(super::handler::handle_count_tokens))
         .route("/v1/models", get(super::models_endpoint::handle_models))
         .layer(DefaultBodyLimit::max(
             free_claude_core::constants::MAX_PROXY_BODY_BYTES,

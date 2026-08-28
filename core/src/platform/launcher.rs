@@ -638,8 +638,8 @@ mod mcp;
 pub(crate) use mcp::strip_removed_computer_mcp;
 pub use mcp::{
     app_data_roaming_dir, apply_3p_deployment_mode, apply_managed_deployment_mode, clean_json_text,
-    collect_all_mcp_servers, collect_all_mcp_servers_result, mcp_config_paths, merge_mcp_servers,
-    read_json_config, restore_1p_deployment_mode, restore_managed_deployment_mode,
+    collect_all_mcp_servers, collect_all_mcp_servers_result, has_bundled_skills, mcp_config_paths,
+    merge_mcp_servers, read_json_config, restore_1p_deployment_mode, restore_managed_deployment_mode,
 };
 
 #[cfg(test)]

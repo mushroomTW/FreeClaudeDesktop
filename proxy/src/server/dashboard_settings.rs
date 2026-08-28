@@ -56,6 +56,8 @@ pub struct DashboardSettingsUpdate {
     #[serde(default)]
     pub enable_filepath_extraction_mock: Option<bool>,
     #[serde(default)]
+    pub enable_safety_check_skip: Option<bool>,
+    #[serde(default)]
     pub enable_api_call_logging: Option<bool>,
     #[serde(default)]
     pub enable_web_server_tools: Option<bool>,
@@ -181,6 +183,10 @@ fn apply_settings_update(
         input.enable_filepath_extraction_mock,
     );
     apply_optional(
+        &mut settings.optimizations.enable_safety_check_skip,
+        input.enable_safety_check_skip,
+    );
+    apply_optional(
         &mut settings.optimizations.enable_api_call_logging,
         input.enable_api_call_logging,
     );
@@ -279,12 +285,17 @@ pub async fn update_dashboard_settings(
 }
 
 pub async fn handle_dashboard_status(_headers: HeaderMap) -> Response {
+    let has_bundled_skills = free_claude_core::platform::launcher::has_bundled_skills();
+    let mcp_servers = free_claude_core::platform::launcher::collect_all_mcp_servers();
+    let mcp_names: Vec<String> = mcp_servers.keys().cloned().collect();
+    let mcp_count = mcp_names.len();
     match load_settings().await {
         Ok(settings) => (
             StatusCode::OK,
             Json(json!({
                 "proxy": { "status": "ok", "port": settings.desktop.active_port },
                 "settings": to_public_config(&settings),
+                "mcp": { "hasBundledSkills": has_bundled_skills, "serverCount": mcp_count, "serverNames": mcp_names },
             })),
         )
             .into_response(),
@@ -336,6 +347,7 @@ fn save_input_from_settings(settings: &Settings, api_key: String) -> SaveConfigI
         enable_title_generation_skip: settings.optimizations.enable_title_generation_skip,
         enable_suggestion_mode_skip: settings.optimizations.enable_suggestion_mode_skip,
         enable_filepath_extraction_mock: settings.optimizations.enable_filepath_extraction_mock,
+        enable_safety_check_skip: settings.optimizations.enable_safety_check_skip,
         enable_api_call_logging: settings.optimizations.enable_api_call_logging,
         enable_web_server_tools: settings.optimizations.enable_web_server_tools,
         web_fetch_allow_private_networks: settings.optimizations.web_fetch_allow_private_networks,

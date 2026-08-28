@@ -15,8 +15,53 @@ FreeClaudeDesktop 是跨平台的命令列啟動器與 Claude Desktop 本機 API
 
 > [English](README.md)
 
+## 截圖預覽
+
+> 點擊展開 — 4 個 Console 頁面預設收合，節省版面。
+
+<details>
+<summary><strong>Connection 連線設定</strong> — API Provider、Gateway URL、API Key 與 Claude 路徑偵測</summary>
+<br>
+
+<p align="center">
+  <img src="docs/images/console-connection.png" alt="FreeClaude Console - Connection Settings 連線設定" width="800" />
+</p>
+
+</details>
+
+<details>
+<summary><strong>Model Settings 模型設定</strong> — 別名路由（Sonnet / Opus / Haiku）與已探索模型清單</summary>
+<br>
+
+<p align="center">
+  <img src="docs/images/console-model-settings.png" alt="FreeClaude Console - Model Settings 模型設定" width="800" />
+</p>
+
+</details>
+
+<details>
+<summary><strong>Request Optimization &amp; Tools 請求優化與工具</strong> — Quota Mock、前綴檢測、標題/建議跳過</summary>
+<br>
+
+<p align="center">
+  <img src="docs/images/console-optimization.png" alt="FreeClaude Console - Request Optimization 請求優化" width="800" />
+</p>
+
+</details>
+
+<details>
+<summary><strong>Advanced Settings 進階設定</strong> — API 呼叫日誌、傳輸協定與思考模式</summary>
+<br>
+
+<p align="center">
+  <img src="docs/images/console-advanced.png" alt="FreeClaude Console - Advanced Settings 進階設定" width="800" />
+</p>
+
+</details>
+
 ## 目錄
 
+- [截圖預覽](#截圖預覽)
 - [關於專案](#關於專案)
 - [功能](#功能)
 - [快速開始](#快速開始)

@@ -53,6 +53,8 @@ pub struct OptimizationSettings {
     pub enable_title_generation_skip: bool,
     pub enable_suggestion_mode_skip: bool,
     pub enable_filepath_extraction_mock: bool,
+    #[serde(default = "default_true")]
+    pub enable_safety_check_skip: bool,
     #[serde(default)]
     pub enable_api_call_logging: bool,
     pub enable_web_server_tools: bool,
@@ -106,6 +108,7 @@ struct LegacyFlatSettings {
     enable_title_generation_skip: Option<bool>,
     enable_suggestion_mode_skip: Option<bool>,
     enable_filepath_extraction_mock: Option<bool>,
+    enable_safety_check_skip: Option<bool>,
     enable_api_call_logging: Option<bool>,
     enable_web_server_tools: Option<bool>,
     web_fetch_allowed_schemes: Option<String>,
@@ -182,6 +185,7 @@ impl Language {
                 "title_generation_skip" => "Skip Title Generation",
                 "suggestion_mode_skip" => "Skip Suggestion Mode",
                 "filepath_extraction_mock" => "Filepath Extraction Mock",
+                "safety_check_skip" => "Disable Safety Classifier Thinking",
                 "settings_menu" => "Settings",
                 "local_proxy" => "Local Proxy: 127.0.0.1:",
                 "detecting" => "Detecting...",
@@ -248,6 +252,7 @@ impl Language {
                 "title_generation_skip" => "標題生成跳過",
                 "suggestion_mode_skip" => "建議模式跳過",
                 "filepath_extraction_mock" => "檔案路徑提取模擬",
+                "safety_check_skip" => "關閉安全檢查思考",
                 "settings_menu" => "設定",
                 "local_proxy" => "本機 Proxy：127.0.0.1：",
                 "detecting" => "正在偵測...",
@@ -342,6 +347,7 @@ impl Default for OptimizationSettings {
             enable_title_generation_skip: true,
             enable_suggestion_mode_skip: true,
             enable_filepath_extraction_mock: true,
+            enable_safety_check_skip: true,
             enable_api_call_logging: false,
             enable_web_server_tools: false,
             web_fetch_allowed_schemes: default_web_fetch_schemes(),
@@ -402,6 +408,7 @@ pub fn to_public_config(settings: &Settings) -> Value {
         "enableTitleGenerationSkip": settings.optimizations.enable_title_generation_skip,
         "enableSuggestionModeSkip": settings.optimizations.enable_suggestion_mode_skip,
         "enableFilepathExtractionMock": settings.optimizations.enable_filepath_extraction_mock,
+        "enableSafetyCheckSkip": settings.optimizations.enable_safety_check_skip,
         "enableApiCallLogging": settings.optimizations.enable_api_call_logging,
         "enableWebServerTools": settings.optimizations.enable_web_server_tools,
         "webFetchAllowedSchemes": settings.optimizations.web_fetch_allowed_schemes,
@@ -446,6 +453,7 @@ const LEGACY_FLAT_SETTING_KEYS: &[&str] = &[
     "enableTitleGenerationSkip",
     "enableSuggestionModeSkip",
     "enableFilepathExtractionMock",
+    "enableSafetyCheckSkip",
     "enableApiCallLogging",
     "enableWebServerTools",
     "webFetchAllowedSchemes",
@@ -538,6 +546,9 @@ impl LegacyFlatSettings {
         }
         if let Some(value) = self.enable_filepath_extraction_mock {
             settings.optimizations.enable_filepath_extraction_mock = value;
+        }
+        if let Some(value) = self.enable_safety_check_skip {
+            settings.optimizations.enable_safety_check_skip = value;
         }
         if let Some(value) = self.enable_api_call_logging {
             settings.optimizations.enable_api_call_logging = value;

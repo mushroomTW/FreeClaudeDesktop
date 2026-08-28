@@ -12,8 +12,8 @@ use std::time::{Duration, SystemTime};
 
 use crate::config::Settings;
 use detection::{
-    extract_command_prefix, extract_filepaths, is_quota_check_request, is_suggestion_mode_request,
-    is_title_generation_request,
+    extract_command_prefix, extract_filepaths, is_quota_check_request, is_safety_classifier_request,
+    is_suggestion_mode_request, is_title_generation_request,
 };
 
 /// 本機最佳化命中後產生的傳輸中立結果。
@@ -154,8 +154,8 @@ fn build_optimized_text_response(
 ///   3. Title skip
 ///   4. Suggestion skip
 ///   5. Filepath mock
-///   6. Web server tool interception
-///   7. Safety classifier handling
+///   6. Safety classifier skip
+///   7. Web server tool interception
 pub async fn try_optimizations(
     body_str: &str,
     settings: &Settings,
@@ -216,7 +216,14 @@ pub async fn try_optimizations(
         ));
     }
 
-    // 6. Web server tools
+    // 6. Safety classifier — 僅關閉思考強度，不直接廢掉檢查（避免安全功能失效）
+    // 實際剝除 thinking 的邏輯在 proxy/src/server/handler.rs 中處理，
+    // 此處僅記錄命中，避免與 Web Tools 順序衝突。
+    if settings.optimizations.enable_safety_check_skip && is_safety_classifier_request(body_str) {
+        tracing::info!("Optimization: safety classifier detected - thinking will be stripped downstream");
+    }
+
+    // 7. Web server tools
     if settings.optimizations.enable_web_server_tools
         && let Some((_id, name, input)) = web_tools::extract_latest_web_tool_call(body_str)
     {
@@ -230,6 +237,28 @@ pub async fn try_optimizations(
         }
     }
 
+    None
+}
+
+/// 若為 Safety Classifier 請求且開啟 `enable_safety_check_skip`，則關閉思考強度（剝除 thinking）後回傳新 body。
+pub fn maybe_strip_safety_thinking(body_str: &str, settings: &Settings) -> Option<String> {
+    if !settings.optimizations.enable_safety_check_skip {
+        return None;
+    }
+    if !is_safety_classifier_request(body_str) {
+        return None;
+    }
+    let mut v: Value = serde_json::from_str(body_str).ok()?;
+    let obj = v.as_object_mut()?;
+    // 移除 Anthropic thinking 區塊，避免 gateway 用高推理強度重跑安全判斷
+    let had_thinking = obj.remove("thinking").is_some();
+    // 相容舊版欄位
+    let had_budget = obj.remove("budget_tokens").is_some();
+    if had_thinking || had_budget || obj.contains_key("thinking") {
+        tracing::info!("Safety classifier: stripped thinking (had_thinking={had_thinking}, had_budget={had_budget})");
+        return serde_json::to_string(&v).ok();
+    }
+    // 即使原本無 thinking，也標記已處理，避免重複判斷
     None
 }
 

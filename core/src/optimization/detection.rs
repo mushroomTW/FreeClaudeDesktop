@@ -160,6 +160,29 @@ pub fn is_title_generation_request(body_str: &str) -> bool {
                         || system_text.contains("this session")))))
 }
 
+/// Check if this is a safety classifier request.
+///
+/// Safety classifier requests are auxiliary `system` prompts that ask the model to
+/// judge whether a user request is safe / policy-compliant, without needing the
+/// full LLM. Detected by `system` containing both `safety` and `classifier`/`policy`.
+pub fn is_safety_classifier_request(body_str: &str) -> bool {
+    let Ok(v) = serde_json::from_str::<Value>(body_str) else {
+        return false;
+    };
+    // 需要 system，且通常不帶 tools（與 title 類似）
+    if v.get("tools").is_some() {
+        return false;
+    }
+    let system_text = match extract_system_text(&v) {
+        Some(s) => s.to_lowercase(),
+        None => return false,
+    };
+    // `@ant/security` 相關探測常見關鍵字組合
+    system_text.contains("safety")
+        && (system_text.contains("classifier") || system_text.contains("policy"))
+        && (system_text.contains("safe") || system_text.contains("harmful") || system_text.contains("allowed"))
+}
+
 /// Check if this is a suggestion mode request.
 ///
 /// Suggestion mode requests contain "[SUGGESTION MODE:" in the user's message.

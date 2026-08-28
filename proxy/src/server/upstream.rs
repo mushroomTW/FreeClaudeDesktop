@@ -37,6 +37,12 @@ pub(crate) fn build_upstream_request(
                 lower.as_str(),
                 "content-type" | "accept" | "user-agent" | "accept-encoding" | "connection"
             ) || lower.starts_with("anthropic-")
+                || lower.starts_with("x-stainless-")
+                || lower.starts_with("x-")
+                    && matches!(
+                        lower.as_str(),
+                        "x-api-key" | "x-goog-api-key" | "x-request-id"
+                    )
         };
         if forward {
             request = request.header(name.clone(), value.clone());

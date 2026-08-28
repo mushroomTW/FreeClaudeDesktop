@@ -303,6 +303,17 @@
                 </div>
 
                 <div class="switch-container">
+                  <div class="switch-label" data-toggle-target="enableSafetyCheckSkip">
+                    <span data-i18n="ext_safety_title">關閉安全檢查思考</span>
+                    <span class="switch-desc" data-i18n="ext_safety_desc">安全分類請求不使用高推理強度，僅關閉 thinking</span>
+                  </div>
+                  <label class="switch" aria-label="關閉安全檢查思考">
+                    <input type="checkbox" id="enableSafetyCheckSkip">
+                    <span class="slider"></span>
+                  </label>
+                </div>
+
+                <div class="switch-container">
                   <div class="switch-label" data-toggle-target="enableWebServerTools">
                     <span data-i18n="ext_web_tools_title">Web 網頁存取工具</span>
                     <span class="switch-desc" data-i18n="ext_web_tools_desc">允許本地執行 web_search 與 web_fetch 抓取工具</span>
@@ -327,6 +338,15 @@
                       <span class="slider"></span>
                     </label>
                   </div>
+                </div>
+
+                <div class="status-card-inner Dashboard-inline-style-22" id="mcpStatusCard">
+                  <div class="Dashboard-inline-style-6">
+                    <span id="mcpBundledDot" class="status-dot offline"></span>
+                    <span class="Dashboard-inline-style-7" id="mcpBundledText" data-i18n="mcp_bundled_detecting">偵測中...</span>
+                  </div>
+                  <div class="Dashboard-inline-style-8" id="mcpServerCount" data-i18n="mcp_server_count" style="cursor:pointer; user-select:none;">—</div>
+                  <div id="mcpServerList" class="hidden" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border-color); font-size:0.85em; line-height:1.8;"></div>
                 </div>
               </div>
             </section>

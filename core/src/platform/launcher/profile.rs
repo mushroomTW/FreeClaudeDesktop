@@ -43,8 +43,20 @@ pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Re
     Ok(())
 }
 
-/// 在鏡像資料不存在時，從舊版目錄或官方資料初始化。
+/// 在鏡像資料不存在時，從舊版目錄或官方資料初始化；同時清理已退役的 1M patch 殘留。
 pub fn ensure_mirror_profile_initialized() -> AppResult<()> {
+    // 清理已退役的 1M runtime patch 殘留（見 docs/linux/claude-desktop-1m-runtime-patch-attempts.md）
+    for stale in [
+        mirror_profile_dir().join(".1m-patched"),
+        local_app_data().join("Claude").join(".1m-patched"),
+        local_app_data()
+            .join("FreeClaudeDesktop")
+            .join("patch.log"),
+    ] {
+        let _ = std::fs::remove_file(&stale);
+    }
+    let _ = std::fs::remove_dir_all(local_app_data().join("FreeClaudeDesktop").join("patch"));
+
     let mirror = mirror_profile_dir();
     if mirror.exists() {
         return Ok(());
