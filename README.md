@@ -135,7 +135,7 @@ freecd install                # autostart enabled by default
 freecd install --no-autostart # without autostart
 ```
 
-Package: [`@mushroomtw/freeclaudedesktop@1.0.2`](packages/freeclaudedesktop/package.json) — ships `freecd` / `freeclaude` bins and six platform optional dependencies (`darwin-arm64/x64`, `linux-arm64/x64`, `win32-arm64/x64`).
+Package: [`@mushroomtw/freeclaudedesktop@1.0.3`](packages/freeclaudedesktop/package.json) — ships `freecd` / `freeclaude` bins and six platform optional dependencies (`darwin-arm64/x64`, `linux-arm64/x64`, `win32-arm64/x64`).
 
 ### Option B — Build from source
 

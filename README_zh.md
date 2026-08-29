@@ -135,7 +135,7 @@ freecd install                # 預設啟用自動啟動
 freecd install --no-autostart # 不啟用自動啟動
 ```
 
-套件：[`@mushroomtw/freeclaudedesktop@1.0.2`](packages/freeclaudedesktop/package.json) — 提供 `freecd` / `freeclaude` 指令與六個平台 optionalDependencies（`darwin-arm64/x64`、`linux-arm64/x64`、`win32-arm64/x64`）。
+套件：[`@mushroomtw/freeclaudedesktop@1.0.3`](packages/freeclaudedesktop/package.json) — 提供 `freecd` / `freeclaude` 指令與六個平台 optionalDependencies（`darwin-arm64/x64`、`linux-arm64/x64`、`win32-arm64/x64`）。
 
 ### 方式 B — 從原始碼建置
 
