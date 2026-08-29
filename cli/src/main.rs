@@ -5,8 +5,8 @@ mod companion_daemon;
 mod runtime;
 mod update_check;
 
-use std::time::Duration;
 use std::io;
+use std::time::Duration;
 
 use clap::Parser;
 use cli_args::{
@@ -50,7 +50,9 @@ fn check_deprecated_runtime(runtime: Option<&String>) -> Result<(), Box<dyn std:
 /// 對已移除的 Docker 相關環境變數給予警告，避免靜默忽略。
 fn warn_deprecated_env_vars() {
     if std::env::var_os("FREECLAUDE_COMPOSE_FILE").is_some() {
-        eprintln!("警告: FREECLAUDE_COMPOSE_FILE 已移除，Docker runtime 不再支援，此變數已被忽略。");
+        eprintln!(
+            "警告: FREECLAUDE_COMPOSE_FILE 已移除，Docker runtime 不再支援，此變數已被忽略。"
+        );
     }
     if std::env::var_os("FREECLAUDE_DOCKER_MEMORY_LIMIT").is_some() {
         eprintln!("警告: FREECLAUDE_DOCKER_MEMORY_LIMIT 已移除，Docker runtime 不再支援。");
@@ -332,8 +334,7 @@ mod tests {
     #[test]
     /// 驗證 `parses_documented_command_tree` 的行為符合預期。
     fn parses_documented_command_tree() {
-        let cli = Cli::try_parse_from(["freeclaude", "install"])
-            .expect("install 應可解析");
+        let cli = Cli::try_parse_from(["freeclaude", "install"]).expect("install 應可解析");
         assert!(matches!(
             cli.command,
             Command::Install(InstallArgs {

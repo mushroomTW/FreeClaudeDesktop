@@ -180,7 +180,9 @@ pub fn is_safety_classifier_request(body_str: &str) -> bool {
     // `@ant/security` 相關探測常見關鍵字組合
     system_text.contains("safety")
         && (system_text.contains("classifier") || system_text.contains("policy"))
-        && (system_text.contains("safe") || system_text.contains("harmful") || system_text.contains("allowed"))
+        && (system_text.contains("safe")
+            || system_text.contains("harmful")
+            || system_text.contains("allowed"))
 }
 
 /// Check if this is a suggestion mode request.

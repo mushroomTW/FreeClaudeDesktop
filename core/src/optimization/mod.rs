@@ -12,8 +12,8 @@ use std::time::{Duration, SystemTime};
 
 use crate::config::Settings;
 use detection::{
-    extract_command_prefix, extract_filepaths, is_quota_check_request, is_safety_classifier_request,
-    is_suggestion_mode_request, is_title_generation_request,
+    extract_command_prefix, extract_filepaths, is_quota_check_request,
+    is_safety_classifier_request, is_suggestion_mode_request, is_title_generation_request,
 };
 
 /// 本機最佳化命中後產生的傳輸中立結果。
@@ -220,7 +220,9 @@ pub async fn try_optimizations(
     // 實際剝除 thinking 的邏輯在 proxy/src/server/handler.rs 中處理，
     // 此處僅記錄命中，避免與 Web Tools 順序衝突。
     if settings.optimizations.enable_safety_check_skip && is_safety_classifier_request(body_str) {
-        tracing::info!("Optimization: safety classifier detected - thinking will be stripped downstream");
+        tracing::info!(
+            "Optimization: safety classifier detected - thinking will be stripped downstream"
+        );
     }
 
     // 7. Web server tools
@@ -255,7 +257,9 @@ pub fn maybe_strip_safety_thinking(body_str: &str, settings: &Settings) -> Optio
     // 相容舊版欄位
     let had_budget = obj.remove("budget_tokens").is_some();
     if had_thinking || had_budget || obj.contains_key("thinking") {
-        tracing::info!("Safety classifier: stripped thinking (had_thinking={had_thinking}, had_budget={had_budget})");
+        tracing::info!(
+            "Safety classifier: stripped thinking (had_thinking={had_thinking}, had_budget={had_budget})"
+        );
         return serde_json::to_string(&v).ok();
     }
     // 即使原本無 thinking，也標記已處理，避免重複判斷

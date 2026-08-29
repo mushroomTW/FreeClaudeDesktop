@@ -49,9 +49,7 @@ pub fn ensure_mirror_profile_initialized() -> AppResult<()> {
     for stale in [
         mirror_profile_dir().join(".1m-patched"),
         local_app_data().join("Claude").join(".1m-patched"),
-        local_app_data()
-            .join("FreeClaudeDesktop")
-            .join("patch.log"),
+        local_app_data().join("FreeClaudeDesktop").join("patch.log"),
     ] {
         let _ = std::fs::remove_file(&stale);
     }

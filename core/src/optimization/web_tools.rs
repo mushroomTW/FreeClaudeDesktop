@@ -150,7 +150,12 @@ fn is_public_ip(ip: IpAddr) -> bool {
             let first = seg[0];
             // 額外阻擋 NAT64 64:ff9b::/96 與 64:ff9b:1::/48，以及 IPv4 映射前綴 ::ffff:0:0/96
             let is_nat64 = first == 0x0064 && seg[1] == 0xff9b;
-            let is_ipv4_mapped_prefix = seg[0] == 0 && seg[1] == 0 && seg[2] == 0 && seg[3] == 0 && seg[4] == 0 && seg[5] == 0xffff;
+            let is_ipv4_mapped_prefix = seg[0] == 0
+                && seg[1] == 0
+                && seg[2] == 0
+                && seg[3] == 0
+                && seg[4] == 0
+                && seg[5] == 0xffff;
             !(ip.is_loopback()
                 || ip.is_unspecified()
                 || ip.is_multicast()

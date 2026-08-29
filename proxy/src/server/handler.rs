@@ -197,7 +197,10 @@ pub async fn handle_count_tokens(body: Bytes) -> impl IntoResponse {
         // tools 定義也會佔 token（JSON 序列化長度 /4）
         if let Some(tools) = v.get("tools").and_then(Value::as_array) {
             for tool in tools {
-                char_count += serde_json::to_string(tool).map(|s| s.chars().count()).unwrap_or(64) / 4;
+                char_count += serde_json::to_string(tool)
+                    .map(|s| s.chars().count())
+                    .unwrap_or(64)
+                    / 4;
             }
             // 保底每個 tool 至少 32 tokens 等價
             char_count += tools.len() * 8;
@@ -205,7 +208,11 @@ pub async fn handle_count_tokens(body: Bytes) -> impl IntoResponse {
     }
     // 粗略估算：每 4 字元 ≈ 1 token，最低 1
     let estimated = std::cmp::max(1, char_count.div_ceil(4));
-    tracing::info!("[count_tokens] 本地估算 input_tokens={} (chars={})", estimated, char_count);
+    tracing::info!(
+        "[count_tokens] 本地估算 input_tokens={} (chars={})",
+        estimated,
+        char_count
+    );
     Json(json!({ "input_tokens": estimated }))
 }
 
