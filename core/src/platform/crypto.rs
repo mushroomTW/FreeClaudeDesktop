@@ -2,7 +2,6 @@ use crate::error::{AppError, AppResult};
 const KEYRING_PREFIX: &str = "keyring:";
 const KEYRING_SERVICE: &str = "FreeClaudeDesktop";
 const KEYRING_USER: &str = "real_api_key";
-const FALLBACK_PREFIX: &str = "fallback:";
 
 /// 執行 `keyring_entry` 對應的處理流程。
 fn keyring_entry() -> AppResult<keyring::Entry> {
@@ -31,28 +30,17 @@ pub fn protect_secret(secret: &str) -> AppResult<String> {
         return Ok(String::new());
     }
 
-    let entry = match keyring_entry() {
-        Ok(e) => e,
-        Err(_) => return Ok(format!("{FALLBACK_PREFIX}{secret}")),
-    };
-
-    match entry.set_password(secret) {
-        Ok(_) => Ok(format!("{KEYRING_PREFIX}{KEYRING_USER}")),
-        Err(_) => Ok(format!("{FALLBACK_PREFIX}{secret}")),
-    }
+    let entry = keyring_entry()?;
+    entry
+        .set_password(secret)
+        .map_err(|error| AppError::Crypto(error.to_string()))?;
+    Ok(format!("{KEYRING_PREFIX}{KEYRING_USER}"))
 }
 
 /// 從作業系統原生金鑰庫還原 API key，並相容舊版明文值。
 pub fn unprotect_secret(stored: &str) -> AppResult<String> {
     if stored.is_empty() {
         return Ok(String::new());
-    }
-
-    if stored.starts_with(FALLBACK_PREFIX) {
-        return Ok(stored
-            .strip_prefix(FALLBACK_PREFIX)
-            .unwrap_or(stored)
-            .to_string());
     }
 
     if stored.starts_with(KEYRING_PREFIX) {
@@ -69,15 +57,9 @@ mod tests {
     use super::*;
 
     #[test]
-    /// 驗證 `test_fallback_crypto` 的行為符合預期。
+    /// 舊版明文 fallback 格式不得再被當成 API key 使用。
     fn test_fallback_crypto() {
         let secret = "sk-ant-test-key-123";
-        let fallback_stored = format!("{FALLBACK_PREFIX}{secret}");
-        let raw = unprotect_secret(&fallback_stored).unwrap();
-        assert_eq!(raw, secret);
-
-        let protected = protect_secret(secret).unwrap();
-        let restored = unprotect_secret(&protected).unwrap();
-        assert_eq!(restored, secret);
+        assert!(unprotect_secret(&format!("fallback:{secret}")).is_err());
     }
 }

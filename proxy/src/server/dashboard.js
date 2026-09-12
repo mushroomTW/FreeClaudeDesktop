@@ -1,6 +1,13 @@
     const $ = id => document.getElementById(id);
     let loadedSettings = null;
     let launchAfterSave = false;
+    const dashboardToken = window.location.hash.length > 1
+      ? decodeURIComponent(window.location.hash.slice(1))
+      : '';
+
+    if (dashboardToken) {
+      history.replaceState(null, document.title, window.location.pathname);
+    }
 
     // i18n 對照：需與 core/src/core/config.rs:Language::tr 保持同步
     const translations = {
@@ -283,14 +290,15 @@
       const toast = document.createElement('div');
       toast.className = `toast ${type}`;
 
-      let icon = '';
+      const icon = document.createElement('span');
       if (type === 'success') {
-        icon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+        icon.textContent = '✓';
       } else {
-        icon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+        icon.textContent = '✕';
       }
-
-      toast.innerHTML = `${icon}<span>${message}</span>`;
+      const text = document.createElement('span');
+      text.textContent = message;
+      toast.append(icon, text);
       container.appendChild(toast);
 
       setTimeout(() => toast.classList.add('show'), 10);
@@ -309,6 +317,7 @@
       const r = await fetch(path, {
         ...options,
         headers: {
+          'Authorization': `Bearer ${dashboardToken}`,
           ...(options.headers || {}) // NOSONAR - fallback empty object required when headers undefined (javascript:S7744)
         }
       });
@@ -485,10 +494,19 @@
             cnt.removeAttribute('data-i18n');
             cnt.title = count > 0 ? (t('mcp_click_hint') || '點擊展開/收合清單') : '';
             if (list) {
+              list.replaceChildren();
               if (names.length > 0) {
-                list.innerHTML = names.map(n => `<span style="display:inline-block; background:var(--bg-hover); border:1px solid var(--border-color); border-radius:4px; padding:2px 8px; margin:2px 4px 2px 0;">${n}</span>`).join('');
+                names.forEach(name => {
+                  const badge = document.createElement('span');
+                  badge.style.cssText = 'display:inline-block; background:var(--bg-hover); border:1px solid var(--border-color); border-radius:4px; padding:2px 8px; margin:2px 4px 2px 0;';
+                  badge.textContent = name;
+                  list.appendChild(badge);
+                });
               } else {
-                list.innerHTML = `<span style="opacity:0.6;">${t('mcp_no_servers') || '無 MCP 伺服器'}</span>`;
+                const empty = document.createElement('span');
+                empty.style.opacity = '0.6';
+                empty.textContent = t('mcp_no_servers') || '無 MCP 伺服器';
+                list.appendChild(empty);
               }
             }
             // 點擊展開/收合
@@ -581,13 +599,21 @@
 
     function renderModelsTable(settings) {
       const tbody = $('modelsTableBody');
-      tbody.innerHTML = '';
+      tbody.replaceChildren();
+      const renderMessage = message => {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 5;
+        cell.textContent = message;
+        row.appendChild(cell);
+        tbody.appendChild(row);
+      };
 
       let models = (settings.discoveredModels || []).slice();
       const lang = $('language').value || 'zh-tw';
 
       if (models.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5">${t('no_models_yet')}</td></tr>`;
+        renderMessage(t('no_models_yet'));
         return;
       }
 
@@ -596,7 +622,7 @@
       }
 
       if (models.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5">未找到符合關鍵字 "${searchQuery}" 的模型</td></tr>`;
+        renderMessage(`未找到符合關鍵字 "${searchQuery}" 的模型`);
         return;
       }
 
@@ -634,28 +660,45 @@
         const is1mPrefer = is1m && settings.model1mPreferOverrides?.[model] === true;
         const effort = settings.modelReasoningOverrides?.[model] || '';
 
-        tr.innerHTML = `
-          <td class="Dashboard-inline-style-24">${model}</td>
-          <td class="Dashboard-inline-style-25">
-            <input type="checkbox" class="model-visibility" data-model="${model}" ${isVisible ? 'checked' : ''} aria-label="${model} 顯示狀態">
-          </td>
-          <td class="Dashboard-inline-style-25">
-            <input type="checkbox" class="model-1m" data-model="${model}" ${is1m ? 'checked' : ''} aria-label="${model} 1M Context 支援">
-          </td>
-          <td class="Dashboard-inline-style-25">
-            <input type="checkbox" class="model-1m-prefer" data-model="${model}" ${is1mPrefer ? 'checked' : ''} ${is1m ? '' : 'disabled'} aria-label="${model} 預設使用 1M">
-          </td>
-          <td>
-            <div class="select-wrapper">
-              <select class="model-effort" data-model="${model}" aria-label="${model} 思考上限設定">
-                <option value="" ${effort === '' ? 'selected' : ''}>${optDefault}</option>
-                <option value="none" ${effort === 'none' ? 'selected' : ''}>${optNone}</option>
-                <option value="high" ${effort === 'high' ? 'selected' : ''}>${optHigh}</option>
-                <option value="max" ${effort === 'max' ? 'selected' : ''}>${optMax}</option>
-              </select>
-            </div>
-          </td>
-        `;
+        const nameCell = document.createElement('td');
+        nameCell.className = 'Dashboard-inline-style-24';
+        nameCell.textContent = model;
+        tr.appendChild(nameCell);
+
+        const appendCheckbox = (className, checked, label, disabled = false) => {
+          const cell = document.createElement('td');
+          cell.className = 'Dashboard-inline-style-25';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.className = className;
+          input.dataset.model = model;
+          input.checked = checked;
+          input.disabled = disabled;
+          input.setAttribute('aria-label', `${model} ${label}`);
+          cell.appendChild(input);
+          tr.appendChild(cell);
+        };
+        appendCheckbox('model-visibility', isVisible, '顯示狀態');
+        appendCheckbox('model-1m', is1m, '1M Context 支援');
+        appendCheckbox('model-1m-prefer', is1mPrefer, '預設使用 1M', !is1m);
+
+        const effortCell = document.createElement('td');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'select-wrapper';
+        const select = document.createElement('select');
+        select.className = 'model-effort';
+        select.dataset.model = model;
+        select.setAttribute('aria-label', `${model} 思考上限設定`);
+        [['', optDefault], ['none', optNone], ['high', optHigh], ['max', optMax]].forEach(([value, label]) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = label;
+          option.selected = effort === value;
+          select.appendChild(option);
+        });
+        wrapper.appendChild(select);
+        effortCell.appendChild(wrapper);
+        tr.appendChild(effortCell);
         tbody.appendChild(tr);
       });
 

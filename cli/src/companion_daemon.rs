@@ -4,7 +4,9 @@ use serde_json::{Value, json};
 use std::path::Path;
 use std::time::Duration;
 use tokio_tungstenite::connect_async;
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{
+    Message, client::IntoClientRequest, http::header::AUTHORIZATION,
+};
 
 /// 執行 `companion_daemon` 對應的處理流程。
 pub async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,7 +19,30 @@ pub async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         tracing::info!("Companion daemon connecting to {}", addr);
-        match connect_async(&addr).await {
+        let token = match free_claude_core::get_launcher_settings() {
+            Some(settings) if !settings.gateway.proxy_auth_token.trim().is_empty() => {
+                settings.gateway.proxy_auth_token
+            }
+            _ => {
+                tracing::error!("Companion daemon 缺少 Proxy 驗證 token");
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(Duration::from_secs(5));
+                continue;
+            }
+        };
+        let mut request = match addr.clone().into_client_request() {
+            Ok(request) => request,
+            Err(error) => return Err(error.into()),
+        };
+        let authorization = match format!("Bearer {token}")
+            .parse::<tokio_tungstenite::tungstenite::http::HeaderValue>()
+        {
+            Ok(value) => value,
+            Err(error) => return Err(error.into()),
+        };
+        request.headers_mut().insert(AUTHORIZATION, authorization);
+
+        match connect_async(request).await {
             Ok((ws_stream, _)) => {
                 tracing::info!("Companion daemon connected successfully.");
                 backoff = Duration::from_millis(100);

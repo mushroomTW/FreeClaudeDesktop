@@ -86,6 +86,7 @@ async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     check_deprecated_runtime(args.runtime.as_ref())?;
     warn_deprecated_env_vars();
     let port = proxy_port()?;
+    ensure_launcher_settings(port)?;
     start_proxy().await?;
     free_claude_core::update_config_port(port)?;
     let _ = crate::runtime::native::start_companion(port);
@@ -101,8 +102,22 @@ async fn start(args: HiddenRuntimeArgs) -> Result<(), Box<dyn std::error::Error>
     check_deprecated_runtime(args.runtime.as_ref())?;
     warn_deprecated_env_vars();
     let port = proxy_port()?;
+    ensure_launcher_settings(port)?;
     start_proxy().await?;
     let _ = crate::runtime::native::start_companion(port);
+    Ok(())
+}
+
+/// 初始化受保護 loopback Proxy 必要的設定與 token。
+fn ensure_launcher_settings(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    let mut settings = free_claude_core::get_launcher_settings().unwrap_or_default();
+    if settings.gateway.proxy_auth_token.trim().is_empty()
+        || settings.gateway.proxy_auth_token == free_claude_core::constants::PROXY_AUTH_TOKEN
+    {
+        settings.gateway.proxy_auth_token = free_claude_core::generate_proxy_auth_token()?;
+    }
+    settings.desktop.active_port = Some(port);
+    free_claude_core::save_launcher_settings(&settings)?;
     Ok(())
 }
 
@@ -182,12 +197,17 @@ fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error:
 
 /// 啟動或執行 `open_dashboard` 流程。
 fn open_dashboard() -> Result<(), Box<dyn std::error::Error>> {
-    let port = free_claude_core::get_launcher_settings()
-        .and_then(|settings| settings.desktop.active_port)
-        .unwrap_or(3000);
-    let url = format!("http://127.0.0.1:{port}/dashboard");
+    let settings = free_claude_core::get_launcher_settings()
+        .ok_or("尚未設定 Gateway，無法開啟受保護的控制台")?;
+    let port = settings.desktop.active_port.unwrap_or(3000);
+    let token = settings.gateway.proxy_auth_token.trim();
+    if token.is_empty() {
+        return Err("Proxy 驗證 token 不可為空".into());
+    }
+    let encoded_token: String = url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
+    let url = format!("http://127.0.0.1:{port}/dashboard#{encoded_token}");
 
-    println!("正在開啟 Web 控制台：{url}");
+    println!("正在開啟 Web 控制台：http://127.0.0.1:{port}/dashboard");
 
     #[cfg(target_os = "windows")]
     let status = std::process::Command::new("cmd")

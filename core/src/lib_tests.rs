@@ -106,13 +106,22 @@ fn public_config_hides_api_key() {
     let public_cfg = to_public_config(&settings);
     assert_eq!(public_cfg["baseUrl"], "https://openrouter.ai/api");
     assert_eq!(public_cfg["authScheme"], "bearer");
-    assert_eq!(public_cfg["hasApiKey"], true);
+    assert_eq!(public_cfg["hasApiKey"], false);
     assert!(public_cfg.get("realApiKey").is_none());
     assert!(public_cfg.get("apiKey").is_none());
     assert!(public_cfg.get("proxyAuthToken").is_none());
     assert!(public_cfg.get("discoveredModels").is_some());
     assert!(public_cfg.get("transportType").is_some());
     assert!(public_cfg.get("gateway").is_none());
+}
+
+#[test]
+/// 無法解封的舊版明文 fallback 不得被宣告為可用 API key。
+fn public_config_rejects_plaintext_fallback_key() {
+    let mut settings = Settings::default();
+    settings.gateway.real_api_key = "fallback:legacy-secret".to_string();
+
+    assert_eq!(to_public_config(&settings)["hasApiKey"], false);
 }
 
 #[test]

@@ -170,7 +170,7 @@ fn request_diagnostic_contains_no_user_content() {
 }
 
 #[test]
-/// 驗證 `test_to_public_config_excludes_plaintext_api_key` 的行為符合預期。
+/// 未受保護的明文 API key 不得被當成已可用設定。
 fn test_to_public_config_excludes_plaintext_api_key() {
     let settings = {
         let mut settings = Settings::default();
@@ -180,8 +180,7 @@ fn test_to_public_config_excludes_plaintext_api_key() {
 
     let public_cfg = to_public_config(&settings);
 
-    // Verify hasApiKey is true and no plain text api key is leaked
-    assert!(public_cfg.get("hasApiKey").unwrap().as_bool().unwrap());
+    assert!(!public_cfg.get("hasApiKey").unwrap().as_bool().unwrap());
     assert!(public_cfg.get("realApiKey").is_none());
     assert!(public_cfg.get("apiKey").is_none());
     assert!(public_cfg.get("proxyAuthToken").is_none());

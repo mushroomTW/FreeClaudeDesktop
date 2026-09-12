@@ -378,9 +378,7 @@ pub fn parse_json_text(text: &str) -> serde_json::Result<Value> {
 
 /// 轉換 `to_public_config` 對應的資料格式。
 pub fn to_public_config(settings: &Settings) -> Value {
-    let has_key = unprotect_secret(&settings.gateway.real_api_key)
-        .map(|key| !key.is_empty())
-        .unwrap_or(!settings.gateway.real_api_key.is_empty());
+    let has_key = unprotect_secret(&settings.gateway.real_api_key).is_ok_and(|key| !key.is_empty());
 
     json!({
         "baseUrl": settings.gateway.real_base_url,
@@ -482,7 +480,11 @@ impl LegacyFlatSettings {
             settings.gateway.real_auth_scheme = value;
         }
         if let Some(value) = self.real_api_key.clone() {
-            settings.gateway.real_api_key = value;
+            // 舊版扁平設定可能含有明文或 `fallback:` secret；遷移時只保留
+            // 不含 secret 的 keyring 參照，讓下一次寫回自動清除不安全資料。
+            if value.is_empty() || value.starts_with("keyring:") {
+                settings.gateway.real_api_key = value;
+            }
         }
         if let Some(value) = self.transport_type.clone() {
             settings.gateway.transport_type = value;
@@ -622,8 +624,13 @@ pub fn load_launcher_settings() -> AppResult<Option<Settings>> {
     }
     let text = fs::read_to_string(path)?;
     let value = parse_json_text(&text).map_err(AppError::InvalidConfigJson)?;
-    let (settings, migrated) = deserialize_settings_value(value)?;
-    if migrated {
+    let (mut settings, migrated) = deserialize_settings_value(value)?;
+    let has_unprotected_api_key = !settings.gateway.real_api_key.is_empty()
+        && !settings.gateway.real_api_key.starts_with("keyring:");
+    if has_unprotected_api_key {
+        settings.gateway.real_api_key.clear();
+    }
+    if migrated || has_unprotected_api_key {
         save_launcher_settings(&settings)?;
     }
     Ok(Some(settings))
@@ -760,7 +767,7 @@ mod tests {
         let value = serde_json::json!({
             "realBaseUrl": "https://legacy.example.com",
             "realAuthScheme": "x-api-key",
-            "realApiKey": "fallback:legacy-secret",
+            "realApiKey": "keyring:real_api_key",
             "proxyAuthToken": "legacy-proxy-token",
             "activePort": 3001
         });
@@ -770,9 +777,23 @@ mod tests {
         assert!(migrated);
         assert_eq!(settings.gateway.real_base_url, "https://legacy.example.com");
         assert_eq!(settings.gateway.real_auth_scheme, "x-api-key");
-        assert_eq!(settings.gateway.real_api_key, "fallback:legacy-secret");
+        assert_eq!(settings.gateway.real_api_key, "keyring:real_api_key");
         assert_eq!(settings.gateway.proxy_auth_token, "legacy-proxy-token");
         assert_eq!(settings.desktop.active_port, Some(3001));
+    }
+
+    #[test]
+    /// 遷移舊版設定時不得保留明文 fallback API key。
+    fn legacy_fallback_api_key_is_discarded() {
+        let value = serde_json::json!({
+            "realBaseUrl": "https://legacy.example.com",
+            "realApiKey": "fallback:legacy-secret",
+            "proxyAuthToken": "legacy-proxy-token"
+        });
+
+        let (settings, migrated) = deserialize_settings_value(value).unwrap();
+        assert!(migrated);
+        assert!(settings.gateway.real_api_key.is_empty());
     }
 
     #[test]

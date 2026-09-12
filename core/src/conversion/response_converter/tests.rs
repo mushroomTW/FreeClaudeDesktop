@@ -15,7 +15,8 @@ fn cors_origin_allows_only_local_http_port() {
     assert!(is_allowed_origin(Some("https://preview.claude.com"), 3000));
     assert!(is_allowed_origin(Some("app://localhost"), 3000));
     assert!(is_allowed_origin(Some("anthropic://desktop"), 3000));
-    assert!(is_allowed_origin(Some("file://"), 3000));
+    assert!(!is_allowed_origin(Some("file://"), 3000));
+    assert!(!is_allowed_origin(Some("null"), 3000));
     // Browser origins that are not Claude Desktop → blocked
     assert!(!is_allowed_origin(Some("https://evil.example"), 3000));
     assert!(!is_allowed_origin(Some("http://localhost:4000"), 3000));
@@ -484,15 +485,13 @@ fn models_response_keeps_same_name_variants_when_neither_1m_enabled() {
 #[test]
 /// 驗證 `is_allowed_origin` 涵蓋剩餘分支。
 fn is_allowed_origin_covers_remaining_branches() {
-    assert!(is_allowed_origin(Some(""), 3000));
+    assert!(!is_allowed_origin(Some(""), 3000));
     assert!(!is_allowed_origin(Some("not a url"), 3000));
-    assert!(is_allowed_origin(Some("null"), 3000));
     assert!(!is_allowed_origin(Some("http://localhost:9999"), 3000));
     assert!(is_allowed_origin(Some("https://sub.claude.ai"), 3000));
     assert!(is_allowed_origin(Some("https://deep.sub.claude.com"), 3000));
-    // 已知寬鬆行為：只要是 localhost 且同埠即放行，不限 scheme（file://、app://、ftp:// 皆同）。
-    // 這是 CORS 對本地代理的刻意寬鬆，非安全邊界。
-    assert!(is_allowed_origin(Some("https://localhost:3000"), 3000));
+    // 本機 Proxy 僅提供 HTTP，其他 scheme 不得偽裝成同埠的可信 Origin。
+    assert!(!is_allowed_origin(Some("https://localhost:3000"), 3000));
     assert!(!is_allowed_origin(Some("https://localhost:4000"), 3000));
 }
 

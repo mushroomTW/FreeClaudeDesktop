@@ -14,14 +14,7 @@ pub fn is_allowed_origin(origin: Option<&str>, port: u16) -> bool {
     let Some(origin) = origin else {
         return true;
     };
-    if origin.is_empty() {
-        return true;
-    }
-
-    if matches!(
-        origin,
-        "file://" | "null" | "anthropic://desktop" | "app://localhost"
-    ) {
+    if matches!(origin, "anthropic://desktop" | "app://localhost") {
         return true;
     }
 
@@ -30,7 +23,7 @@ pub fn is_allowed_origin(origin: Option<&str>, port: u16) -> bool {
     };
     let host = url.host_str().unwrap_or_default();
     let is_local = matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]");
-    if is_local && url.port_or_known_default() == Some(port) {
+    if url.scheme() == "http" && is_local && url.port_or_known_default() == Some(port) {
         return true;
     }
 
