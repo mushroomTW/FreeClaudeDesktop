@@ -14,7 +14,7 @@ url.workspace = true
 futures.workspace = true
 getrandom = "0.4"
 tokio.workspace = true
-async-openai = { version = "0.41.1", features = ["chat-completion", "model", "responses", "byot", "rustls"] }
+async-openai = { version = "0.42.1", features = ["chat-completion", "model", "responses", "byot", "rustls"] }
 thiserror.workspace = true
 tracing.workspace = true
 keyring = "4.1.2"
