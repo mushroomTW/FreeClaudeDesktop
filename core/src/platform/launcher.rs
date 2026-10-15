@@ -304,21 +304,6 @@ fn powershell_output(script: &str) -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
-/// 讀取 `get_claude_appx_package_family_name` 所需的資料。
-fn get_claude_appx_package_family_name() -> Option<String> {
-    powershell_output(
-        "Get-AppxPackage -Name *Claude* | Select-Object -ExpandProperty PackageFamilyName",
-    )
-}
-
-#[cfg(target_os = "windows")]
-/// 讀取 `get_claude_appx_application_id` 所需的資料。
-fn get_claude_appx_application_id() -> String {
-    powershell_output("$app = Get-AppxPackage -Name *Claude*; if ($app) { $manifestPath = Join-Path $app.InstallLocation 'AppxManifest.xml'; if (Test-Path $manifestPath) { [xml]$xml = Get-Content $manifestPath; $xml.Package.Applications.Application.Id } }")
-        .unwrap_or_else(|| "Claude".to_string())
-}
-
-#[cfg(target_os = "windows")]
 /// 解析並選出 `detect_claude_path` 的結果。
 pub fn detect_claude_path() -> Option<PathBuf> {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<PathBuf>>> =
@@ -425,21 +410,9 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
 
     let user_data_arg = format!("--user-data-dir={}", mirror_profile_dir().display());
 
-    let launched = if let Some(family) = get_claude_appx_package_family_name() {
-        let target_str = target.to_string_lossy();
-        if target_str.contains("WindowsApps") || target_str.contains(&family) {
-            let aumid = format!(
-                "shell:AppsFolder\\{}!{}",
-                family,
-                get_claude_appx_application_id()
-            );
-            Command::new("explorer.exe").arg(aumid).spawn()
-        } else {
-            Command::new(&target).arg(&user_data_arg).spawn()
-        }
-    } else {
-        Command::new(&target).arg(&user_data_arg).spawn()
-    };
+    // Store 套件可能包含多個 Application，直接執行已驗證的主程式，
+    // 避免組合出無效的 AppsFolder ID，並確保傳入鏡像 profile 參數。
+    let launched = Command::new(&target).arg(&user_data_arg).spawn();
 
     launched
         .map(|_| target)
@@ -524,10 +497,7 @@ pub fn claude_config(
         "coworkTabEnabled": true,
         "isClaudeCodeForDesktopEnabled": true,
         "chatTabEnabled": true,
-        "isDesktopExtensionEnabled": true,
-        "extensions": {
-            "enabled": true
-        }
+        "isDesktopExtensionEnabled": true
     });
 
     if !inference_models.is_empty() {
@@ -539,15 +509,10 @@ pub fn claude_config(
                 } else {
                     &m.label_override
                 };
-                let display = if m.display_name.is_empty() {
-                    &m.name
-                } else {
-                    &m.display_name
-                };
+                // Claude Desktop 設定的顯示名稱只接受 labelOverride。
                 let mut item = json!({
                     "name": &m.name,
-                    "labelOverride": label,
-                    "displayName": display
+                    "labelOverride": label
                 });
                 if m.supports1m == Some(true) {
                     item["supports1m"] = serde_json::json!(true);

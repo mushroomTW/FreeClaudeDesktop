@@ -237,7 +237,7 @@ fn claude_config_uses_supported_1m_variant_without_double_label() {
     assert_eq!(models.len(), 1);
     assert_eq!(models[0]["name"], "claude-sonnet-5[0]");
     assert_eq!(models[0]["labelOverride"], "deepseek-v4-flash");
-    assert_eq!(models[0]["displayName"], "deepseek-v4-flash");
+    assert!(models[0].get("displayName").is_none());
     assert_eq!(models[0]["supports1m"], true);
     assert_eq!(models[0]["prefer1m"], true);
 }
@@ -250,7 +250,7 @@ fn claude_config_enables_chat_and_extensions_by_default() {
     assert_eq!(config["isClaudeCodeForDesktopEnabled"], true);
     assert_eq!(config["chatTabEnabled"], true);
     assert_eq!(config["isDesktopExtensionEnabled"], true);
-    assert_eq!(config["extensions"]["enabled"], true);
+    assert!(config.get("extensions").is_none());
 }
 
 #[test]
