@@ -15,9 +15,12 @@ use cli_args::{
 };
 use serde_json::Value;
 
-#[tokio::main]
 /// 啟動程式並執行主要流程。
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    free_claude_core::runtime::build_runtime()?.block_on(run())
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {

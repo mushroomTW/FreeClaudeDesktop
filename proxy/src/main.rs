@@ -3,9 +3,14 @@
 use free_claude_core::constants::DEFAULT_PORT;
 use freeclaude_proxy::server;
 
-#[tokio::main]
 /// 啟動程式並執行主要流程。
-async fn main() {
+fn main() {
+    free_claude_core::runtime::build_runtime()
+        .expect("無法建立 Proxy 非同步執行環境")
+        .block_on(run());
+}
+
+async fn run() {
     let _logging_guard = server::init_logging();
     let port = std::env::var("FREECLAUDE_PROXY_PORT")
         .ok()

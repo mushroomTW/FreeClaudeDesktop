@@ -31,14 +31,18 @@ pub fn start_sse_stream_conversion(
     let (tx, rx) = mpsc::channel(100);
 
     tokio::spawn(async move {
-        if let Err(e) = convert_stream_inner(
-            response,
-            req_model,
-            tx.clone(),
-            reasoning_mode.unwrap_or_default(),
-        )
-        .await
-        {
+        // 下游離線時取消整個轉換 future，連等待上游資料的連線也一併釋放。
+        let result = tokio::select! {
+            biased;
+            _ = tx.closed() => return,
+            result = convert_stream_inner(
+                response.bytes_stream(),
+                req_model,
+                tx.clone(),
+                reasoning_mode.unwrap_or_default(),
+            ) => result,
+        };
+        if let Err(e) = result {
             tracing::error!("SSE stream conversion error: {:?}", e);
             let err_json = json!({
                 "type": "error",
@@ -473,13 +477,12 @@ async fn handle_done_event(
 
 /// 轉換或更新 `convert_stream_inner` 所處理的內容。
 async fn convert_stream_inner(
-    response: reqwest::Response,
+    mut stream: impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Unpin,
     req_model: String,
     tx: mpsc::Sender<Result<Bytes, std::convert::Infallible>>,
     reasoning_mode: ReasoningReplayMode,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut stream = response.bytes_stream();
-    let mut line_buffer = String::new();
+    let mut line_buffer = Vec::new();
     let msg_id = format!(
         "msg_{}",
         SystemTime::now()
@@ -498,11 +501,16 @@ async fn convert_stream_inner(
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result?;
-        let text = String::from_utf8_lossy(&chunk);
-        line_buffer.push_str(&text);
-        while let Some(pos) = line_buffer.find('\n') {
-            let line = line_buffer[..pos].to_string();
-            line_buffer = line_buffer[pos + 1..].to_string();
+        line_buffer.extend_from_slice(&chunk);
+        let mut consumed = 0;
+        while let Some(offset) = line_buffer[consumed..]
+            .iter()
+            .position(|&byte| byte == b'\n')
+        {
+            let pos = consumed + offset;
+            // 完整的一行才解碼，避免 UTF-8 字元跨網路區塊時遭到替換。
+            let line = String::from_utf8_lossy(&line_buffer[consumed..pos]);
+            consumed = pos + 1;
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
@@ -526,10 +534,12 @@ async fn convert_stream_inner(
                 )
                 .await;
                 if should_break {
-                    break;
+                    return Ok(());
                 }
             }
         }
+        // 每個網路區塊最多搬移一次未完成的尾段，避免逐行複製整份剩餘資料。
+        compact_line_buffer(&mut line_buffer, consumed);
     }
     if sent_start && !sent_stop {
         handle_done_event(
@@ -546,6 +556,18 @@ async fn convert_stream_inner(
         .await;
     }
     Ok(())
+}
+
+/// 保留未完成的尾段，並在大型事件處理完後回收尖峰配置。
+fn compact_line_buffer(buffer: &mut Vec<u8>, consumed: usize) {
+    const MAX_RETAINED_CAPACITY: usize = 64 * 1024;
+    if buffer.capacity() > MAX_RETAINED_CAPACITY && buffer.len() - consumed <= MAX_RETAINED_CAPACITY
+    {
+        // 只複製仍需保留的尾段；一般區塊與大型未完成行沿用原配置。
+        *buffer = buffer[consumed..].to_vec();
+    } else {
+        buffer.drain(..consumed);
+    }
 }
 
 /// 執行 `finish_thinking_block` 對應的處理流程。

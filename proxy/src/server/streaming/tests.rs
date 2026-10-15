@@ -1,6 +1,147 @@
 use super::*;
 use axum::{Router, http::Response as HttpResponse, routing::get};
 
+#[test]
+fn compact_line_buffer_releases_large_consumed_lines() {
+    for tail in [b"".as_slice(), b"data: {\"choices\":".as_slice()] {
+        let mut buffer = vec![b'x'; 1024 * 1024];
+        buffer.push(b'\n');
+        let consumed = buffer.len();
+        buffer.extend_from_slice(tail);
+
+        compact_line_buffer(&mut buffer, consumed);
+
+        assert_eq!(buffer, tail, "必須保留下一行尚未完成的資料");
+        assert!(
+            buffer.capacity() <= 64 * 1024,
+            "已消耗的大型行不應保留尖峰配置"
+        );
+    }
+}
+
+#[test]
+fn compact_line_buffer_reuses_small_allocations_and_preserves_large_partial_lines() {
+    let mut small = Vec::with_capacity(4096);
+    small.extend_from_slice(b"data: {}\npartial");
+    let allocation = small.as_ptr();
+    compact_line_buffer(&mut small, 9);
+    assert_eq!(small, b"partial");
+    assert_eq!(small.as_ptr(), allocation, "一般區塊應重用原配置");
+
+    let mut large_partial = vec![b'x'; 1024 * 1024];
+    let allocation = large_partial.as_ptr();
+    compact_line_buffer(&mut large_partial, 0);
+    assert_eq!(large_partial.len(), 1024 * 1024);
+    assert_eq!(
+        large_partial.as_ptr(),
+        allocation,
+        "大型未完成行不應反覆重新配置"
+    );
+}
+
+#[tokio::test]
+async fn stream_preserves_utf8_split_across_chunks_and_many_lines() {
+    let payload = concat!(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"繁體中文🍄\"}}]}\r\n\r\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"第二行\"}}]}\n\n"
+    )
+    .repeat(100);
+    let mut payload = payload.into_bytes();
+    payload.extend_from_slice(b"data: [DONE]\n\n");
+    // 將第一個中文字元切開；剩餘區塊一次攜帶大量事件。
+    let split = payload.iter().position(|&byte| byte >= 128).unwrap() + 1;
+    let chunks = vec![
+        Ok(Bytes::copy_from_slice(&payload[..split])),
+        Ok(Bytes::copy_from_slice(&payload[split..])),
+    ];
+    let (tx, mut rx) = mpsc::channel(8);
+    let task = tokio::spawn(convert_stream_inner(
+        futures::stream::iter(chunks),
+        "test".into(),
+        tx,
+        ReasoningReplayMode::Separate,
+    ));
+    let mut out = String::new();
+    while let Some(Ok(bytes)) = rx.recv().await {
+        out.push_str(std::str::from_utf8(&bytes).unwrap());
+    }
+    task.await.unwrap().unwrap();
+    assert_eq!(out.matches("繁體中文🍄").count(), 100);
+    assert_eq!(out.matches("第二行").count(), 100);
+    assert_eq!(out.matches("event: message_stop").count(), 1);
+    assert!(!out.contains('\u{fffd}'));
+}
+
+async fn open_unfinished_upstream() -> (
+    reqwest::Response,
+    mpsc::Sender<Result<Bytes, std::convert::Infallible>>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (tx, rx) = mpsc::channel::<Result<Bytes, std::convert::Infallible>>(4);
+    // 先送註解以確保 HTTP 回應標頭送出，後續由測試控制串流生命週期。
+    tx.send(Ok(Bytes::from_static(b": connected\n\n")))
+        .await
+        .unwrap();
+    let body = axum::body::Body::from_stream(tokio_stream::wrappers::ReceiverStream::new(rx));
+    let body = std::sync::Arc::new(tokio::sync::Mutex::new(Some(body)));
+    let app = Router::new().route(
+        "/",
+        get(move || {
+            let body = body.clone();
+            async move {
+                HttpResponse::builder()
+                    .header("Content-Type", "text/event-stream")
+                    .body(body.lock().await.take().unwrap())
+                    .unwrap()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let response = reqwest::get(format!("http://{addr}/")).await.unwrap();
+    (response, tx, server)
+}
+
+#[tokio::test]
+async fn stream_releases_upstream_when_consumer_disconnects() {
+    let (response, upstream, server) = open_unfinished_upstream().await;
+    let rx = start_sse_stream_conversion(response, "test".into(), None);
+    drop(rx);
+    let released = tokio::time::timeout(Duration::from_secs(1), upstream.closed()).await;
+    server.abort();
+    assert!(released.is_ok(), "用戶端斷線後應釋放尚未完成的上游串流");
+}
+
+#[tokio::test]
+async fn stream_finishes_on_done_without_waiting_for_upstream_eof() {
+    let (response, upstream, server) = open_unfinished_upstream().await;
+    let mut rx = start_sse_stream_conversion(response, "test".into(), None);
+    upstream
+        .send(Ok(Bytes::from_static(
+            concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n",
+                "data: [DONE]\n\n"
+            )
+            .as_bytes(),
+        )))
+        .await
+        .unwrap();
+    let completed = tokio::time::timeout(Duration::from_secs(1), async {
+        let mut out = String::new();
+        while let Some(Ok(bytes)) = rx.recv().await {
+            out.push_str(std::str::from_utf8(&bytes).unwrap());
+        }
+        assert_eq!(out.matches("event: message_stop").count(), 1);
+    })
+    .await;
+    server.abort();
+    assert!(
+        completed.is_ok(),
+        "收到 DONE 後應立即結束，不等待上游關閉連線"
+    );
+}
+
 #[tokio::test]
 /// 驗證 `stream_converts_reasoning_content_to_thinking_events` 的行為符合預期。
 async fn stream_converts_reasoning_content_to_thinking_events() {

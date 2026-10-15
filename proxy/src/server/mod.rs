@@ -28,7 +28,10 @@ pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let _ = std::fs::create_dir_all(&local_dir);
 
     let file_appender = tracing_appender::rolling::daily(local_dir, "launcher.log");
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    // 預設會預配置 128,000 個佇列槽；常駐代理使用小型有界佇列即可。
+    let (non_blocking, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
+        .buffered_lines_limit(2_048)
+        .finish(file_appender);
 
     let file_layer = fmt::layer()
         .with_writer(non_blocking)
@@ -92,7 +95,7 @@ pub fn start_server_background(port: u16) -> Result<ServerHandle, ServerError> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", port))?;
     listener.set_nonblocking(true)?;
     let port = listener.local_addr()?.port();
-    let runtime = tokio::runtime::Runtime::new()?;
+    let runtime = free_claude_core::runtime::build_runtime()?;
     let (shutdown, rx) = tokio::sync::watch::channel(false);
     let thread = std::thread::spawn(move || {
         runtime.block_on(async move {

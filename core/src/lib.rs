@@ -6,6 +6,7 @@ pub mod models;
 pub mod models_cache;
 pub mod optimization;
 pub mod platform;
+pub mod runtime;
 
 pub use core::{config, constants, error};
 pub use error::{AppError, AppResult};
