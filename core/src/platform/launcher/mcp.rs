@@ -1,4 +1,5 @@
 use serde_json::{Value, json};
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,9 +25,7 @@ pub fn app_data_roaming_dir() -> PathBuf {
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        env::var_os("HOME")
-            .map(|p| PathBuf::from(p).join(".config"))
-            .unwrap_or_else(|| PathBuf::from("."))
+        crate::common::local_app_data()
     }
 }
 
@@ -277,6 +276,7 @@ pub fn restore_managed_deployment_mode(mut data: Value) -> Value {
 
 /// 轉換或更新 `apply_3p_deployment_mode` 所處理的內容。
 pub fn apply_3p_deployment_mode() -> AppResult<()> {
+    super::ensure_mirror_profile_initialized()?;
     let all_mcp_servers = collect_all_mcp_servers_result()?;
     let mut writes = Vec::new();
 

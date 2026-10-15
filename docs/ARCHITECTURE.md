@@ -71,9 +71,11 @@ flowchart TD
     H --> R
 ```
 
-An alias is stable for the returned model-list position and uses a bracketed index, such as `claude-opus-5[0]`. A 1M-context capability is represented by `supports1m: true`; the model ID and display label remain clean. `prefer1m: true` makes the 1M variant the default picker selection when that entry is first, and has no effect without `supports1m`. Alias selection is determined by reasoning support: `max` maps to Opus, other supported reasoning levels map to Sonnet, and models without reasoning support map to Haiku.
+An alias is stable for the returned model-list position and uses a bracketed index, such as `claude-opus-5[0]`. A 1M-context capability is represented by `supports1m: true`; the model ID and display label remain clean. `prefer1m: true` hides the standard variant and offers only the 1M option; false or an unset preference keeps both options. It has no effect without `supports1m`. Alias selection is determined by reasoning support: `max` maps to Opus, other supported reasoning levels map to Sonnet, and models without reasoning support map to Haiku.
 
-During request conversion, Claude `thinking.budget_tokens` is translated to a supported `reasoning_effort` level before the upstream request is sent. In response conversion, upstream reasoning is represented either as native Claude thinking blocks or as inline `<antThinking>` text, according to `reasoning_replay_mode`.
+During request conversion, explicit `output_config.effort` takes precedence over the legacy `thinking.budget_tokens` mapping. Disabled thinking sends `none` only when the upstream advertises support; adaptive thinking without an explicit effort keeps the upstream default. Base and `[1m]` aliases share capability lookup. In response conversion, upstream reasoning is represented either as native Claude thinking blocks or as inline `<antThinking>` text, according to `reasoning_replay_mode`.
+
+Tool-result images are carried in a user multimodal message after all matching tool responses, with the originating tool ID attached. This preserves screenshots while keeping Chat Completions tool messages textual. Incomplete or unsupported image formats fail explicitly.
 
 ## State ownership
 
@@ -82,7 +84,7 @@ flowchart LR
     SETTINGS["Settings store"] --> PROXY["Proxy request handlers"]
     SETTINGS --> Dashboard["Web Dashboard settings API"]
     KEYRING["OS keyring"] --> PROXY
-    PROFILE["Isolated Claude Desktop profile"] <-->|"configure / sync"| CLI["CLI"]
+    PROFILE["Claude Desktop standard third-party profile"] <-->|"configure / sync"| CLI["CLI"]
     CLI --> SETTINGS
     PROXY --> CACHE["Model-route cache"]
 ```
@@ -90,3 +92,15 @@ flowchart LR
 - The settings store owns non-secret proxy configuration and model capability overrides.
 - The operating-system keyring owns gateway credentials; settings APIs do not return them.
 - The CLI owns lifecycle and profile synchronization. The proxy owns request-time model cache state.
+
+## 第三方 Profile 位置
+
+設定庫、MCP、同步與重建操作統一使用 Desktop 的標準第三方目錄：
+
+| 平台 | 目錄 |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%/Claude-3p` |
+| macOS | `$HOME/Library/Application Support/Claude-3p` |
+| Linux | `${XDG_CONFIG_HOME:-$HOME/.config}/Claude-3p` |
+
+啟動時不傳入 `--user-data-dir`，也不依賴正式版會移除的 `CLAUDE_USER_DATA_DIR`。首次初始化可複製官方 Profile 的一般資料；同步與重建保留目前 Proxy 設定庫。沒有舊版 `FreeClaudeDesktop/claude_profile` 的遷移邏輯。Windows 官方資料偵測也涵蓋新版 Store 的 `Claude-Data` 與套件資料目錄。

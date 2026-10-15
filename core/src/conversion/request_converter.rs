@@ -25,7 +25,8 @@ fn effort_rank(effort: &str) -> Option<u8> {
         "low" => Some(1),
         "medium" => Some(2),
         "high" => Some(3),
-        "max" => Some(4),
+        "xhigh" => Some(4),
+        "max" => Some(5),
         _ => None,
     }
 }
@@ -205,10 +206,7 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     if let Some(m) = try_family_override(settings, family) {
         return Some(m);
     }
-    let clean_model = requested_model
-        .strip_suffix("[1m]")
-        .or_else(|| requested_model.strip_suffix("[1M]"))
-        .unwrap_or(requested_model);
+    let clean_model = base_model_alias(requested_model);
     if let Some(m) = try_exact_routes(requested_model, clean_model, settings) {
         return Some(m);
     }
@@ -227,6 +225,14 @@ pub fn resolve_model_route(requested_model: &str, settings: &Settings) -> Option
     safety_net_route(requested_model, settings)
 }
 
+/// 模型路由與能力查詢共用 1M 變體的正規化規則。
+fn base_model_alias(model: &str) -> &str {
+    model
+        .strip_suffix("[1m]")
+        .or_else(|| model.strip_suffix("[1M]"))
+        .unwrap_or(model)
+}
+
 fn apply_model_mapping(data: &mut Value, req_model: &str, settings: &Settings) {
     if let Some(mapped) = resolve_model_route(req_model, settings) {
         tracing::info!("[model 映射] {} → {}", req_model, mapped);
@@ -240,16 +246,57 @@ fn apply_model_mapping(data: &mut Value, req_model: &str, settings: &Settings) {
 }
 
 fn apply_thinking_mapping(data: &mut Value, req: &ClaudeMessagesRequest, settings: &Settings) {
-    let Some(ref thinking) = req.thinking else {
-        return;
-    };
-    if !thinking.enabled.unwrap_or(true) {
+    let thinking = req.thinking.as_ref();
+    let disabled = thinking.is_some_and(|thinking| {
+        thinking.kind.as_deref() == Some("disabled") || thinking.enabled == Some(false)
+    });
+    let target_model = data["model"].as_str().unwrap_or("");
+    let supported = settings
+        .models
+        .real_model_reasoning_efforts
+        .get(&req.model)
+        .or_else(|| {
+            settings
+                .models
+                .real_model_reasoning_efforts
+                .get(base_model_alias(&req.model))
+        })
+        .or_else(|| {
+            settings
+                .models
+                .real_model_reasoning_efforts
+                .get(target_model)
+        });
+    if disabled {
+        // 只有上游明確支援 none 時才送出，避免把關閉思考改成低強度。
+        if supported.is_some_and(|levels| levels.iter().any(|level| level == "none")) {
+            data["reasoning_effort"] = json!("none");
+        }
         return;
     }
-    let budget = thinking.budget_tokens.unwrap_or(1024);
-    let effort = thinking_budget_to_effort(budget);
-    let target_model = data["model"].as_str().unwrap_or("");
-    if let Some(supported) = settings.models.real_model_reasoning_efforts.get(&req.model) {
+    let explicit = req
+        .output_config
+        .as_ref()
+        .and_then(|config| config.effort.as_deref());
+    let effort = explicit.or_else(|| {
+        thinking.and_then(|thinking| {
+            if thinking.kind.as_deref() == Some("adaptive") && thinking.budget_tokens.is_none() {
+                None // 自適應且未指定強度時，保留上游預設。
+            } else {
+                Some(thinking_budget_to_effort(
+                    thinking.budget_tokens.unwrap_or(1024),
+                ))
+            }
+        })
+    });
+    let Some(effort) = effort else { return };
+    if let Some(supported) = supported {
+        if effort == "none" {
+            if supported.iter().any(|level| level == "none") {
+                data["reasoning_effort"] = json!("none");
+            }
+            return;
+        }
         if let Some(e) = clamp_reasoning_effort(effort, supported) {
             data["reasoning_effort"] = Value::String(e.to_string());
         }
@@ -364,6 +411,25 @@ fn build_tool_messages(blocks: &[ClaudeContentBlock]) -> Vec<Value> {
 }
 
 fn extract_after_tools_user_text(blocks: &[ClaudeContentBlock]) -> Option<Value> {
+    // Chat Completions 的 tool 訊息不接受圖片；等所有工具結果送出後，
+    // 用帶有工具 ID 的 user 多模態訊息補上截圖，維持工具配對順序。
+    let mut images = Vec::new();
+    for block in blocks {
+        if let ClaudeContentBlock::ToolResult {
+            tool_use_id,
+            content: Some(ClaudeToolResultContent::Blocks(results)),
+        } = block
+        {
+            for result in results {
+                if result.get("type").and_then(Value::as_str) == Some("image") {
+                    images.push(json!({"type":"text","text":format!("Image from tool result {tool_use_id}:")}));
+                    if let Some(image) = tool_result_image(result) {
+                        images.push(image);
+                    }
+                }
+            }
+        }
+    }
     let texts: Vec<String> = blocks
         .iter()
         .filter_map(|b| match b {
@@ -371,6 +437,14 @@ fn extract_after_tools_user_text(blocks: &[ClaudeContentBlock]) -> Option<Value>
             _ => None,
         })
         .collect();
+    if !images.is_empty() {
+        images.extend(convert_user_blocks(blocks).0);
+        return Some(json!({"role":"user","content":images}));
+    }
+    let (user_parts, has_image) = convert_user_blocks(blocks);
+    if has_image {
+        return Some(json!({"role":"user","content":user_parts}));
+    }
     if texts.is_empty() {
         return None;
     }
@@ -380,6 +454,51 @@ fn extract_after_tools_user_text(blocks: &[ClaudeContentBlock]) -> Option<Value>
     } else {
         Some(json!({"role": "user", "content": combined}))
     }
+}
+
+/// 支援 Anthropic base64／URL 圖片，以及 MCP 直接回傳的圖片格式。
+fn tool_result_image(block: &Value) -> Option<Value> {
+    let source = block.get("source").unwrap_or(block);
+    let url = match source.get("type").and_then(Value::as_str) {
+        Some("url") => source.get("url")?.as_str()?.to_string(),
+        Some("base64") | Some("image") => {
+            let media_type = source
+                .get("media_type")
+                .or_else(|| source.get("mimeType"))?
+                .as_str()?;
+            let data = source.get("data")?.as_str()?;
+            format!("data:{media_type};base64,{data}")
+        }
+        _ => return None,
+    };
+    Some(json!({"type":"image_url","image_url":{"url":url}}))
+}
+
+fn validate_tool_result_images(
+    messages: &[crate::models::claude::ClaudeMessage],
+) -> Result<(), String> {
+    for message in messages {
+        if let ClaudeMessageContent::Blocks(blocks) = &message.content {
+            for block in blocks {
+                if let ClaudeContentBlock::ToolResult {
+                    content: Some(ClaudeToolResultContent::Blocks(results)),
+                    ..
+                } = block
+                {
+                    for result in results {
+                        if result.get("type").and_then(Value::as_str) == Some("image")
+                            && tool_result_image(result).is_none()
+                        {
+                            return Err(
+                                "Unsupported or incomplete image in tool_result".to_string()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn convert_user_blocks(blocks: &[ClaudeContentBlock]) -> (Vec<Value>, bool) {
@@ -566,6 +685,7 @@ pub fn anthropic_to_openai_request(
     settings: &Settings,
 ) -> Result<(String, bool), String> {
     let req: ClaudeMessagesRequest = serde_json::from_str(body).map_err(|e| e.to_string())?;
+    validate_tool_result_images(&req.messages)?;
 
     let max_toks = req.max_tokens.unwrap_or(4096);
     let mut data = json!({

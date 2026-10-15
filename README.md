@@ -7,7 +7,7 @@
 <!-- badge source: LICENSE (MIT) -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 <!-- badge source: Cargo.toml (workspace.package.rust-version) -->
-[![Rust 1.97.1](https://img.shields.io/badge/Rust-1.97.1-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust 1.99.0](https://img.shields.io/badge/Rust-1.99.0-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![HTTP: Axum](https://img.shields.io/badge/HTTP-Axum-6d3f8c.svg?style=for-the-badge)](https://github.com/tokio-rs/axum)
 [![Runtime: Tokio](https://img.shields.io/badge/runtime-Tokio-4c8eda.svg?style=for-the-badge)](https://tokio.rs/)
 
@@ -135,11 +135,11 @@ freecd install                # autostart enabled by default
 freecd install --no-autostart # without autostart
 ```
 
-Package: [`@mushroomtw/freeclaudedesktop@1.0.3`](packages/freeclaudedesktop/package.json) — ships `freecd` / `freeclaude` bins and six platform optional dependencies (`darwin-arm64/x64`, `linux-arm64/x64`, `win32-arm64/x64`).
+Package: [`@mushroomtw/freeclaudedesktop@1.0.4`](packages/freeclaudedesktop/package.json) — ships `freecd` / `freeclaude` bins and six platform optional dependencies (`darwin-arm64/x64`, `linux-arm64/x64`, `win32-arm64/x64`).
 
 ### Option B — Build from source
 
-Requires the [Rust 1.97.1 toolchain](https://www.rust-lang.org/tools/install) (`Cargo.toml` → `workspace.package.rust-version`).
+Requires the [Rust 1.99.0 toolchain](https://www.rust-lang.org/tools/install) (`Cargo.toml` → `workspace.package.rust-version`).
 
 ```bash
 git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
@@ -270,7 +270,7 @@ Detailed in [docs/EXTENSIONS_AND_SKILLS.md](docs/EXTENSIONS_AND_SKILLS.md). Summ
 
 ## Development
 
-Toolchain pinned to **Rust 1.97.1** (`rust-version` in `Cargo.toml`, enforced in `.github/workflows/ci.yml`).
+Toolchain pinned to **Rust 1.99.0** (`rust-version` in `Cargo.toml`, enforced in `.github/workflows/ci.yml`).
 
 ```bash
 cargo fmt --all -- --check
@@ -281,7 +281,7 @@ cargo check
 
 CI runs on `ubuntu-latest`, `macos-15`, `windows-latest`.
 
-Release builds for six targets (`x86_64`/`aarch64` × Linux/macOS/Windows) via `scripts/pack-platform.mjs` → `dist/npm/`; publish with `pnpm@10.15.0` (`packageManager` in `package.json`).
+Release builds for six targets (`x86_64`/`aarch64` × Linux/macOS/Windows) via `scripts/pack-platform.mjs` → `dist/npm/`; publish with `pnpm@12.11.2` (`packageManager` in `package.json`).
 
 SonarQube local analysis uses `sonar-project.properties` at the repo root (see `sonar-project.properties`).
 

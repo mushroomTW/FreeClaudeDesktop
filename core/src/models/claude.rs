@@ -86,8 +86,15 @@ pub struct ClaudeTool {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ClaudeThinkingConfig {
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
     pub enabled: Option<bool>,
     pub budget_tokens: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ClaudeOutputConfig {
+    pub effort: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -105,6 +112,7 @@ pub struct ClaudeMessagesRequest {
     pub tools: Option<Vec<ClaudeTool>>,
     pub tool_choice: Option<Value>,
     pub thinking: Option<ClaudeThinkingConfig>,
+    pub output_config: Option<ClaudeOutputConfig>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -33,11 +33,11 @@
         'models_fallback': '預設保底模型',
         'models_discovered_title': '已偵測上游模型清單',
         'models_fetch_btn': '抓取模型清單',
-        'models_discovered_desc': '勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬上下文支援；「預設 1M」讓第一個模型預設選用 1M。',
+        'models_discovered_desc': '勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」提供 100 萬上下文選項；「僅顯示 1M」隱藏該模型的一般版本。',
         'models_table_name': '模型名稱',
         'models_table_show': '顯示',
         'models_table_1m': '1M',
-        'models_table_1m_default': '預設 1M',
+        'models_table_1m_default': '僅顯示 1M',
         'models_table_effort': '推理強度',
         'models_toggle_show': '全選/取消顯示',
         'models_toggle_1m': '全選/取消 1M',
@@ -78,7 +78,7 @@
         'opt_thinking_inline': 'Inline（包裝在 <antThinking> 標籤）',
         'opt_thinking_separate': 'Separate（Claude 原生 thinking 區塊）',
         'btn_launch_claude': '啟動 Claude Desktop',
-        'btn_reset_mirror': '重置鏡像 Profile',
+        'btn_reset_mirror': '重置第三方 Profile',
         'btn_sync_original': '從原版同步',
         'btn_save_only': '儲存',
         'btn_save_launch': '啟動 ↵',
@@ -94,7 +94,7 @@
         'toast_restore_success': '已還原為官方 Claude Desktop 設定。',
         'toast_restore_failed': '還原失敗: ',
         'confirm_sync': '⚠ 確定要從官方原版 Claude Desktop 同步配置？',
-        'confirm_reset': '⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。',
+        'confirm_reset': '⚠ 確定要重置第三方 Profile 目錄？原版目錄完全不受影響。',
         'confirm_restore': '⚠ 還原為官方設定會停止 Claude Desktop，並移除 FreeClaudeDesktop 套用的設定。確定要繼續嗎？',
         'restore_title': '已還原為原版',
         'restore_desc': '官方 Claude Desktop 設定已恢復。請從原本的捷徑重新啟動 Claude Desktop。',
@@ -139,11 +139,11 @@
         'models_fallback': 'Fallback Model',
         'models_discovered_title': 'Discovered Models',
         'models_fetch_btn': 'Fetch Models',
-        'models_discovered_desc': 'Check "Show" to present in Claude; "1M" enables 1M-token context support; "Default 1M" makes the first model use 1M by default.',
+        'models_discovered_desc': 'Check "Show" to present in Claude; "1M" offers the 1M-token context option; "Only 1M" hides the model’s standard variant.',
         'models_table_name': 'Model Name',
         'models_table_show': 'Show',
         'models_table_1m': '1M',
-        'models_table_1m_default': 'Default 1M',
+        'models_table_1m_default': 'Only 1M',
         'models_table_effort': 'Reasoning Effort',
         'models_toggle_show': 'Toggle All Show',
         'models_toggle_1m': 'Toggle All 1M',
@@ -184,7 +184,7 @@
         'opt_thinking_inline': 'Inline (wrapped in <antThinking> tags)',
         'opt_thinking_separate': 'Separate (native Claude thinking blocks)',
         'btn_launch_claude': 'Launch Claude',
-        'btn_reset_mirror': 'Reset Mirror',
+        'btn_reset_mirror': 'Reset Third-party Profile',
         'btn_sync_original': 'Sync from Official',
         'btn_save_only': 'Save Only',
         'btn_save_launch': 'Launch ↵',
@@ -200,7 +200,7 @@
         'toast_restore_success': 'Official Claude Desktop settings restored.',
         'toast_restore_failed': 'Restore failed: ',
         'confirm_sync': '⚠ Are you sure you want to sync settings from original Claude?',
-        'confirm_reset': '⚠ Are you sure you want to reset mirror Profile? Original profile will not be affected.',
+        'confirm_reset': '⚠ Are you sure you want to reset the third-party Profile? Original profile will not be affected.',
         'confirm_restore': '⚠ Restoring the official settings will stop Claude Desktop and remove the settings applied by FreeClaudeDesktop. Continue?',
         'restore_title': 'Official mode restored',
         'restore_desc': 'Official Claude Desktop settings have been restored. Launch Claude Desktop from its original shortcut.',
@@ -680,7 +680,7 @@
         };
         appendCheckbox('model-visibility', isVisible, '顯示狀態');
         appendCheckbox('model-1m', is1m, '1M Context 支援');
-        appendCheckbox('model-1m-prefer', is1mPrefer, '預設使用 1M', !is1m);
+        appendCheckbox('model-1m-prefer', is1mPrefer, '僅顯示 1M', !is1m);
 
         const effortCell = document.createElement('td');
         const wrapper = document.createElement('div');
@@ -708,9 +708,8 @@
             .find(item => item.dataset.model === el.dataset.model);
           if (!prefer) return;
           prefer.disabled = !el.checked;
-          // 啟用 1M 變體時，同步將它設為預設選項，避免只輸出
-          // `supports1m` 而遺漏 Claude Desktop 所需的 `prefer1m`。
-          prefer.checked = el.checked;
+          // 提供 1M 選項與隱藏一般版本是獨立選擇。
+          if (!el.checked) prefer.checked = false;
         };
       });
 

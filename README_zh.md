@@ -7,7 +7,7 @@
 <!-- badge source: LICENSE (MIT) -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 <!-- badge source: Cargo.toml (workspace.package.rust-version) -->
-[![Rust 1.97.1](https://img.shields.io/badge/Rust-1.97.1-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust 1.99.0](https://img.shields.io/badge/Rust-1.99.0-000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![HTTP: Axum](https://img.shields.io/badge/HTTP-Axum-6d3f8c.svg?style=for-the-badge)](https://github.com/tokio-rs/axum)
 [![Runtime: Tokio](https://img.shields.io/badge/runtime-Tokio-4c8eda.svg?style=for-the-badge)](https://tokio.rs/)
 
@@ -135,11 +135,11 @@ freecd install                # 預設啟用自動啟動
 freecd install --no-autostart # 不啟用自動啟動
 ```
 
-套件：[`@mushroomtw/freeclaudedesktop@1.0.3`](packages/freeclaudedesktop/package.json) — 提供 `freecd` / `freeclaude` 指令與六個平台 optionalDependencies（`darwin-arm64/x64`、`linux-arm64/x64`、`win32-arm64/x64`）。
+套件：[`@mushroomtw/freeclaudedesktop@1.0.4`](packages/freeclaudedesktop/package.json) — 提供 `freecd` / `freeclaude` 指令與六個平台 optionalDependencies（`darwin-arm64/x64`、`linux-arm64/x64`、`win32-arm64/x64`）。
 
 ### 方式 B — 從原始碼建置
 
-需要 [Rust 1.97.1 toolchain](https://www.rust-lang.org/tools/install)（`Cargo.toml` → `workspace.package.rust-version`）。
+需要 [Rust 1.99.0 toolchain](https://www.rust-lang.org/tools/install)（`Cargo.toml` → `workspace.package.rust-version`）。
 
 ```bash
 git clone https://github.com/mushroomTW/FreeClaudeDesktop.git
@@ -270,7 +270,7 @@ Crate 依賴方向：`proxy` → `core`、`cli` → `core`（+ `proxy` 的 serve
 
 ## 開發
 
-工具鏈固定為 **Rust 1.97.1**（`Cargo.toml` 的 `rust-version`，於 `.github/workflows/ci.yml` 強制）。
+工具鏈固定為 **Rust 1.99.0**（`Cargo.toml` 的 `rust-version`，於 `.github/workflows/ci.yml` 強制）。
 
 ```bash
 cargo fmt --all -- --check
@@ -281,7 +281,7 @@ cargo check
 
 CI 於 `ubuntu-latest`、`macos-15`、`windows-latest` 執行。
 
-Release 針對六個 target（`x86_64`/`aarch64` × Linux/macOS/Windows）透過 `scripts/pack-platform.mjs` → `dist/npm/` 建置；以 `pnpm@10.15.0`（`package.json` 的 `packageManager`）發布。
+Release 針對六個 target（`x86_64`/`aarch64` × Linux/macOS/Windows）透過 `scripts/pack-platform.mjs` → `dist/npm/` 建置；以 `pnpm@12.11.2`（`package.json` 的 `packageManager`）發布。
 
 本地 SonarQube 分析使用專案根目錄的 `sonar-project.properties`。
 

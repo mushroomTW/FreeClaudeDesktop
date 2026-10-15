@@ -1,0 +1,2 @@
+# 保持 Node.js CLI 的 shebang 可在 Linux 與 macOS 執行。
+*.cjs text eol=lf

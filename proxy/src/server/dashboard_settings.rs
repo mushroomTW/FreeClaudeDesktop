@@ -216,6 +216,8 @@ fn apply_optional<T>(target: &mut T, value: Option<T>) {
     }
 }
 
+// Axum 錯誤回應直接傳回呼叫者，避免為了大小 lint 增加額外配置。
+#[allow(clippy::result_large_err)]
 async fn load_settings() -> Result<Settings, Response> {
     match load_runtime_settings().await {
         Ok(Some(settings)) => Ok(settings),

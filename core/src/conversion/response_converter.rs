@@ -441,10 +441,8 @@ pub fn normalize_models_response_with_overrides_and_prefer1m(
                     .map(|tokens| tokens >= 1_000_000)
                     .unwrap_or(false);
             let prefer1m = is_1m
-                && prefer1m_overrides
-                    .get(&provider_model_id)
-                    .copied()
-                    .unwrap_or(false);
+                .then(|| prefer1m_overrides.get(&provider_model_id).copied())
+                .flatten();
             let alias = model_alias(&model, index, reasoning_overrides);
             let max_input = if is_1m {
                 Some(raw_max_input.unwrap_or(200_000).max(1_000_000))
@@ -477,7 +475,7 @@ pub fn normalize_models_response_with_overrides_and_prefer1m(
                 max_tokens: max_output,
                 capabilities: model_capabilities(&model, reasoning_overrides),
                 supports1m: is_1m.then_some(true),
-                prefer1m: prefer1m.then_some(true),
+                prefer1m,
             }
         })
         .collect();

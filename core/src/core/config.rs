@@ -190,21 +190,21 @@ impl Language {
                 "local_proxy" => "Local Proxy: 127.0.0.1:",
                 "detecting" => "Detecting...",
                 "reset_confirm_msg" => {
-                    "Are you sure you want to reset the mirror Profile? Official profile will not be affected."
+                    "Are you sure you want to reset the third-party Profile? Official profile will not be affected."
                 }
                 "confirm_reset" => "Confirm Reset",
                 "cancel" => "Cancel",
                 "save_launch" => "Launch ↵",
                 "save_only" => "Save Only",
                 "sync_from_official" => "Sync from Official",
-                "reset_mirror_profile" => "Reset Mirror",
+                "reset_mirror_profile" => "Reset Third-party Profile",
                 "detected_claude" => "Claude Desktop Detected",
                 "not_found_claude" => "Claude.exe not found. You can set custom path below.",
                 "job_cancelled" => "Job cancelled",
                 "sync_success" => "Settings synced from official Claude.",
                 "sync_failed" => "Sync failed",
                 "reset_success" => {
-                    "Mirror Profile directory has been reset. Official directory is unaffected."
+                    "Third-party Profile directory has been reset. Official directory is unaffected."
                 }
                 "theme_save_failed" => "Failed to save theme",
                 "load_settings_failed" => "Failed to load settings",
@@ -257,19 +257,19 @@ impl Language {
                 "local_proxy" => "本機 Proxy：127.0.0.1：",
                 "detecting" => "正在偵測...",
                 "title" => "FreeClaudeDesktop",
-                "reset_confirm_msg" => "⚠ 確定要重置鏡像 Profile 目錄？原版目錄完全不受影響。",
+                "reset_confirm_msg" => "⚠ 確定要重置第三方 Profile 目錄？原版目錄完全不受影響。",
                 "confirm_reset" => "確定重置",
                 "cancel" => "取消",
                 "save_launch" => "啟動 ↵",
                 "save_only" => "儲存",
                 "sync_from_official" => "從原版同步",
-                "reset_mirror_profile" => "重置鏡像 Profile",
+                "reset_mirror_profile" => "重置第三方 Profile",
                 "detected_claude" => "已偵測 Claude Desktop",
                 "not_found_claude" => "尚未找到 Claude.exe，可使用下方自訂路徑",
                 "job_cancelled" => "工作已取消",
-                "sync_success" => "已從原版 Claude 重新同步設定至鏡像目錄。",
+                "sync_success" => "已從原版 Claude 重新同步設定至第三方目錄。",
                 "sync_failed" => "同步失敗",
-                "reset_success" => "鏡像 Profile 目錄已重置。原版目錄完全不受影響。",
+                "reset_success" => "第三方 Profile 目錄已重置。原版目錄完全不受影響。",
                 "theme_save_failed" => "儲存佈景主題失敗",
                 "load_settings_failed" => "載入設定失敗",
                 "fetch_models_success" => "已更新模型列表：{} 個模型",

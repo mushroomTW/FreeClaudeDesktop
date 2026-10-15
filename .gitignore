@@ -1,12 +1,16 @@
+# 建置與分析產物
+target/
+.codex-target/
+.scannerwork/
+
+# 本機設定、日誌與憑證
 launcher_settings.json
 *.log
 *.pfx
 *.p12
-target/
-.omo
-.codex-target/
-.scannerwork/
+
+# 本機代理設定與暫存工作
 .agents
 .claude
 AGENTS.md
-CLAUDE.md
+/.scratch/

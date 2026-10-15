@@ -227,7 +227,7 @@ fn claude_config_uses_supported_1m_variant_without_double_label() {
         max_tokens: Some(8192),
         capabilities: serde_json::json!({}),
         supports1m: Some(true),
-        // 即使舊設定沒有保存 1M 偏好，支援 1M 的模型也必須預設使用它。
+        // 未指定偏好時，同時保留一般版本與 1M 選項。
         prefer1m: None,
         transport_type: None,
     };
@@ -239,7 +239,7 @@ fn claude_config_uses_supported_1m_variant_without_double_label() {
     assert_eq!(models[0]["labelOverride"], "deepseek-v4-flash");
     assert!(models[0].get("displayName").is_none());
     assert_eq!(models[0]["supports1m"], true);
-    assert_eq!(models[0]["prefer1m"], true);
+    assert_eq!(models[0]["prefer1m"], false);
 }
 
 #[test]
@@ -346,8 +346,7 @@ fn invalid_official_mcp_config_stops_deployment_write() {
 /// 驗證 `mirror_profile_dir_returns_valid_path` 的行為符合預期。
 fn mirror_profile_dir_returns_valid_path() {
     let mirror = mirror_profile_dir();
-    assert!(mirror.to_string_lossy().contains("FreeClaudeDesktop"));
-    assert!(mirror.to_string_lossy().contains("claude_profile"));
+    assert!(mirror.ends_with("Claude-3p"));
 }
 
 #[test]
@@ -420,4 +419,91 @@ fn reset_mirror_profile_restores_existing_profile_on_init_error() {
 
     assert!(result.is_err());
     assert_eq!(restored.unwrap(), "keep");
+}
+
+#[test]
+fn desktop_profile_sync_and_reset_preserve_proxy_config() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let root = std::env::temp_dir().join(format!("fcl_profile_lifecycle_{}", std::process::id()));
+    let (official, profile, old_env) = set_test_app_dirs(&root);
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(official.join("configLibrary")).unwrap();
+    fs::create_dir_all(profile.join("configLibrary")).unwrap();
+    fs::write(official.join("data.txt"), "official").unwrap();
+    let config_name = format!("{CONFIG_ID}.json");
+    let proxy_config = json!({"inferenceGatewayBaseUrl":"http://127.0.0.1:3000"}).to_string();
+    fs::write(
+        profile.join("configLibrary").join(&config_name),
+        &proxy_config,
+    )
+    .unwrap();
+    fs::write(
+        official.join("configLibrary").join(&config_name),
+        "first-party",
+    )
+    .unwrap();
+    fs::write(
+        profile.join("configLibrary/_meta.json"),
+        json!({"appliedId":CONFIG_ID,"entries":[{"id":CONFIG_ID}]}).to_string(),
+    )
+    .unwrap();
+    let sync = resync_from_official();
+    let after_sync = fs::read_to_string(profile.join("configLibrary").join(&config_name)).unwrap();
+    let reset = reset_mirror_profile();
+    let after_reset = fs::read_to_string(profile.join("configLibrary").join(&config_name));
+    let data = fs::read_to_string(profile.join("data.txt"));
+    let deployment = fs::read_to_string(profile.join("claude_desktop_config.json"));
+    restore_env(old_env);
+    let _ = fs::remove_dir_all(&root);
+    assert!(sync.is_ok());
+    assert!(reset.is_ok());
+    assert_eq!(
+        serde_json::from_str::<Value>(&after_sync).unwrap()["inferenceGatewayBaseUrl"],
+        "http://127.0.0.1:3000"
+    );
+    assert_eq!(after_reset.unwrap(), after_sync);
+    assert_eq!(data.unwrap(), "official");
+    assert_eq!(
+        serde_json::from_str::<Value>(&deployment.unwrap()).unwrap()["deploymentMode"],
+        "3p"
+    );
+}
+
+#[test]
+fn desktop_profile_initialization_ignores_retired_mirror() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let root = std::env::temp_dir().join(format!("fcl_no_migration_{}", std::process::id()));
+    let (official, profile, old_env) = set_test_app_dirs(&root);
+    let _ = fs::remove_dir_all(&root);
+    let retired = crate::common::local_app_data().join("FreeClaudeDesktop/claude_profile");
+    fs::create_dir_all(&retired).unwrap();
+    fs::write(retired.join("retired.txt"), "retired").unwrap();
+    fs::create_dir_all(&official).unwrap();
+    fs::write(official.join("official.txt"), "official").unwrap();
+    let initialized = ensure_mirror_profile_initialized();
+    let official_copied = profile.join("official.txt").is_file();
+    let retired_copied = profile.join("retired.txt").exists();
+    let mcp_paths = mcp_config_paths();
+    restore_env(old_env);
+    let _ = fs::remove_dir_all(&root);
+    assert!(initialized.is_ok());
+    assert!(official_copied);
+    assert!(!retired_copied);
+    assert_eq!(mcp_paths, vec![profile.join("claude_desktop_config.json")]);
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn desktop_profile_finds_relocated_store_data() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let root = std::env::temp_dir().join(format!("fcl_relocated_{}", std::process::id()));
+    let (_, _, old_env) = set_test_app_dirs(&root);
+    let _ = fs::remove_dir_all(&root);
+    let relocated = crate::common::local_app_data().join("Claude-Data/claude_pzs8sxrjxfjjc");
+    fs::create_dir_all(&relocated).unwrap();
+    fs::write(relocated.join("ant-did"), "test-install-id").unwrap();
+    let detected = official_app_data_dir();
+    restore_env(old_env);
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(detected, relocated);
 }

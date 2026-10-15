@@ -214,7 +214,7 @@
                     </button>
                   </div>
                 </div>
-                <p class="section-desc" data-i18n="models_discovered_desc">勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」啟用 100 萬上下文支援；「預設 1M」讓第一個模型預設選用 1M。</p>
+                <p class="section-desc" data-i18n="models_discovered_desc">勾選「顯示」使其呈現在 Claude Desktop 列表中；「1M」提供 100 萬上下文選項；「僅顯示 1M」隱藏該模型的一般版本。</p>
                 
                 <div class="Dashboard-inline-style-14">
                   <label for="modelSearchInput" class="Dashboard-inline-style-15" data-i18n="models_search_placeholder">搜尋模型</label>
@@ -228,7 +228,7 @@
                         <th class="sortable-th Dashboard-inline-style-16" data-sort="name"><span data-i18n="models_table_name">模型名稱</span> <span class="sort-icon" id="sort-icon-name">↕</span></th>
                         <th class="sortable-th Dashboard-inline-style-17" data-sort="show"><span data-i18n="models_table_show">顯示</span> <span class="sort-icon" id="sort-icon-show">↕</span></th>
                         <th class="sortable-th Dashboard-inline-style-18" data-sort="1m"><span data-i18n="models_table_1m">1M</span> <span class="sort-icon" id="sort-icon-1m">↕</span></th>
-                        <th class="sortable-th Dashboard-inline-style-19" data-sort="1m-default"><span data-i18n="models_table_1m_default">預設 1M</span> <span class="sort-icon" id="sort-icon-1m-default">↕</span></th>
+                        <th class="sortable-th Dashboard-inline-style-19" data-sort="1m-default"><span data-i18n="models_table_1m_default">僅顯示 1M</span> <span class="sort-icon" id="sort-icon-1m-default">↕</span></th>
                         <th class="sortable-th Dashboard-inline-style-20" data-sort="effort"><span data-i18n="models_table_effort">推理強度</span> <span class="sort-icon" id="sort-icon-effort">↕</span></th>
                       </tr>
                     </thead>
@@ -405,7 +405,7 @@
           <footer class="bottom-actions">
             <div class="actions-wrapper">
               <button type="button" class="btn btn-danger" id="restoreOfficialBtn" data-i18n="btn_restore_official">還原為原版</button>
-              <button type="button" class="btn btn-secondary" id="resetMirrorBtn" data-i18n="btn_reset_mirror">重置鏡像 Profile</button>
+              <button type="button" class="btn btn-secondary" id="resetMirrorBtn" data-i18n="btn_reset_mirror">重置第三方 Profile</button>
               <button type="button" class="btn btn-secondary" id="syncOfficialBtn" data-i18n="btn_sync_original">從原版同步</button>
               <button type="button" class="btn btn-secondary" id="saveOnlyBtn" data-i18n="btn_save_only">儲存</button>
               <button type="button" class="btn btn-primary" id="saveAndLaunchBtn" data-i18n="btn_save_launch">啟動</button>

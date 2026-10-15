@@ -25,11 +25,6 @@ pub use profile::{
 /// 清理或還原 `reset_mirror_profile` 所管理的資料。
 /// 執行 `user_data_dir` 對應的處理流程。
 pub fn user_data_dir() -> PathBuf {
-    if let Ok(dir) = env::var("CLAUDE_USER_DATA_DIR")
-        && !dir.trim().is_empty()
-    {
-        return PathBuf::from(dir);
-    }
     mirror_profile_dir()
 }
 
@@ -141,6 +136,7 @@ pub fn validate_launch_path(target_path: &Path) -> AppResult<PathBuf> {
 
 /// 儲存 `write_config_to_all_paths` 所處理的資料。
 pub fn write_config_to_all_paths(file_name: &str, content: &str) -> AppResult<()> {
+    ensure_mirror_profile_initialized()?;
     let mut writes = Vec::new();
     for dir in config_library_dirs() {
         fs::create_dir_all(&dir)?;
@@ -155,43 +151,7 @@ pub fn write_config_to_all_paths(file_name: &str, content: &str) -> AppResult<()
 
 /// 執行 `config_library_dirs` 對應的處理流程。
 fn config_library_dirs() -> Vec<PathBuf> {
-    #[cfg(target_os = "windows")]
-    let mut dirs = vec![config_lib_dir()];
-    #[cfg(not(target_os = "windows"))]
-    let dirs = vec![config_lib_dir()];
-    #[cfg(target_os = "windows")]
-    {
-        dirs.push(local_app_data().join("Claude-3p").join("configLibrary"));
-        // Windows Store 版 Claude 無法吃 --user-data-dir；ClaudeSource 會固定讀這裡的 3P profile。
-        dirs.push(
-            app_data_roaming_dir()
-                .join("Claude-3p")
-                .join("configLibrary"),
-        );
-
-        let packages_dir = env::var_os("USERPROFILE")
-            .map(PathBuf::from)
-            .unwrap_or_default()
-            .join("AppData")
-            .join("Local")
-            .join("Packages");
-        if let Ok(entries) = fs::read_dir(packages_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_lowercase();
-                if name.contains("claude") {
-                    dirs.push(
-                        entry
-                            .path()
-                            .join("LocalCache")
-                            .join("Local")
-                            .join("Claude-3p")
-                            .join("configLibrary"),
-                    );
-                }
-            }
-        }
-    }
-    dirs
+    vec![config_lib_dir()]
 }
 
 /// 執行 `upsert_managed_meta_entry` 對應的處理流程。
@@ -408,11 +368,8 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
         return Err(AppError::Launcher("找不到 Claude.exe".to_string()));
     }
 
-    let user_data_arg = format!("--user-data-dir={}", mirror_profile_dir().display());
-
-    // Store 套件可能包含多個 Application，直接執行已驗證的主程式，
-    // 避免組合出無效的 AppsFolder ID，並確保傳入鏡像 profile 參數。
-    let launched = Command::new(&target).arg(&user_data_arg).spawn();
+    // 直接執行已驗證的主程式，由 Desktop 選擇標準第三方 Profile。
+    let launched = Command::new(&target).spawn();
 
     launched
         .map(|_| target)
@@ -435,10 +392,7 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
         return Err(AppError::Launcher("找不到 Claude 執行檔".to_string()));
     }
 
-    let user_data_arg = format!("--user-data-dir={}", mirror_profile_dir().display());
-
     Command::new(&target)
-        .arg(&user_data_arg)
         .spawn()
         .map(|_| target)
         .map_err(|error| AppError::Launcher(error.to_string()))
@@ -517,11 +471,9 @@ pub fn claude_config(
                 if m.supports1m == Some(true) {
                     item["supports1m"] = serde_json::json!(true);
                 }
-                // Claude Desktop 需要 `prefer1m` 才會將 1M 變體設為預設。
-                // 對已標示支援 1M 的模型一律輸出此欄位，避免舊版控制台
-                // 保存的偏好值遺漏，導致設定頁面仍顯示為關閉。
+                // 提供 1M 版本不代表要隱藏一般版本。
                 if m.supports1m == Some(true) {
-                    item["prefer1m"] = serde_json::json!(true);
+                    item["prefer1m"] = serde_json::json!(m.prefer1m.unwrap_or(false));
                 }
                 item
             })

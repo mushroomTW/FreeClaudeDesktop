@@ -2,6 +2,8 @@ version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
+    # 停用一般版本更新 PR，保留安全性更新。
+    open-pull-requests-limit: 0
     schedule:
       interval: weekly
     groups:
@@ -10,6 +12,8 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    # 停用一般版本更新 PR，保留安全性更新。
+    open-pull-requests-limit: 0
     schedule:
       interval: weekly
     groups:

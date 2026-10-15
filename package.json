@@ -1,7 +1,7 @@
 {
   "name": "freeclaudedesktop-workspace",
   "private": true,
-  "packageManager": "pnpm@10.15.0",
+  "packageManager": "pnpm@12.11.2",
   "scripts": {
     "pack:platform": "node scripts/pack-platform.mjs"
   }
