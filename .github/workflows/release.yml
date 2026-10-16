@@ -156,10 +156,11 @@ jobs:
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
+          set -euo pipefail
           for archive in dist/mushroomtw-freeclaudedesktop-*-*.tgz; do
-            bun publish "./$archive" --access public --registry https://registry.npmjs.org
+            bun publish "./$archive" --access public --registry https://registry.npmjs.org --tolerate-republish
           done
-          bun publish ./dist/npm/main/*.tgz --access public --registry https://registry.npmjs.org
+          bun publish ./dist/npm/main/*.tgz --access public --registry https://registry.npmjs.org --tolerate-republish
 
       - name: 建立 GitHub Release
         env:
