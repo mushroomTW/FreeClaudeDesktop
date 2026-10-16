@@ -14,7 +14,11 @@ pub(crate) fn build_upstream_request(
     auth_scheme: &str,
     is_anthropic_native: bool,
 ) -> free_claude_core::AppResult<reqwest::RequestBuilder> {
-    let mut request = client.post(target_url).body(body);
+    // Proxy 會解析或轉換回應，不能沿用客戶端的壓縮協商；目前 HTTP client 未啟用解壓縮。
+    let mut request = client
+        .post(target_url)
+        .body(body)
+        .header("accept-encoding", "identity");
     let skip_header = if api_key.is_empty() {
         None
     } else {
@@ -26,6 +30,9 @@ pub(crate) fn build_upstream_request(
 
     for (name, value) in headers {
         let lower = name.as_str().to_ascii_lowercase();
+        if lower == "accept-encoding" {
+            continue;
+        }
         if skip_header.is_some_and(|skip| lower == skip) {
             continue;
         }
@@ -35,7 +42,7 @@ pub(crate) fn build_upstream_request(
         } else {
             matches!(
                 lower.as_str(),
-                "content-type" | "accept" | "user-agent" | "accept-encoding" | "connection"
+                "content-type" | "accept" | "user-agent" | "connection"
             ) || lower.starts_with("anthropic-")
                 || lower.starts_with("x-stainless-")
                 || lower.starts_with("x-")

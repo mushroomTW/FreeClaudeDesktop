@@ -1,0 +1,40 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "freeclaudedesktop-workspace",
+    },
+    "packages/freeclaudedesktop": {
+      "name": "@mushroomtw/freeclaudedesktop",
+      "version": "1.0.4",
+      "bin": {
+        "freeclaude": "bin/freeclaude.cjs",
+        "freecd": "bin/freeclaude.cjs",
+      },
+      "optionalDependencies": {
+        "@mushroomtw/freeclaudedesktop-darwin-arm64": "1.0.4",
+        "@mushroomtw/freeclaudedesktop-darwin-x64": "1.0.4",
+        "@mushroomtw/freeclaudedesktop-linux-arm64": "1.0.4",
+        "@mushroomtw/freeclaudedesktop-linux-x64": "1.0.4",
+        "@mushroomtw/freeclaudedesktop-win32-arm64": "1.0.4",
+        "@mushroomtw/freeclaudedesktop-win32-x64": "1.0.4",
+      },
+    },
+  },
+  "packages": {
+    "@mushroomtw/freeclaudedesktop": ["@mushroomtw/freeclaudedesktop@workspace:packages/freeclaudedesktop"],
+
+    "@mushroomtw/freeclaudedesktop-darwin-arm64": ["@mushroomtw/freeclaudedesktop-darwin-arm64@1.0.4", "", { "os": "darwin", "cpu": "arm64" }, "sha512-B7R1jrmmnkjapEQT/RRjhyADnDxByfC1Kay7cFlnS4B9w4r89/WbkIcB/QgobLWbkRWlRlNBJImMV121FQ5okA=="],
+
+    "@mushroomtw/freeclaudedesktop-darwin-x64": ["@mushroomtw/freeclaudedesktop-darwin-x64@1.0.4", "", { "os": "darwin", "cpu": "x64" }, "sha512-WTPbc51zAGpowe0/iwfbKhRtjuAOJXkMzZoZofGac0sK8STMiMB7G9GLI387ify+t+8JFRd6NJ4pJcTe4ajUVg=="],
+
+    "@mushroomtw/freeclaudedesktop-linux-arm64": ["@mushroomtw/freeclaudedesktop-linux-arm64@1.0.4", "", { "os": "linux", "cpu": "arm64" }, "sha512-YaQzkI1TGs2tWFNgrom2XmLn6Lus7kfM/KG61XYUu+eDuAv6oFSe9qDoOnyz6/bt+Iyhm43tZKLoWZnNuxsF2w=="],
+
+    "@mushroomtw/freeclaudedesktop-linux-x64": ["@mushroomtw/freeclaudedesktop-linux-x64@1.0.4", "", { "os": "linux", "cpu": "x64" }, "sha512-ltvcKMp12kLzb0UvGbtPMEfJutyK7wZ4wEoqXkwsjdG++uqdb8I0ppiHbkez/seDhngDQYidIeeOYWwr7fo3VQ=="],
+
+    "@mushroomtw/freeclaudedesktop-win32-arm64": ["@mushroomtw/freeclaudedesktop-win32-arm64@1.0.4", "", { "os": "win32", "cpu": "arm64" }, "sha512-2jKB+JUMC9dCf963c1MQY34gBxzhFyRuVbxn7JYtb/610d1Lefy6g+zW1sp81NlSXYdu8C1QIjp4r/o19xU6PQ=="],
+
+    "@mushroomtw/freeclaudedesktop-win32-x64": ["@mushroomtw/freeclaudedesktop-win32-x64@1.0.4", "", { "os": "win32", "cpu": "x64" }, "sha512-erurT3PENWePP1QFJcjf+mBeIN7ztuR147vXZLlQ0ItOU5rJyROynsecZJB1lePARcrTvotRfAFoQ8hiVJRNlw=="],
+  }
+}

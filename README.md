@@ -102,10 +102,10 @@ For a deeper walk-through, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick Start
 
-Prerequisites: [Claude Desktop](https://claude.ai/download) and Node.js with npm. The npm package auto-selects the binary matching your OS and CPU architecture.
+Prerequisites: [Claude Desktop](https://claude.ai/download) and [Bun 1.4.3 or newer](https://bun.sh/docs/installation). Bun automatically selects the binary package matching your OS and CPU architecture.
 
 ```bash
-npm install -g @mushroomtw/freeclaudedesktop
+bun add -g @mushroomtw/freeclaudedesktop
 freecd install
 freecd dashboard
 ```
@@ -127,10 +127,10 @@ Then launch Claude Desktop — the model picker will list the gateway's models (
 
 ## Installation
 
-### Option A — npm (recommended)
+### Option A — Bun (recommended)
 
 ```bash
-npm install -g @mushroomtw/freeclaudedesktop
+bun add -g @mushroomtw/freeclaudedesktop
 freecd install                # autostart enabled by default
 freecd install --no-autostart # without autostart
 ```
@@ -151,7 +151,7 @@ cargo build --release
 .\target\release\freeclaude.exe install
 ```
 
-Cargo builds the native CLI as `freeclaude`; the npm wrapper exposes it as `freecd`. All workspace binaries:
+Cargo builds the native CLI as `freeclaude`; the Bun wrapper exposes both `freeclaude` and `freecd`. All workspace binaries:
 
 ```bash
 cargo build --release   # builds freeclaude (cli) + freeclaude-proxy
@@ -243,7 +243,7 @@ FreeClaudeDesktop/
 ├── core/        # free-claude-core — schemas, settings store, keyring, model routing, conversion
 ├── proxy/       # freeclaude-proxy — Axum routes, gateway forwarding, SSE conversion, dashboard
 ├── cli/         # freeclaude — install/lifecycle/profile/autostart/companion orchestration
-├── packages/freeclaudedesktop/  # npm wrapper (bin/freecd) + platform optionalDependencies
+├── packages/freeclaudedesktop/  # Bun wrapper (freeclaude/freecd) + platform optionalDependencies
 └── docs/        # project documentation (ARCHITECTURE.md, EXTENSIONS_AND_SKILLS.md)
 ```
 
@@ -270,9 +270,11 @@ Detailed in [docs/EXTENSIONS_AND_SKILLS.md](docs/EXTENSIONS_AND_SKILLS.md). Summ
 
 ## Development
 
-Toolchain pinned to **Rust 1.99.0** (`rust-version` in `Cargo.toml`, enforced in `.github/workflows/ci.yml`).
+Toolchains pinned to **Rust 1.99.0** (`rust-version` in `Cargo.toml`) and **Bun 1.4.3** (`packageManager` in `package.json`), enforced in CI.
 
 ```bash
+bun install --frozen-lockfile
+bun test
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
@@ -281,7 +283,7 @@ cargo check
 
 CI runs on `ubuntu-latest`, `macos-15`, `windows-latest`.
 
-Release builds for six targets (`x86_64`/`aarch64` × Linux/macOS/Windows) via `scripts/pack-platform.mjs` → `dist/npm/`; publish with `pnpm@12.11.2` (`packageManager` in `package.json`).
+Release builds for six targets (`x86_64`/`aarch64` × Linux/macOS/Windows) via `bun run pack:platform <target>` → `dist/npm/`; archives are checked before publishing to the npm registry with `bun publish`.
 
 SonarQube local analysis uses `sonar-project.properties` at the repo root (see `sonar-project.properties`).
 
@@ -304,14 +306,28 @@ SonarQube local analysis uses `sonar-project.properties` at the repo root (see `
 
 ## Uninstall
 
-Clean up local state before removing the npm package:
+For a Bun global installation, one command cleans up local state and removes the package:
+
+```bash
+freecd uninstall
+```
+
+`uninstall` stops the proxy and Companion Daemon, disables autostart, restores the official Claude config, and purges app data (`cli/src/main.rs:uninstall`).
+
+The Bun wrapper waits for cleanup to finish before removing its global package. Cleanup failure preserves the package; if package removal fails, retry `bun remove -g @mushroomtw/freeclaudedesktop --ignore-scripts`. Source builds and local installations only clean up app state. If global ownership cannot be confirmed, the wrapper prints the manual removal command. `purge` also retains the package.
+
+### Migrating an existing npm installation
+
+Remove the old npm package before installing through Bun to avoid conflicting command aliases:
 
 ```bash
 freecd uninstall
 npm uninstall -g @mushroomtw/freeclaudedesktop
+bun add -g @mushroomtw/freeclaudedesktop
+freecd install
 ```
 
-`uninstall` stops the proxy and Companion Daemon, disables autostart, restores the official Claude config, and purges app data (`cli/src/main.rs:uninstall`).
+Cleanup removes app data and restores Claude settings, so configure your gateway again after reinstalling.
 
 ## Project Links
 

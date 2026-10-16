@@ -1,18 +1,11 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { platforms } from "./platforms.mjs";
 
 const [target, outputDirectory = "dist/npm"] = process.argv.slice(2);
 const packageVersion = JSON.parse(
   readFileSync("packages/freeclaudedesktop/package.json", "utf8")
 ).version;
-const platforms = {
-  "aarch64-apple-darwin": { os: ["darwin"], cpu: ["arm64"], suffix: "darwin-arm64" },
-  "x86_64-apple-darwin": { os: ["darwin"], cpu: ["x64"], suffix: "darwin-x64" },
-  "aarch64-unknown-linux-gnu": { os: ["linux"], cpu: ["arm64"], suffix: "linux-arm64" },
-  "x86_64-unknown-linux-gnu": { os: ["linux"], cpu: ["x64"], suffix: "linux-x64" },
-  "aarch64-pc-windows-msvc": { os: ["win32"], cpu: ["arm64"], suffix: "win32-arm64" },
-  "x86_64-pc-windows-msvc": { os: ["win32"], cpu: ["x64"], suffix: "win32-x64" }
-};
 
 const platform = platforms[target];
 if (!platform) {

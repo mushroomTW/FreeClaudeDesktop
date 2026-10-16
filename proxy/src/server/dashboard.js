@@ -1,11 +1,16 @@
     const $ = id => document.getElementById(id);
     let loadedSettings = null;
     let launchAfterSave = false;
-    const dashboardToken = window.location.hash.length > 1
-      ? decodeURIComponent(window.location.hash.slice(1))
-      : '';
-
-    if (dashboardToken) {
+    const dashboardTokenKey = 'freeclaude.dashboardToken';
+    const dashboardFragment = window.location.hash.length > 1
+      ? decodeURIComponent(window.location.hash.slice(1)) : '';
+    const navigationSections = new Set(['connection', 'models', 'extensions', 'optimization']);
+    let dashboardToken = '';
+    // 僅保留於目前分頁的 session，重新整理後仍可驗證，關閉分頁即清除。
+    try { dashboardToken = sessionStorage.getItem(dashboardTokenKey) || ''; } catch {}
+    if (dashboardFragment && !navigationSections.has(dashboardFragment)) {
+      dashboardToken = dashboardFragment;
+      try { sessionStorage.setItem(dashboardTokenKey, dashboardToken); } catch {}
       history.replaceState(null, document.title, window.location.pathname);
     }
 
@@ -87,6 +92,7 @@
         'toast_save_failed': '儲存失敗: ',
         'toast_load_success': '設定載入成功！',
         'toast_load_failed': '載入失敗: ',
+        'toast_auth_required': '授權已失效，請使用 freecd dashboard 重新開啟控制台。',
         'toast_launch_success': 'Claude Desktop 啟動成功，路徑: ',
         'toast_launch_failed': '儲存成功，但 Claude 啟動失敗: ',
         'toast_fetch_success': '模型清單抓取成功！',
@@ -193,6 +199,7 @@
         'toast_save_failed': 'Save failed: ',
         'toast_load_success': 'Settings loaded successfully!',
         'toast_load_failed': 'Load failed: ',
+        'toast_auth_required': 'Authorization expired. Reopen the console with freecd dashboard.',
         'toast_launch_success': 'Claude Desktop launched, path: ',
         'toast_launch_failed': 'Saved, but failed to launch Claude: ',
         'toast_fetch_success': 'Model list fetched successfully!',
@@ -321,6 +328,7 @@
           ...(options.headers || {}) // NOSONAR - fallback empty object required when headers undefined (javascript:S7744)
         }
       });
+      if (r.status === 401) throw new Error(t('toast_auth_required'));
       const b = await r.json();
       if (!r.ok) throw new Error(b.error || r.statusText);
       return b;

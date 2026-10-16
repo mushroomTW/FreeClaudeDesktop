@@ -102,10 +102,10 @@ Proxy 是協定邊界。設定與密鑰保留在本機：非機敏設定存放�
 
 ## 快速開始
 
-前置需求：[Claude Desktop](https://claude.ai/download) 與含 npm 的 Node.js。npm 會自動選擇符合作業系統與 CPU 架構的 binary 套件。
+前置需求：[Claude Desktop](https://claude.ai/download) 與 [Bun 1.4.3 以上版本](https://bun.sh/docs/installation)。Bun 會自動選擇符合作業系統與 CPU 架構的 binary 套件。
 
 ```bash
-npm install -g @mushroomtw/freeclaudedesktop
+bun add -g @mushroomtw/freeclaudedesktop
 freecd install
 freecd dashboard
 ```
@@ -127,10 +127,10 @@ curl http://127.0.0.1:3000/healthz
 
 ## 安裝
 
-### 方式 A — npm（建議）
+### 方式 A — Bun（建議）
 
 ```bash
-npm install -g @mushroomtw/freeclaudedesktop
+bun add -g @mushroomtw/freeclaudedesktop
 freecd install                # 預設啟用自動啟動
 freecd install --no-autostart # 不啟用自動啟動
 ```
@@ -151,7 +151,7 @@ cargo build --release
 .\target\release\freeclaude.exe install
 ```
 
-Cargo 建置的原生 CLI 名稱為 `freeclaude`；npm 套件則提供 `freecd` 入口。建置 workspace 所有 binary：
+Cargo 建置的原生 CLI 名稱為 `freeclaude`；Bun 包裝器提供 `freeclaude` / `freecd` 入口。建置 workspace 所有 binary：
 
 ```bash
 cargo build --release   # 建置 freeclaude (cli) + freeclaude-proxy
@@ -243,7 +243,7 @@ FreeClaudeDesktop/
 ├── core/        # free-claude-core — schema、settings store、keyring、模型路由、轉換
 ├── proxy/       # freeclaude-proxy — Axum 路由、Gateway 轉送、SSE 轉換、Dashboard
 ├── cli/         # freeclaude — install / lifecycle / profile / autostart / companion 協調
-├── packages/freeclaudedesktop/  # npm 包裝（bin/freecd）與平台 optionalDependencies
+├── packages/freeclaudedesktop/  # Bun 包裝（freeclaude/freecd）與平台 optionalDependencies
 └── docs/        # 專案文件（ARCHITECTURE.md、EXTENSIONS_AND_SKILLS.md）
 ```
 
@@ -270,9 +270,11 @@ Crate 依賴方向：`proxy` → `core`、`cli` → `core`（+ `proxy` 的 serve
 
 ## 開發
 
-工具鏈固定為 **Rust 1.99.0**（`Cargo.toml` 的 `rust-version`，於 `.github/workflows/ci.yml` 強制）。
+工具鏈固定為 **Rust 1.99.0**（`Cargo.toml` 的 `rust-version`）與 **Bun 1.4.3**（`package.json` 的 `packageManager`），由 CI 使用相同版本驗證。
 
 ```bash
+bun install --frozen-lockfile
+bun test
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
@@ -281,7 +283,7 @@ cargo check
 
 CI 於 `ubuntu-latest`、`macos-15`、`windows-latest` 執行。
 
-Release 針對六個 target（`x86_64`/`aarch64` × Linux/macOS/Windows）透過 `scripts/pack-platform.mjs` → `dist/npm/` 建置；以 `pnpm@12.11.2`（`package.json` 的 `packageManager`）發布。
+Release 針對六個 target（`x86_64`/`aarch64` × Linux/macOS/Windows）透過 `bun run pack:platform <target>` → `dist/npm/` 建置；檢查壓縮套件後，以 `bun publish` 發布至 npm registry。
 
 本地 SonarQube 分析使用專案根目錄的 `sonar-project.properties`。
 
@@ -304,14 +306,28 @@ Release 針對六個 target（`x86_64`/`aarch64` × Linux/macOS/Windows）透過
 
 ## 解除安裝
 
-移除 npm 套件前，請先清理本機狀態：
+Bun 全域安裝可透過一個命令清理本機狀態並移除套件：
+
+```bash
+freecd uninstall
+```
+
+`uninstall` 會停止 Proxy 與 Companion Daemon、停用自動啟動、還原官方 Claude 設定並清除應用程式資料（`cli/src/main.rs:uninstall`）。
+
+Bun 包裝器會等待原生清理程序退出，再移除自身的全域套件。清理失敗會保留套件；套件移除失敗時，可重試 `bun remove -g @mushroomtw/freeclaudedesktop --ignore-scripts`。來源建置與區域安裝只清理應用程式狀態；無法確認全域安裝歸屬時，會顯示手動移除命令。`purge` 同樣保留套件。
+
+### 從既有 npm 安裝遷移
+
+先移除舊 npm 套件，再透過 Bun 安裝，避免命令別名衝突：
 
 ```bash
 freecd uninstall
 npm uninstall -g @mushroomtw/freeclaudedesktop
+bun add -g @mushroomtw/freeclaudedesktop
+freecd install
 ```
 
-`uninstall` 會停止 Proxy 與 Companion Daemon、停用自動啟動、還原官方 Claude 設定並清除應用程式資料（`cli/src/main.rs:uninstall`）。
+清理會刪除應用程式資料並還原 Claude 設定，重新安裝後需再次設定 Gateway。
 
 ## 專案連結
 

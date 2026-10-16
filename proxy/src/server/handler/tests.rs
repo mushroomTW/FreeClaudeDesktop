@@ -201,6 +201,7 @@ fn test_build_upstream_request_native_vs_openai() {
     headers.insert("host", "api.anthropic.com".parse().unwrap());
     headers.insert("content-length", "2".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
+    headers.insert("accept-encoding", "gzip, deflate, br".parse().unwrap());
     headers.insert("x-api-key", "dummy-key-from-client".parse().unwrap());
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
     headers.insert("custom-header-foo", "bar-value".parse().unwrap());
@@ -220,6 +221,7 @@ fn test_build_upstream_request_native_vs_openai() {
     .unwrap();
 
     let h_native = req_native.headers();
+    assert_eq!(h_native.get("accept-encoding").unwrap(), "identity");
     assert_eq!(h_native.get("x-api-key").unwrap(), "new-api-key");
     assert_eq!(h_native.get("anthropic-version").unwrap(), "2023-06-01");
     assert_eq!(h_native.get("custom-header-foo").unwrap(), "bar-value");
@@ -242,6 +244,7 @@ fn test_build_upstream_request_native_vs_openai() {
     .unwrap();
 
     let h_openai = req_openai.headers();
+    assert_eq!(h_openai.get("accept-encoding").unwrap(), "identity");
     assert_eq!(h_openai.get("x-api-key").unwrap(), "new-api-key");
     assert_eq!(h_openai.get("anthropic-version").unwrap(), "2023-06-01");
     assert_eq!(h_openai.get("content-type").unwrap(), "application/json");

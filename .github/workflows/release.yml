@@ -18,6 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: 設定 Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
       - name: 驗證 SemVer
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -33,7 +38,7 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
-          package_version="$(node -p "require('./packages/freeclaudedesktop/package.json').version")"
+          package_version="$(bun -p "require('./packages/freeclaudedesktop/package.json').version")"
           release_version="${RELEASE_VERSION#v}"
           if [[ "$package_version" != "$release_version" ]]; then
             echo "npm 套件版本 $package_version 與 Release 版本 $release_version 不一致"
@@ -78,20 +83,36 @@ jobs:
       - name: 建置 FreeClaudeDesktop binary
         run: cargo build --locked --release --package freeclaude --package freeclaude-proxy
 
-      - name: 設定 pnpm
-        uses: pnpm/action-setup@v6
+      - name: 設定 Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: 12.11.2
+          bun-version: 1.4.3
+
+      - name: 安裝 JavaScript workspace
+        run: bun install --frozen-lockfile
+
+      - name: 驗證 Bun 包裝器與套件
+        run: bun test
 
       - name: 建立平台 npm binary 套件
         shell: bash
-        run: node scripts/pack-platform.mjs "${{ matrix.target }}"
+        run: bun run pack:platform "${{ matrix.target }}"
 
       - name: 打包平台 npm binary 套件
         shell: bash
         run: |
           package_dir="$(find dist/npm -mindepth 1 -maxdepth 1 -type d -name 'freeclaudedesktop-*' -print -quit)"
-          pnpm --dir "$package_dir" pack --pack-destination ..
+          bun pm pack --cwd "$package_dir" --destination ..
+
+      - name: 驗證平台發行套件
+        env:
+          # Bun 1.4.3 的 dry-run 仍要求認證欄位；占位值不會送出發布請求。
+          NPM_CONFIG_TOKEN: dry-run-placeholder
+        shell: bash
+        run: |
+          archive="$(find dist/npm -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          bun scripts/verify-package.mjs "$archive" "${{ matrix.target }}"
+          bun publish "./$archive" --access public --dry-run
 
       - name: 上傳 npm binary 套件
         uses: actions/upload-artifact@v7
@@ -115,28 +136,30 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: 設定 Node.js
-        uses: actions/setup-node@v7
+      - name: 設定 Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
+          bun-version: 1.4.3
 
-      - name: 設定 pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 12.11.2
+      - name: 打包與驗證主套件
+        env:
+          NPM_CONFIG_TOKEN: dry-run-placeholder
+        shell: bash
+        run: |
+          mkdir -p dist/npm/main
+          bun pm pack --cwd packages/freeclaudedesktop --destination ../../dist/npm/main
+          bun scripts/verify-package.mjs dist/npm/main/*.tgz
+          bun publish ./dist/npm/main/*.tgz --access public --dry-run
 
       - name: 發布 npm 套件
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
           for archive in dist/mushroomtw-freeclaudedesktop-*-*.tgz; do
-            pnpm publish "./$archive" --access public --no-git-checks
+            bun publish "./$archive" --access public --registry https://registry.npmjs.org
           done
-          mkdir -p dist/npm/main
-          pnpm --dir packages/freeclaudedesktop pack --pack-destination ../../dist/npm/main
-          pnpm publish ./dist/npm/main/*.tgz --access public --no-git-checks
+          bun publish ./dist/npm/main/*.tgz --access public --registry https://registry.npmjs.org
 
       - name: 建立 GitHub Release
         env:

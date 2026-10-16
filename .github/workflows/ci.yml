@@ -20,11 +20,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: 設定 Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - name: 安裝 JavaScript workspace
+        run: bun install --frozen-lockfile
+
       - name: 安裝 Rust 工具鏈
         run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt,clippy
 
       - name: 使用 Rust 1.99.0
         run: rustup override set 1.99.0
+
+      - name: 驗證 Bun 包裝器與套件
+        run: bun test
 
       - name: 檢查格式
         run: cargo fmt --all -- --check

@@ -2,6 +2,8 @@
 target/
 .codex-target/
 .scannerwork/
+node_modules/
+dist/
 
 # 本機設定、日誌與憑證
 launcher_settings.json

@@ -1,8 +1,13 @@
 {
   "name": "freeclaudedesktop-workspace",
   "private": true,
-  "packageManager": "pnpm@12.11.2",
+  "packageManager": "bun@1.4.3",
+  "engines": {
+    "bun": ">=1.4.3"
+  },
   "scripts": {
-    "pack:platform": "node scripts/pack-platform.mjs"
-  }
+    "pack:platform": "bun scripts/pack-platform.mjs",
+    "test": "bun test"
+  },
+  "workspaces": ["packages/*"]
 }
