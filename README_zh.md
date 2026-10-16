@@ -98,7 +98,7 @@ Proxy 是協定邊界。設定與密鑰保留在本機：非機敏設定存放�
 - **模型路由與推理** — 將 `claude-opus-5[0]` / `claude-sonnet-4[0]` / `claude-haiku-4[0]` 等別名映射至真實 Gateway 模型；將 `thinking.budget_tokens` 轉譯為 `reasoning_effort`，並以原生 thinking 區塊或 `<antThinking>` 文字重播推理。
 - **隔離的 Claude Desktop Profile** — 為 Proxy 環境建立獨立 Profile，並可從官方 Profile 重新同步選定資料。
 - **跨平台** — Windows（Task Scheduler + Registry Run）、macOS（LaunchAgent）、Linux（systemd user service）；透過 npm optionalDependencies 支援 x64 與 ARM64。
-- **宿主 Companion Daemon** — 維持 `/companion` WebSocket 供 Dashboard ↔ 宿主 RPC 使用。
+- **單一常駐程序** — 一個 `freeclaude` daemon 同時執行本機 Proxy 與 `/companion` WebSocket，供 Dashboard ↔ 宿主 RPC 使用。
 
 ## 快速開始
 
@@ -151,10 +151,10 @@ cargo build --release
 .\target\release\freeclaude.exe install
 ```
 
-Cargo 建置的原生 CLI 名稱為 `freeclaude`；Bun 包裝器提供 `freeclaude` / `freecd` 入口。建置 workspace 所有 binary：
+Cargo 只建置一個原生執行檔 `freeclaude`，內含 Proxy server；Bun 包裝器提供 `freeclaude` / `freecd` 入口：
 
 ```bash
-cargo build --release   # 建置 freeclaude (cli) + freeclaude-proxy
+cargo build --release   # 建置單一 freeclaude 執行檔
 ```
 
 ## 設定
@@ -165,7 +165,7 @@ cargo build --release   # 建置 freeclaude (cli) + freeclaude-proxy
 
 | 變數 | 用途 | 預設值 | 讀取位置 |
 |---|---|---|---|
-| `FREECLAUDE_PROXY_PORT` | Proxy 監聽連接埠 | `3000`（`core/src/core/constants.rs:DEFAULT_PORT`） | `cli/src/main.rs:proxy_port()`、`proxy/src/main.rs` |
+| `FREECLAUDE_PROXY_PORT` | Proxy 監聽連接埠 | `3000`（`core/src/core/constants.rs:DEFAULT_PORT`） | `cli/src/main.rs:proxy_port()`、`cli/src/runtime_daemon.rs` |
 | `FREECLAUDE_PROXY_URL` | `freecd status` 健康檢查使用的 URL | `http://127.0.0.1:{PORT}` | `cli/src/main.rs:print_proxy_status()` |
 
 ### Dashboard 設定（由 `core/src/core/config.rs` 持久化）
@@ -210,7 +210,7 @@ freecd autostart disable
 freecd update --check
 ```
 
-`start` 會等待 `GET /healthz` 成功（最多約 5 秒）才回報完成。自動啟動後端：Windows Task Scheduler / Registry Run、macOS LaunchAgent、Linux systemd user service（`cli/src/runtime/autostart.rs`）。
+`start` 會等待 `GET /healthz` 成功（最多約 5 秒）才回報完成。從曾分開執行 Proxy 與 Companion 的舊版升級時，請先執行一次 `freeclaude stop`，再執行 `freeclaude start`。自動啟動後端：Windows Task Scheduler / Registry Run、macOS LaunchAgent、Linux systemd user service（`cli/src/runtime/autostart.rs`）。
 
 ## Proxy API
 
@@ -241,18 +241,18 @@ freecd update --check
 ```
 FreeClaudeDesktop/
 ├── core/        # free-claude-core — schema、settings store、keyring、模型路由、轉換
-├── proxy/       # freeclaude-proxy — Axum 路由、Gateway 轉送、SSE 轉換、Dashboard
-├── cli/         # freeclaude — install / lifecycle / profile / autostart / companion 協調
+├── proxy/       # freeclaude-proxy library — Axum 路由、Gateway 轉送、SSE 轉換、Dashboard
+├── cli/         # freeclaude — 單一程序執行 CLI、Proxy 與 companion 協調
 ├── packages/freeclaudedesktop/  # Bun 包裝（freeclaude/freecd）與平台 optionalDependencies
 └── docs/        # 專案文件（ARCHITECTURE.md、EXTENSIONS_AND_SKILLS.md）
 ```
 
-Crate 依賴方向：`proxy` → `core`、`cli` → `core`（+ `proxy` 的 server handle）。詳見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 的 runtime 拓撲、訊息執行流程、模型探索/路由與狀態持有圖。
+Crate 依賴方向：`proxy` → `core`、`cli` → `core` + `proxy`。原生套件只含一個執行檔；常駐 daemon 在同一程序中執行 Proxy server 與 Companion WebSocket。詳見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 的 runtime 拓撲、訊息執行流程、模型探索/路由與狀態持有圖。
 
 關鍵設計：
 
 - **別名穩定性**：`claude-opus-5[0]` 等別名依模型清單位置穩定；`supports1m` / `prefer1m` 控制 1M 上下文變體，不改變 ID。
-- **Companion Daemon**：CLI 會啟動宿主機上的 Companion Daemon 以維持 `/companion` WebSocket。
+- **單一常駐程序**：一個長駐的 `freeclaude` 程序同時執行 Axum Proxy 與 Companion WebSocket。
 
 ## 擴充與本地優化
 
@@ -312,7 +312,7 @@ Bun 全域安裝可透過一個命令清理本機狀態並移除套件：
 freecd uninstall
 ```
 
-`uninstall` 會停止 Proxy 與 Companion Daemon、停用自動啟動、還原官方 Claude 設定並清除應用程式資料（`cli/src/main.rs:uninstall`）。
+`uninstall` 會停止常駐程序、停用自動啟動、還原官方 Claude 設定並清除應用程式資料（`cli/src/main.rs:uninstall`）。
 
 Bun 包裝器會等待原生清理程序退出，再移除自身的全域套件。清理失敗會保留套件；套件移除失敗時，可重試 `bun remove -g @mushroomtw/freeclaudedesktop --ignore-scripts`。來源建置與區域安裝只清理應用程式狀態；無法確認全域安裝歸屬時，會顯示手動移除命令。`purge` 同樣保留套件。
 

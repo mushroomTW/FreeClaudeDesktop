@@ -248,7 +248,7 @@ test.each(Object.entries(platforms))("平台封裝與 tarball 權限驗證：%s"
   write(path.join(root, "package.json"), '{"private":true}');
   write(path.join(root, "packages/freeclaudedesktop/package.json"), JSON.stringify(manifest));
   const extension = platform.os[0] === "win32" ? ".exe" : "";
-  for (const name of ["freeclaude", "freeclaude-proxy"]) {
+  for (const name of ["freeclaude"]) {
     const binary = path.join(root, "target/release", name + extension);
     write(binary, "發行套件測試替身");
     fs.chmodSync(binary, 0o755);

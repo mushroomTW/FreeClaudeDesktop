@@ -10,20 +10,6 @@ pub fn pid_file() -> PathBuf {
     local_app_data().join("FreeClaudeDesktop").join("proxy.pid")
 }
 
-/// 執行 `proxy_binary_path` 對應的處理流程。
-pub fn proxy_binary_path() -> io::Result<PathBuf> {
-    let executable = std::env::current_exe()?;
-    let directory = executable
-        .parent()
-        .ok_or_else(|| io::Error::other("無法判斷 CLI 所在目錄"))?;
-    let name = if cfg!(target_os = "windows") {
-        "freeclaude-proxy.exe"
-    } else {
-        "freeclaude-proxy"
-    };
-    Ok(directory.join(name))
-}
-
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -32,16 +18,10 @@ pub fn start_proxy(port: u16) -> io::Result<u32> {
     if let Some(parent) = pid_file().parent() {
         fs::create_dir_all(parent)?;
     }
-    let binary = proxy_binary_path()?;
-    if !binary.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("找不到 proxy binary：{}", binary.display()),
-        ));
-    }
-
-    let mut cmd = Command::new(binary);
-    cmd.env("FREECLAUDE_PROXY_PORT", port.to_string())
+    let executable = std::env::current_exe()?;
+    let mut cmd = Command::new(executable);
+    cmd.arg("runtime-daemon")
+        .env("FREECLAUDE_PROXY_PORT", port.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -83,27 +63,6 @@ pub fn companion_pid_file() -> PathBuf {
     local_app_data()
         .join("FreeClaudeDesktop")
         .join("companion.pid")
-}
-
-/// 啟動或執行 `start_companion` 流程。
-pub fn start_companion(port: u16) -> io::Result<u32> {
-    if let Some(parent) = companion_pid_file().parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let binary = std::env::current_exe()?;
-    let mut cmd = Command::new(binary);
-    cmd.arg("companion-daemon")
-        .env("FREECLAUDE_PROXY_PORT", port.to_string())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-
-    #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x00000008 | 0x00000200);
-
-    let child = cmd.spawn()?;
-    fs::write(companion_pid_file(), child.id().to_string())?;
-    Ok(child.id())
 }
 
 /// 停止或停用 `stop_companion` 流程。

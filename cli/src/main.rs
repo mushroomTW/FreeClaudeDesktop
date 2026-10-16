@@ -3,6 +3,7 @@
 mod cli_args;
 mod companion_daemon;
 mod runtime;
+mod runtime_daemon;
 mod update_check;
 
 use std::io;
@@ -35,7 +36,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::Update(args) => update(args).await,
         Command::Uninstall(args) => uninstall(args),
         Command::Autostart { command } => manage_autostart(command),
-        Command::CompanionDaemon => companion_daemon().await,
+        Command::RuntimeDaemon => runtime_daemon::run().await,
     }
 }
 
@@ -79,11 +80,6 @@ fn warn_orphan_compose_file() {
     }
 }
 
-/// 執行 `companion_daemon` 對應的處理流程。
-async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
-    crate::companion_daemon::companion_daemon().await
-}
-
 /// 執行 `install` 對應的處理流程。
 async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     check_deprecated_runtime(args.runtime.as_ref())?;
@@ -92,7 +88,6 @@ async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     ensure_launcher_settings(port)?;
     start_proxy().await?;
     free_claude_core::update_config_port(port)?;
-    let _ = crate::runtime::native::start_companion(port);
     if !args.no_autostart {
         crate::runtime::autostart::enable()?;
     }
@@ -107,7 +102,6 @@ async fn start(args: HiddenRuntimeArgs) -> Result<(), Box<dyn std::error::Error>
     let port = proxy_port()?;
     ensure_launcher_settings(port)?;
     start_proxy().await?;
-    let _ = crate::runtime::native::start_companion(port);
     Ok(())
 }
 
@@ -270,6 +264,9 @@ fn proxy_port() -> Result<u16, Box<dyn std::error::Error>> {
 async fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
     let port = proxy_port()?;
     let healthz_url = format!("http://127.0.0.1:{port}/healthz");
+    if crate::runtime::native::companion_pid_file().is_file() {
+        return Err("偵測到舊版 Companion 程序，請先執行 `freeclaude stop` 再啟動。".into());
+    }
     if proxy_is_healthy(&healthz_url).await {
         println!("Proxy 已在運作：{healthz_url}");
         return Ok(());

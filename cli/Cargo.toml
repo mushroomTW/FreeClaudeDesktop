@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 free-claude-core = { path = "../core" }
+freeclaude-proxy = { path = "../proxy" }
 tokio.workspace = true
 clap = { version = "4", features = ["derive"] }
 serde.workspace = true
@@ -23,3 +24,6 @@ url.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi.workspace = true
+
+[build-dependencies]
+embed-resource.workspace = true

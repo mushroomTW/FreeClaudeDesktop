@@ -7,16 +7,16 @@ This document describes the internal structure and execution paths of FreeClaude
 | Crate | Internal responsibility |
 | --- | --- |
 | `free-claude-core` (`core/`) | Shared schemas, persistent settings, model discovery and routing, request/response conversion, and launcher integration. |
-| `freeclaude-proxy` (`proxy/`) | Axum routes, authentication, gateway forwarding, SSE conversion, Web Dashboard, and companion WebSocket handling. |
-| `freeclaude` (`cli/`) | Commands that coordinate installation, process lifecycle, profile configuration, autostart, update, and removal. |
+| `freeclaude-proxy` (`proxy/`) | Axum 路由、驗證、Gateway 轉送、SSE 轉換、Web Dashboard 與伺服器生命週期管理的函式庫。 |
+| `freeclaude` (`cli/`) | 單一原生執行檔，負責命令協調，並在同一個常駐程序中執行 Proxy server 與 companion WebSocket。 |
 
-Dependencies flow inward: the CLI and proxy depend on `free-claude-core`; the core crate is independent of the HTTP server and command-line interface.
+依賴方向由外向內：CLI 依賴 Proxy 函式庫與 `free-claude-core`；Proxy 函式庫依賴 `free-claude-core`。
 
 ```mermaid
 flowchart BT
     CORE["free-claude-core"]
-    PROXY["freeclaude-proxy"] --> CORE
-    CLI["freeclaude CLI"] --> CORE
+    PROXY["freeclaude-proxy 函式庫"] --> CORE
+    CLI["freeclaude 命令列工具"] --> CORE
     CLI --> PROXY
 ```
 
@@ -26,13 +26,17 @@ flowchart BT
 flowchart LR
     CD["Claude Desktop"] -->|"Anthropic Messages API"| PX["Proxy"]
     Dashboard["Web Dashboard"] --> PX
-    CLI["CLI / Companion"] --> PX
+    subgraph PROCESS["單一 freeclaude 常駐程序"]
+        CLI["CLI / 執行期 daemon"] --> COMPANION["Companion WebSocket 用戶端"]
+        CLI --> PX
+        COMPANION --> PX
+    end
     PX -->|"OpenAI-compatible Chat Completions"| GW["Configured gateway"]
     GW --> PROVIDER["Model provider"]
     PROVIDER --> GW --> PX --> CD
 ```
 
-The proxy is the protocol boundary. It accepts Claude-compatible requests, while the gateway adapter sends OpenAI-compatible requests upstream. The companion connection lets the Web Dashboard coordinate with the host-side CLI process without putting host-control logic inside the proxy.
+Proxy 負責協定轉換：接收 Claude 相容請求，再由 Gateway adapter 將 OpenAI 相容請求送往上游。Companion 連線讓 Web Dashboard 能與宿主端常駐程序協作，同時將宿主控制邏輯留在 Proxy 函式庫之外。
 
 > **Migration note (v1.x):** Docker runtime has been removed. The project now ships only the native runtime; `FREECLAUDE_COMPOSE_FILE` / `FREECLAUDE_DOCKER_MEMORY_LIMIT` and `Dockerfile`/`compose.yaml` are no longer supported. If port 3000 remains occupied after upgrading, run `docker compose down` manually to clean up orphan containers.
 

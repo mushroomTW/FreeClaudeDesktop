@@ -98,7 +98,7 @@ For a deeper walk-through, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Model routing & reasoning** — maps `claude-opus-5[0]` / `claude-sonnet-4[0]` / `claude-haiku-4[0]`-style aliases to real gateway models; translates `thinking.budget_tokens` → `reasoning_effort` and replays reasoning as native thinking blocks or `<antThinking>` text.
 - **Isolated Claude Desktop profile** — keeps a dedicated profile for the proxied setup and can re-sync selected data from the official profile.
 - **Cross-platform** — Windows (Task Scheduler + Registry Run key), macOS (LaunchAgent), Linux (systemd user service); x64 and ARM64 binaries via npm optional dependencies.
-- **Host Companion Daemon** — maintains the `/companion` WebSocket for Dashboard ↔ host RPC.
+- **Single runtime process** — one `freeclaude` daemon hosts the local Proxy and `/companion` WebSocket for Dashboard ↔ host RPC.
 
 ## Quick Start
 
@@ -151,10 +151,10 @@ cargo build --release
 .\target\release\freeclaude.exe install
 ```
 
-Cargo builds the native CLI as `freeclaude`; the Bun wrapper exposes both `freeclaude` and `freecd`. All workspace binaries:
+Cargo builds one native executable, `freeclaude`, with the Proxy server embedded; the Bun wrapper exposes both `freeclaude` and `freecd`:
 
 ```bash
-cargo build --release   # builds freeclaude (cli) + freeclaude-proxy
+cargo build --release   # builds the single freeclaude executable
 ```
 
 ## Configuration
@@ -165,7 +165,7 @@ All settings are edited through the Web Dashboard (`/dashboard` → `/settings` 
 
 | Variable | Purpose | Default | Where read |
 |---|---|---|---|
-| `FREECLAUDE_PROXY_PORT` | Proxy listen port | `3000` (`core/src/core/constants.rs:DEFAULT_PORT`) | `cli/src/main.rs:proxy_port()`, `proxy/src/main.rs` |
+| `FREECLAUDE_PROXY_PORT` | Proxy listen port | `3000` (`core/src/core/constants.rs:DEFAULT_PORT`) | `cli/src/main.rs:proxy_port()`, `cli/src/runtime_daemon.rs` |
 | `FREECLAUDE_PROXY_URL` | Override URL used by `freecd status` health check | `http://127.0.0.1:{PORT}` | `cli/src/main.rs:print_proxy_status()` |
 
 ### Dashboard settings (persisted via `core/src/core/config.rs`)
@@ -210,7 +210,7 @@ freecd autostart disable
 freecd update --check
 ```
 
-`start` waits for `GET /healthz` to succeed (up to ~5 s) before reporting success. Autostart backends: Windows Task Scheduler / Registry Run key, macOS LaunchAgent, Linux systemd user service (`cli/src/runtime/autostart.rs`).
+`start` waits for `GET /healthz` to succeed (up to ~5 s) before reporting success. When upgrading from a release that used separate Proxy and Companion processes, run `freeclaude stop` once before `freeclaude start`. Autostart backends: Windows Task Scheduler / Registry Run key, macOS LaunchAgent, Linux systemd user service (`cli/src/runtime/autostart.rs`).
 
 ## Proxy API
 
@@ -241,18 +241,18 @@ Logs are written to `{local_app_data}/FreeClaudeDesktop/logs/` — `launcher.log
 ```
 FreeClaudeDesktop/
 ├── core/        # free-claude-core — schemas, settings store, keyring, model routing, conversion
-├── proxy/       # freeclaude-proxy — Axum routes, gateway forwarding, SSE conversion, dashboard
-├── cli/         # freeclaude — install/lifecycle/profile/autostart/companion orchestration
+├── proxy/       # freeclaude-proxy library — Axum routes, gateway forwarding, SSE conversion, dashboard
+├── cli/         # freeclaude — one runtime process for CLI, Proxy, and companion orchestration
 ├── packages/freeclaudedesktop/  # Bun wrapper (freeclaude/freecd) + platform optionalDependencies
 └── docs/        # project documentation (ARCHITECTURE.md, EXTENSIONS_AND_SKILLS.md)
 ```
 
-Crate dependency direction: `proxy` → `core`, `cli` → `core` (+ `proxy` for server handle). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for runtime topology, message execution flow, model discovery/routing, and state ownership diagrams.
+Crate dependency direction: `proxy` → `core`, `cli` → `core` + `proxy`. The native package contains one executable; its runtime daemon hosts the Proxy server and Companion WebSocket in one process. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for runtime topology, message execution flow, model discovery/routing, and state ownership diagrams.
 
 Key design notes:
 
 - **Alias stability**: `claude-opus-5[0]`-style aliases are stable per model-list position; `supports1m` / `prefer1m` control the 1M-context variant without changing the ID.
-- **Companion Daemon**: the CLI starts the host-side Companion Daemon to keep the `/companion` WebSocket alive.
+- **Single runtime process**: one long-running `freeclaude` process hosts both the Axum Proxy and the Companion WebSocket.
 
 ## Extensions & Local Optimizations
 
@@ -312,7 +312,7 @@ For a Bun global installation, one command cleans up local state and removes the
 freecd uninstall
 ```
 
-`uninstall` stops the proxy and Companion Daemon, disables autostart, restores the official Claude config, and purges app data (`cli/src/main.rs:uninstall`).
+`uninstall` stops the runtime process, disables autostart, restores the official Claude config, and purges app data (`cli/src/main.rs:uninstall`).
 
 The Bun wrapper waits for cleanup to finish before removing its global package. Cleanup failure preserves the package; if package removal fails, retry `bun remove -g @mushroomtw/freeclaudedesktop --ignore-scripts`. Source builds and local installations only clean up app state. If global ownership cannot be confirmed, the wrapper prints the manual removal command. `purge` also retains the package.
 

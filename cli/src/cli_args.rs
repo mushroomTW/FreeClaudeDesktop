@@ -25,7 +25,7 @@ pub(crate) enum Command {
         command: AutostartCommand,
     },
     #[command(hide = true)]
-    CompanionDaemon,
+    RuntimeDaemon,
 }
 
 #[derive(Debug, Args)]

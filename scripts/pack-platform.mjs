@@ -18,7 +18,7 @@ const output = join(outputDirectory, `freeclaudedesktop-${platform.suffix}`);
 rmSync(output, { recursive: true, force: true });
 mkdirSync(join(output, "bin"), { recursive: true });
 
-for (const name of ["freeclaude", "freeclaude-proxy"]) {
+for (const name of ["freeclaude"]) {
   const source = join(sourceDirectory, `${name}${extension}`);
   if (!existsSync(source)) throw new Error(`找不到發行 binary：${source}`);
   cpSync(source, join(output, "bin", basename(source)));

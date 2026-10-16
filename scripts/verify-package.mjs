@@ -40,7 +40,7 @@ export function verifyPackage(filename, target) {
       throw new Error("平台套件 metadata 不一致");
     }
     const extension = platform.os[0] === "win32" ? ".exe" : "";
-    for (const name of ["freeclaude", "freeclaude-proxy"]) {
+    for (const name of ["freeclaude"]) {
       const file = required(`bin/${name}${extension}`);
       if (file.content.length === 0) throw new Error(`發行 binary 為空：${name}`);
       if (!extension && (file.mode & 0o111) === 0) throw new Error(`發行 binary 缺少執行權限：${name}`);
