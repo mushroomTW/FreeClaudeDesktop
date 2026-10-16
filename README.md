@@ -64,6 +64,7 @@ FreeClaudeDesktop is a cross-platform command-line launcher and local API proxy 
 - [Screenshots](#screenshots)
 - [About](#about)
 - [Features](#features)
+- [Memory and Performance](#memory-and-performance)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -100,6 +101,12 @@ For a deeper walk-through, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Cross-platform** — Windows (Task Scheduler + Registry Run key), macOS (LaunchAgent), Linux (systemd user service); x64 and ARM64 binaries via npm optional dependencies.
 - **Single runtime process** — one `freeclaude` daemon hosts the local Proxy and `/companion` WebSocket for Dashboard ↔ host RPC.
 
+## Memory and Performance
+
+FreeClaudeDesktop routes and streams requests; model inference remains on the configured gateway. Streaming responses are forwarded as they arrive instead of being buffered in full. Common Dashboard probes are handled locally.
+
+Memory use varies with the operating system, build profile, and concurrent requests. The Proxy limits each request body to `16 MiB`; this is a per-request limit, not a process-wide RAM cap. The non-blocking logging queue is bounded to `2,048` lines. Each Tokio runtime uses at most `2` async worker threads by default, configurable with `TOKIO_WORKER_THREADS`. Upstream HTTP requests time out after `60 s`. These settings limit specific work queues and requests; they do not imply a fixed memory footprint or latency.
+
 ## Quick Start
 
 Prerequisites: [Claude Desktop](https://claude.ai/download) and [Bun 1.4.3 or newer](https://bun.sh/docs/installation). Bun automatically selects the binary package matching your OS and CPU architecture.
@@ -135,7 +142,7 @@ freecd install                # autostart enabled by default
 freecd install --no-autostart # without autostart
 ```
 
-Package: [`@mushroomtw/freeclaudedesktop@2.0.0`](packages/freeclaudedesktop/package.json) — ships `freecd` / `freeclaude` bins and six platform optional dependencies (`darwin-arm64/x64`, `linux-arm64/x64`, `win32-arm64/x64`).
+Package: [`@mushroomtw/freeclaudedesktop@2.0.1`](packages/freeclaudedesktop/package.json) — ships `freecd` / `freeclaude` bins and six platform optional dependencies (`darwin-arm64/x64`, `linux-arm64/x64`, `win32-arm64/x64`).
 
 ### Option B — Build from source
 
@@ -167,6 +174,7 @@ All settings are edited through the Web Dashboard (`/dashboard` → `/settings` 
 |---|---|---|---|
 | `FREECLAUDE_PROXY_PORT` | Proxy listen port | `3000` (`core/src/core/constants.rs:DEFAULT_PORT`) | `cli/src/main.rs:proxy_port()`, `cli/src/runtime_daemon.rs` |
 | `FREECLAUDE_PROXY_URL` | Override URL used by `freecd status` health check | `http://127.0.0.1:{PORT}` | `cli/src/main.rs:print_proxy_status()` |
+| `TOKIO_WORKER_THREADS` | Async worker threads per Tokio runtime | `min(logical CPUs, 2)` | `core/src/runtime.rs` |
 
 ### Dashboard settings (persisted via `core/src/core/config.rs`)
 
@@ -318,11 +326,10 @@ The Bun wrapper waits for cleanup to finish before removing its global package. 
 
 ### Migrating an existing npm installation
 
-Remove the old npm package before installing through Bun to avoid conflicting command aliases:
+Clean up the existing installation first. Remove any legacy npm command alias using the package manager that installed it, then install with Bun:
 
 ```bash
 freecd uninstall
-npm uninstall -g @mushroomtw/freeclaudedesktop
 bun add -g @mushroomtw/freeclaudedesktop
 freecd install
 ```

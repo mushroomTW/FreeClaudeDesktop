@@ -64,6 +64,7 @@ FreeClaudeDesktop 是跨平台的命令列啟動器與 Claude Desktop 本機 API
 - [截圖預覽](#截圖預覽)
 - [關於專案](#關於專案)
 - [功能](#功能)
+- [記憶體與效能](#記憶體與效能)
 - [快速開始](#快速開始)
 - [安裝](#安裝)
 - [設定](#設定)
@@ -100,6 +101,12 @@ Proxy 是協定邊界。設定與密鑰保留在本機：非機敏設定存放�
 - **跨平台** — Windows（Task Scheduler + Registry Run）、macOS（LaunchAgent）、Linux（systemd user service）；透過 npm optionalDependencies 支援 x64 與 ARM64。
 - **單一常駐程序** — 一個 `freeclaude` daemon 同時執行本機 Proxy 與 `/companion` WebSocket，供 Dashboard ↔ 宿主 RPC 使用。
 
+## 記憶體與效能
+
+FreeClaudeDesktop 負責轉送與串流請求；模型推論由設定的 Gateway 執行。上游串流回應會逐段轉送，不會先緩存完整回應；常見的 Dashboard 探測則由本機處理。
+
+記憶體占用會隨作業系統、建置模式與同時處理的請求而變化。Proxy 將每個請求主體限制在 `16 MiB`；這是單一請求的上限，不是整個程序的記憶體上限。非阻塞日誌佇列最多保留 `2,048` 行。每個 Tokio runtime 預設最多使用 `2` 個非同步工作執行緒，可用 `TOKIO_WORKER_THREADS` 調整。上游 HTTP 請求逾時為 `60 s`。這些設定限制特定請求與佇列，並不代表固定的記憶體占用或延遲。
+
 ## 快速開始
 
 前置需求：[Claude Desktop](https://claude.ai/download) 與 [Bun 1.4.3 以上版本](https://bun.sh/docs/installation)。Bun 會自動選擇符合作業系統與 CPU 架構的 binary 套件。
@@ -135,7 +142,7 @@ freecd install                # 預設啟用自動啟動
 freecd install --no-autostart # 不啟用自動啟動
 ```
 
-套件：[`@mushroomtw/freeclaudedesktop@2.0.0`](packages/freeclaudedesktop/package.json) — 提供 `freecd` / `freeclaude` 指令與六個平台 optionalDependencies（`darwin-arm64/x64`、`linux-arm64/x64`、`win32-arm64/x64`）。
+套件：[`@mushroomtw/freeclaudedesktop@2.0.1`](packages/freeclaudedesktop/package.json) — 提供 `freecd` / `freeclaude` 指令與六個平台 optionalDependencies（`darwin-arm64/x64`、`linux-arm64/x64`、`win32-arm64/x64`）。
 
 ### 方式 B — 從原始碼建置
 
@@ -167,6 +174,7 @@ cargo build --release   # 建置單一 freeclaude 執行檔
 |---|---|---|---|
 | `FREECLAUDE_PROXY_PORT` | Proxy 監聽連接埠 | `3000`（`core/src/core/constants.rs:DEFAULT_PORT`） | `cli/src/main.rs:proxy_port()`、`cli/src/runtime_daemon.rs` |
 | `FREECLAUDE_PROXY_URL` | `freecd status` 健康檢查使用的 URL | `http://127.0.0.1:{PORT}` | `cli/src/main.rs:print_proxy_status()` |
+| `TOKIO_WORKER_THREADS` | 每個 Tokio runtime 的非同步工作執行緒數 | `min(邏輯核心數, 2)` | `core/src/runtime.rs` |
 
 ### Dashboard 設定（由 `core/src/core/config.rs` 持久化）
 
@@ -318,11 +326,10 @@ Bun 包裝器會等待原生清理程序退出，再移除自身的全域套件�
 
 ### 從既有 npm 安裝遷移
 
-先移除舊 npm 套件，再透過 Bun 安裝，避免命令別名衝突：
+先清理既有安裝；若仍有舊的 npm 命令別名，請用原本管理它的套件工具移除，再透過 Bun 安裝：
 
 ```bash
 freecd uninstall
-npm uninstall -g @mushroomtw/freeclaudedesktop
 bun add -g @mushroomtw/freeclaudedesktop
 freecd install
 ```
