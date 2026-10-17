@@ -71,7 +71,7 @@ fn openai_response_accepts_utf8_bom() {
 fn empty_openai_response_is_rejected() {
     let error = openai_to_anthropic_response(" \n\t", "claude-test").unwrap_err();
 
-    assert_eq!(error, "上游 OpenAI 回應本文為空");
+    assert_eq!(error, "Upstream OpenAI response body is empty");
 }
 
 #[test]

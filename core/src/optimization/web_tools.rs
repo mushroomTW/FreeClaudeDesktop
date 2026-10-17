@@ -271,7 +271,7 @@ pub async fn execute_web_tool(
 /// 執行 `execute_web_fetch` 對應的處理流程。
 async fn execute_web_fetch(policy: &WebFetchEgressPolicy, input: &Value) -> String {
     let Some(url) = extract_web_fetch_url(input) else {
-        return "web_fetch 缺少 url 參數。".to_string();
+        return "web_fetch is missing the url parameter.".to_string();
     };
     if let Err(error) = validate_url(policy, &url) {
         return error;
@@ -288,7 +288,7 @@ async fn execute_web_search(policy: &WebFetchEgressPolicy, input: &Value) -> Str
         .map(str::trim)
         .filter(|query| !query.is_empty())
     else {
-        return "web_search 缺少 query 參數。".to_string();
+        return "web_search is missing the query parameter.".to_string();
     };
     let encoded: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
     let url = format!("https://duckduckgo.com/html/?q={encoded}");
@@ -462,7 +462,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(text.contains("缺少 query"));
+        assert!(text.contains("missing the query parameter"));
     }
 
     #[test]

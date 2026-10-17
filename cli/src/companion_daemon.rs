@@ -24,7 +24,7 @@ pub async fn companion_daemon() -> Result<(), Box<dyn std::error::Error>> {
                 settings.gateway.proxy_auth_token
             }
             _ => {
-                tracing::error!("Companion daemon 缺少 Proxy 驗證 token");
+                tracing::error!("Companion daemon is missing the Proxy auth token");
                 tokio::time::sleep(backoff).await;
                 backoff = (backoff * 2).min(Duration::from_secs(5));
                 continue;

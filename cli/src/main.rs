@@ -44,7 +44,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn check_deprecated_runtime(runtime: Option<&String>) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(v) = runtime {
         return Err(format!(
-            "Docker runtime 已於 v1.x 移除，不再支援 --runtime {v}。請改用 native runtime（預設即 native，無需指定 --runtime）。若需清理舊容器，請手動執行 `docker compose down`。詳見 README。"
+            "The Docker runtime was removed in v1.x, so --runtime {v} is no longer supported. Use the native runtime instead (native is the default, so --runtime is unnecessary). To clean up old containers, run `docker compose down` manually. See the README for details."
         )
         .into());
     }
@@ -55,14 +55,16 @@ fn check_deprecated_runtime(runtime: Option<&String>) -> Result<(), Box<dyn std:
 fn warn_deprecated_env_vars() {
     if std::env::var_os("FREECLAUDE_COMPOSE_FILE").is_some() {
         eprintln!(
-            "警告: FREECLAUDE_COMPOSE_FILE 已移除，Docker runtime 不再支援，此變數已被忽略。"
+            "Warning: FREECLAUDE_COMPOSE_FILE has been removed; the Docker runtime is no longer supported and this variable is ignored."
         );
     }
     if std::env::var_os("FREECLAUDE_DOCKER_MEMORY_LIMIT").is_some() {
-        eprintln!("警告: FREECLAUDE_DOCKER_MEMORY_LIMIT 已移除，Docker runtime 不再支援。");
+        eprintln!(
+            "Warning: FREECLAUDE_DOCKER_MEMORY_LIMIT has been removed; the Docker runtime is no longer supported."
+        );
     }
     if std::env::var_os("FREECLAUDE_DOCKER_MOCK").is_some() {
-        eprintln!("警告: FREECLAUDE_DOCKER_MOCK 已移除。");
+        eprintln!("Warning: FREECLAUDE_DOCKER_MOCK has been removed.");
     }
 }
 
@@ -75,7 +77,7 @@ fn warn_orphan_compose_file() {
         || std::path::Path::new("docker-compose.yml").is_file();
     if compose_exists {
         eprintln!(
-            "提示: 偵測到舊的 compose.yaml / FREECLAUDE_COMPOSE_FILE，Docker runtime 已移除。若 3000 埠被佔用，舊容器可能仍在運行，請手動執行 `docker compose down`。"
+            "Note: found a legacy compose.yaml / FREECLAUDE_COMPOSE_FILE, but the Docker runtime has been removed. If port 3000 is in use, an old container may still be running; run `docker compose down` manually."
         );
     }
 }
@@ -91,7 +93,7 @@ async fn install(args: InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     if !args.no_autostart {
         crate::runtime::autostart::enable()?;
     }
-    println!("Native runtime 安裝完成");
+    println!("Native runtime installed");
     Ok(())
 }
 
@@ -139,7 +141,7 @@ async fn update(args: UpdateArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Err(
-        "Native runtime 不支援直接覆寫執行檔；請由 release 頁面安裝新版本，或使用 `freeclaude update --check` 僅檢查更新。"
+        "The native runtime cannot overwrite the executable in place; install the new version from the release page, or use `freeclaude update --check` to only check for updates."
             .into(),
     )
 }
@@ -148,7 +150,7 @@ fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     check_deprecated_runtime(args.runtime.as_ref())?;
     if args.purge_image {
         return Err(
-            "--purge-image 已隨 Docker runtime 移除，Docker image `freeclaude-proxy:local` 不再存在，無需清理。"
+            "--purge-image was removed together with the Docker runtime; the `freeclaude-proxy:local` image no longer exists, so there is nothing to clean up."
                 .into(),
         );
     }
@@ -165,7 +167,7 @@ fn uninstall(args: UninstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     free_claude_core::restore_official_config()?;
     free_claude_core::purge_application_data()?;
 
-    println!("FreeClaudeDesktop 已解除安裝並還原 Claude 設定");
+    println!("FreeClaudeDesktop uninstalled and Claude settings restored");
     Ok(())
 }
 
@@ -174,18 +176,18 @@ fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error:
     match command {
         AutostartCommand::Enable => {
             crate::runtime::autostart::enable()?;
-            println!("自動啟動已啟用");
+            println!("Autostart enabled");
         }
         AutostartCommand::Disable => {
             crate::runtime::autostart::disable()?;
-            println!("自動啟動已停用");
+            println!("Autostart disabled");
         }
         AutostartCommand::Status => println!(
-            "自動啟動：{}",
+            "Autostart: {}",
             if crate::runtime::autostart::is_enabled()? {
-                "已啟用"
+                "enabled"
             } else {
-                "未啟用"
+                "disabled"
             }
         ),
     }
@@ -195,16 +197,16 @@ fn manage_autostart(command: AutostartCommand) -> Result<(), Box<dyn std::error:
 /// 啟動或執行 `open_dashboard` 流程。
 fn open_dashboard() -> Result<(), Box<dyn std::error::Error>> {
     let settings = free_claude_core::get_launcher_settings()
-        .ok_or("尚未設定 Gateway，無法開啟受保護的控制台")?;
+        .ok_or("Gateway is not configured; cannot open the protected dashboard")?;
     let port = settings.desktop.active_port.unwrap_or(3000);
     let token = settings.gateway.proxy_auth_token.trim();
     if token.is_empty() {
-        return Err("Proxy 驗證 token 不可為空".into());
+        return Err("Proxy auth token must not be empty".into());
     }
     let encoded_token: String = url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
     let url = format!("http://127.0.0.1:{port}/dashboard#{encoded_token}");
 
-    println!("正在開啟 Web 控制台：http://127.0.0.1:{port}/dashboard");
+    println!("Opening the web dashboard: http://127.0.0.1:{port}/dashboard");
 
     #[cfg(target_os = "windows")]
     let status = std::process::Command::new("cmd")
@@ -216,7 +218,7 @@ fn open_dashboard() -> Result<(), Box<dyn std::error::Error>> {
     let status = std::process::Command::new("xdg-open").arg(&url).status()?;
 
     if !status.success() {
-        return Err(io::Error::other("無法開啟 Web 控制台").into());
+        return Err(io::Error::other("Failed to open the web dashboard").into());
     }
     Ok(())
 }
@@ -224,21 +226,21 @@ fn open_dashboard() -> Result<(), Box<dyn std::error::Error>> {
 /// 啟動或執行 `launch_claude` 流程。
 fn launch_claude() -> Result<(), Box<dyn std::error::Error>> {
     let path = free_claude_core::launch_claude(None)?;
-    println!("Claude 已啟動：{}", path.display());
+    println!("Claude launched: {}", path.display());
     Ok(())
 }
 
 /// 清理或還原 `restore_settings` 所管理的資料。
 fn restore_settings() -> Result<(), Box<dyn std::error::Error>> {
     free_claude_core::restore_official_config()?;
-    println!("Claude 官方設定已還原");
+    println!("Official Claude settings restored");
     Ok(())
 }
 
 /// 執行 `purge` 對應的處理流程。
 fn purge(args: PurgeArgs) -> Result<(), Box<dyn std::error::Error>> {
     if !args.yes {
-        return Err("purge 會停止服務、還原 Claude 設定並刪除所有 FreeClaudeDesktop 資料；請加入 --yes 確認".into());
+        return Err("purge stops services, restores Claude settings, and deletes all FreeClaudeDesktop data; add --yes to confirm".into());
     }
     let _ = crate::runtime::native::stop_companion();
     if let Err(error) = crate::runtime::native::stop_proxy()
@@ -248,7 +250,7 @@ fn purge(args: PurgeArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
     let _ = crate::runtime::autostart::disable();
     free_claude_core::purge_application_data()?;
-    println!("FreeClaudeDesktop 的本機資料已完整清除");
+    println!("All local FreeClaudeDesktop data has been erased");
     Ok(())
 }
 
@@ -265,29 +267,31 @@ async fn start_proxy() -> Result<(), Box<dyn std::error::Error>> {
     let port = proxy_port()?;
     let healthz_url = format!("http://127.0.0.1:{port}/healthz");
     if crate::runtime::native::companion_pid_file().is_file() {
-        return Err("偵測到舊版 Companion 程序，請先執行 `freeclaude stop` 再啟動。".into());
+        return Err(
+            "Detected an older Companion process; run `freeclaude stop` before starting.".into(),
+        );
     }
     if proxy_is_healthy(&healthz_url).await {
-        println!("Proxy 已在運作：{healthz_url}");
+        println!("Proxy is already running: {healthz_url}");
         return Ok(());
     }
     let pid = crate::runtime::native::start_proxy(port)?;
     for _ in 0..20 {
         tokio::time::sleep(Duration::from_millis(250)).await;
         if proxy_is_healthy(&healthz_url).await {
-            println!("Proxy 已啟動：PID {pid}，連接埠 {port}");
+            println!("Proxy started: PID {pid}, port {port}");
             return Ok(());
         }
     }
 
     let _ = crate::runtime::native::stop_proxy();
-    Err("Proxy 未在 5 秒內通過健康檢查".into())
+    Err("Proxy did not pass the health check within 5 seconds".into())
 }
 
 /// 停止或停用 `stop_proxy` 流程。
 fn stop_proxy() -> Result<(), Box<dyn std::error::Error>> {
     crate::runtime::native::stop_proxy()?;
-    println!("Proxy 已停止");
+    println!("Proxy stopped");
     Ok(())
 }
 
@@ -315,7 +319,7 @@ async fn print_proxy_status() -> Result<(), Box<dyn std::error::Error>> {
     let body: Value = response.json().await?;
 
     if !status.is_success() || body.get("status").and_then(Value::as_str) != Some("ok") {
-        return Err(format!("Proxy 健康檢查失敗：HTTP {status}，回應：{body}").into());
+        return Err(format!("Proxy health check failed: HTTP {status}, response: {body}").into());
     }
 
     let pid = std::fs::read_to_string(crate::runtime::native::pid_file())
@@ -384,7 +388,10 @@ mod tests {
         if let Command::Install(args) = cli.command {
             assert_eq!(args.runtime.as_deref(), Some("docker"));
             let err = check_deprecated_runtime(args.runtime.as_ref()).unwrap_err();
-            assert!(err.to_string().contains("Docker runtime 已於 v1.x 移除"));
+            assert!(
+                err.to_string()
+                    .contains("The Docker runtime was removed in v1.x")
+            );
         } else {
             panic!("應為 Install");
         }

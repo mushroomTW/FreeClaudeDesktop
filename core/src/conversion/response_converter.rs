@@ -108,11 +108,11 @@ pub fn prepare_proxy_body(body: &str, settings: &Settings) -> String {
         if let Some(mapped) =
             crate::conversion::request_converter::resolve_model_route(model, settings)
         {
-            tracing::info!("[model 映射] {} → {}", model, mapped);
+            tracing::info!("[model mapping] {} → {}", model, mapped);
             data["model"] = Value::String(mapped);
         } else {
             tracing::debug!(
-                "[model 映射] {} 不在 routes 中，也沒有預設 model，原樣轉發",
+                "[model mapping] {} is not in routes and no default model is set; forwarding as-is",
                 model
             );
         }
@@ -347,7 +347,9 @@ fn parse_provider_models(raw_data: Vec<Value>) -> Vec<ProviderModel> {
         match serde_json::from_value::<ProviderModel>(item) {
             Ok(model) if !provider_model_id(&model).is_empty() => models.push(model),
             Ok(_) => {}
-            Err(err) => tracing::warn!("[models parse] 跳過單一異常模型解析: {err}"),
+            Err(err) => {
+                tracing::warn!("[models parse] skipping a model that failed to parse: {err}")
+            }
         }
     }
     models
@@ -596,11 +598,11 @@ pub fn apply_model_visibility(models: &mut NormalizedModels, overrides: &HashMap
 pub fn openai_to_anthropic_response(openai_body: &str, req_model: &str) -> Result<Value, String> {
     let normalized_body = openai_body.trim_start_matches('\u{feff}').trim();
     if normalized_body.is_empty() {
-        return Err("上游 OpenAI 回應本文為空".to_string());
+        return Err("Upstream OpenAI response body is empty".to_string());
     }
 
     let data: Value = serde_json::from_str(normalized_body)
-        .map_err(|e| format!("上游 OpenAI 回應不是有效 JSON：{e}"))?;
+        .map_err(|e| format!("Upstream OpenAI response is not valid JSON: {e}"))?;
 
     let first_choice = data
         .get("choices")

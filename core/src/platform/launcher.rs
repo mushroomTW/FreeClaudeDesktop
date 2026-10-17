@@ -360,12 +360,12 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
     let target = match custom_path {
         Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
         _ => detect_claude_path()
-            .ok_or_else(|| AppError::Launcher("找不到 Claude.exe".to_string()))?,
+            .ok_or_else(|| AppError::Launcher("Claude.exe not found".to_string()))?,
     };
 
     let target = validate_launch_path(&target)?;
     if !target.exists() {
-        return Err(AppError::Launcher("找不到 Claude.exe".to_string()));
+        return Err(AppError::Launcher("Claude.exe not found".to_string()));
     }
 
     // 直接執行已驗證的主程式，由 Desktop 選擇標準第三方 Profile。
@@ -384,12 +384,14 @@ pub fn launch_claude(custom_path: Option<&Path>) -> AppResult<PathBuf> {
     let target = match custom_path {
         Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
         _ => detect_claude_path()
-            .ok_or_else(|| AppError::Launcher("找不到 Claude 執行檔".to_string()))?,
+            .ok_or_else(|| AppError::Launcher("Claude executable not found".to_string()))?,
     };
 
     let target = validate_launch_path(&target)?;
     if !target.exists() {
-        return Err(AppError::Launcher("找不到 Claude 執行檔".to_string()));
+        return Err(AppError::Launcher(
+            "Claude executable not found".to_string(),
+        ));
     }
 
     Command::new(&target)

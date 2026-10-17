@@ -40,7 +40,7 @@ pub fn enable() -> io::Result<()> {
     {
         let executable = env::current_exe()?;
         let path = launch_agent_path()?;
-        fs::create_dir_all(path.parent().expect("LaunchAgent 目錄"))?;
+        fs::create_dir_all(path.parent().expect("LaunchAgent directory"))?;
         fs::write(
             &path,
             format!(
@@ -54,7 +54,7 @@ pub fn enable() -> io::Result<()> {
     {
         let executable = env::current_exe()?;
         let path = systemd_unit_path()?;
-        fs::create_dir_all(path.parent().expect("systemd user 目錄"))?;
+        fs::create_dir_all(path.parent().expect("systemd user directory"))?;
         fs::write(
             &path,
             format!(
@@ -124,7 +124,9 @@ fn run(command: &mut Command) -> io::Result<()> {
     if status.success() {
         Ok(())
     } else {
-        Err(io::Error::other(format!("autostart 命令失敗：{status}")))
+        Err(io::Error::other(format!(
+            "autostart command failed: {status}"
+        )))
     }
 }
 
@@ -136,7 +138,7 @@ fn windows_start_command() -> io::Result<String> {
     if command_line.chars().count() > 260 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Windows Registry 自動啟動命令列不可超過 260 個字元",
+            "The Windows Registry autostart command line must not exceed 260 characters",
         ));
     }
     Ok(command_line)
@@ -175,7 +177,7 @@ fn remove_legacy_task() {
 fn launch_agent_path() -> io::Result<PathBuf> {
     Ok(env::var_os("HOME")
         .map(PathBuf::from)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "找不到 HOME"))?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME not found"))?
         .join("Library/LaunchAgents/com.freeclaude.desktop.plist"))
 }
 
@@ -185,7 +187,12 @@ fn systemd_unit_path() -> io::Result<PathBuf> {
     let base = env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "找不到使用者設定目錄"))?;
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Could not find the user config directory",
+            )
+        })?;
     Ok(base.join("systemd/user/freeclaude.service"))
 }
 

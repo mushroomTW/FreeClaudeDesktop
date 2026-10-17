@@ -23,7 +23,7 @@ All toggles live in `core/src/core/config.rs:OptimizationSettings` and are expos
 
 ## 1. Quota Check Mock (`quota_check_mock`)
 
-**What it does:** Answers Claude Desktop's background quota / liveness probes locally without calling the gateway. Returns `"配額檢查通過。"` (quota check passed).
+**What it does:** Answers Claude Desktop's background quota / liveness probes locally without calling the gateway. Returns `"Quota check passed."`.
 
 **Detection** — `core/src/optimization/detection.rs:is_quota_check_request`:
 

@@ -126,9 +126,9 @@ async fn serve(
 ) -> Result<(), ServerError> {
     let addr = listener.local_addr()?;
     tracing::info!("==================================================");
-    tracing::info!("FreeClaudeDesktop Rust Axum Async Server 已啟動");
-    tracing::info!("本機服務: http://{}", addr);
-    tracing::info!("API 代理: http://{}/v1/messages", addr);
+    tracing::info!("FreeClaudeDesktop Rust Axum async server started");
+    tracing::info!("Local service: http://{}", addr);
+    tracing::info!("API proxy: http://{}/v1/messages", addr);
     tracing::info!("==================================================");
 
     axum::serve(listener, router::create_router(port))

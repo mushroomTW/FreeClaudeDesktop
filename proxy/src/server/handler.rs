@@ -209,7 +209,7 @@ pub async fn handle_count_tokens(body: Bytes) -> impl IntoResponse {
     // 粗略估算：每 4 字元 ≈ 1 token，最低 1
     let estimated = std::cmp::max(1, char_count.div_ceil(4));
     tracing::info!(
-        "[count_tokens] 本地估算 input_tokens={} (chars={})",
+        "[count_tokens] local estimate input_tokens={} (chars={})",
         estimated,
         char_count
     );
@@ -324,7 +324,7 @@ async fn load_settings_or_response() -> Result<Settings, axum::response::Respons
     match load_runtime_settings().await {
         Ok(Some(s)) => Ok(s),
         Ok(None) => {
-            tracing::error!("<- 錯誤: Launcher 尚未配置");
+            tracing::error!("<- error: launcher is not configured");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": "Launcher has not been configured yet." })),
@@ -332,7 +332,7 @@ async fn load_settings_or_response() -> Result<Settings, axum::response::Respons
                 .into_response())
         }
         Err(e) => {
-            tracing::error!("<- 錯誤: 讀取 Launcher 設定失敗: {e}");
+            tracing::error!("<- error: failed to read launcher settings: {e}");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": e.to_string() })),
@@ -372,7 +372,7 @@ fn build_target_url(
     match res {
         Ok(url) => Ok(url),
         Err(e) => {
-            tracing::error!("<- 錯誤: 無效的 Gateway URL: {:?}", e);
+            tracing::error!("<- error: invalid Gateway URL: {:?}", e);
             Err((StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response())
         }
     }
@@ -383,7 +383,7 @@ async fn unprotect_key_or_response(key: String) -> Result<String, axum::response
     match unprotect_runtime_api_key(key).await {
         Ok(k) => Ok(k),
         Err(e) => {
-            tracing::error!("<- 錯誤: 解密 API key 失敗: {:?}", e);
+            tracing::error!("<- error: failed to decrypt API key: {:?}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": e.to_string() })),
@@ -403,7 +403,7 @@ fn build_proxy_body(
         match anthropic_to_openai_request(body_str, settings) {
             Ok(res) => Ok(res),
             Err(e) => {
-                tracing::error!("<- 錯誤: 轉換請求格式失敗: {:?}", e);
+                tracing::error!("<- error: failed to convert request format: {:?}", e);
                 Err((StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response())
             }
         }
@@ -453,10 +453,10 @@ async fn handle_openai_stream_response(
     headers: &HeaderMap,
     _is_stream: bool,
 ) -> axum::response::Response {
-    tracing::info!("<- 上游回應狀態碼(流式): {}", status_u16);
+    tracing::info!("<- upstream response status (streaming): {}", status_u16);
     if !status.is_success() {
         let text = read_bounded_error(response).await;
-        tracing::error!("<- 上游流式錯誤狀態碼: {}", status_u16);
+        tracing::error!("<- upstream streaming error status: {}", status_u16);
         if let Some(retry) = try_stale_model_retry(
             settings, api_key, proxy_body, req_model, target_url, headers, false, &text, true,
         )
@@ -487,13 +487,13 @@ async fn handle_openai_non_stream_success(
     target_url: &str,
     headers: &HeaderMap,
 ) -> axum::response::Response {
-    tracing::info!("<- 上游回應狀態碼: {}", status_u16);
+    tracing::info!("<- upstream response status: {}", status_u16);
     let text = match response.text().await {
         Ok(t) => t,
         Err(e) => {
             return (
                 StatusCode::BAD_GATEWAY,
-                Json(json!({ "error": format!("讀取上游回應失敗：{e}") })),
+                Json(json!({ "error": format!("Failed to read upstream response: {e}") })),
             )
                 .into_response();
         }
@@ -528,7 +528,7 @@ async fn handle_openai_error(
     headers: &HeaderMap,
 ) -> axum::response::Response {
     let text = read_bounded_error(response).await;
-    tracing::error!("<- 上游錯誤狀態碼: {}", status_u16);
+    tracing::error!("<- upstream error status: {}", status_u16);
     if let Some(retry) = try_stale_model_retry(
         settings, api_key, proxy_body, req_model, target_url, headers, false, &text, true,
     )
@@ -620,7 +620,7 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
     }
 
     if let Some(diagnostic) = request_diagnostic(&body_str) {
-        tracing::info!("[未攔截請求] {diagnostic}");
+        tracing::info!("[unhandled request] {diagnostic}");
     }
 
     let is_anthropic_native = is_anthropic_native(&settings);
@@ -649,8 +649,8 @@ pub async fn handle_proxy(headers: HeaderMap, body: Bytes) -> impl IntoResponse 
         Err(resp) => return resp,
     };
 
-    tracing::info!("-> 轉發請求至: {}", target_url);
-    tracing::debug!("-> 轉發 Body 長度: {} bytes", proxy_body.len());
+    tracing::info!("-> forwarding request to: {}", target_url);
+    tracing::debug!("-> forwarding body length: {} bytes", proxy_body.len());
     let upstream_req = match build_upstream_request(
         crate::server::http_client(),
         &target_url,
@@ -757,7 +757,7 @@ async fn dispatch_upstream(
             .await
         }
         Err(error) => {
-            tracing::error!("<- 轉發錯誤: {:?}", error);
+            tracing::error!("<- forwarding error: {:?}", error);
             let msg = error.to_string();
             record_api_outcome(ApiOutcome {
                 enabled: settings.optimizations.enable_api_call_logging,

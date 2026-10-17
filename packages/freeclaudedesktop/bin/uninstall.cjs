@@ -5,11 +5,11 @@ const { spawn, spawnSync } = require("node:child_process");
 
 function absoluteDirectory(value, home) {
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error("全域目錄設定不是有效路徑");
+    throw new Error("Global directory setting is not a valid path");
   }
   if (value === "~") return home;
   if (value.startsWith("~/") || value.startsWith("~\\")) return path.resolve(home, value.slice(2));
-  if (!path.isAbsolute(value)) throw new Error("全域目錄使用相對路徑");
+  if (!path.isAbsolute(value)) throw new Error("Global directory uses a relative path");
   return path.normalize(value);
 }
 
@@ -27,7 +27,7 @@ function configuredGlobalDirectory() {
     if (value !== undefined) directories.add(absoluteDirectory(value, home));
   }
   // 有衝突的全域設定時不推測優先順序，保留套件供使用者手動移除。
-  if (directories.size > 1) throw new Error("多個全域 bunfig.toml 的 globalDir 設定不一致");
+  if (directories.size > 1) throw new Error("globalDir settings in multiple global bunfig.toml files disagree");
   if (directories.size === 1) return [...directories][0];
   const install = process.env.BUN_INSTALL ? absoluteDirectory(process.env.BUN_INSTALL, home) : path.join(home, ".bun");
   return path.join(install, "install", "global");
@@ -93,7 +93,7 @@ function retireWindowsAlias(filename) {
         if (error.code !== "EPERM" && error.code !== "EBUSY" && error.code !== "EACCES") break;
       }
     }
-    console.error("套件與命令入口已移除，但暫存檔清理失敗，請在命令退出後刪除：" + filename);
+    console.error("The package and command entry were removed, but cleaning up the temporary file failed. Delete it after the command exits: " + filename);
     process.exit(1);
   `;
   const child = spawn(process.execPath, ["--eval", cleanup], {
@@ -104,7 +104,7 @@ function retireWindowsAlias(filename) {
     stdio: "inherit"
   });
   child.on("error", (error) => {
-    console.error(`套件與命令入口已移除，但無法啟動暫存檔清理：${error.message}。請在命令退出後刪除 ${retired}`);
+    console.error(`The package and command entry were removed, but the temporary file cleanup could not be started: ${error.message}. Delete ${retired} after the command exits`);
     process.exitCode = 1;
   });
   child.unref();
@@ -146,14 +146,14 @@ function globalInstallation(binDirectory) {
     }
     const manifest = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
     if (!manifest.dependencies?.["@mushroomtw/freeclaudedesktop"]) {
-      throw new Error("全域套件清單沒有目前套件");
+      throw new Error("The global package manifest does not include the current package");
     }
     const result = spawnSync(process.execPath, ["pm", "bin", "-g"], {
       cwd: directory,
       env: process.env,
       encoding: "utf8"
     });
-    if (result.error || result.status !== 0) throw new Error("無法查詢 Bun 全域命令目錄");
+    if (result.error || result.status !== 0) throw new Error("Could not query the Bun global command directory");
     const globalBin = absoluteDirectory(result.stdout.trim(), os.homedir());
     return { kind: "global", directory: fs.realpathSync(directory), binDirectory: globalBin, aliases: ownedAliases(globalBin, current) };
   } catch (error) {

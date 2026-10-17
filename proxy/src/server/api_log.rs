@@ -33,7 +33,7 @@ pub fn record_api_call(record: Value) {
     };
 
     if let Err(error) = append_record(&log_dir, &record, MAX_API_LOG_BYTES, MAX_API_LOG_ARCHIVES) {
-        tracing::warn!("無法寫入 API 呼叫紀錄：{error}");
+        tracing::warn!("Failed to write API call log: {error}");
     }
 }
 

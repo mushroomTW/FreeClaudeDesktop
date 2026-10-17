@@ -18,12 +18,12 @@ function platformPackageDirectory() {
   const key = `${process.platform}-${process.arch}`;
   const packageName = PLATFORM_PACKAGES[key];
   if (!packageName) {
-    throw new Error(`尚未提供 ${key} 平台的 FreeClaudeDesktop binary。`);
+    throw new Error(`No FreeClaudeDesktop binary is available for the ${key} platform.`);
   }
   try {
     return path.dirname(require.resolve(`${packageName}/package.json`));
   } catch {
-    throw new Error(`找不到 ${packageName}。請重新執行 bun add -g @mushroomtw/freeclaudedesktop。`);
+    throw new Error(`Cannot find ${packageName}. Run bun add -g @mushroomtw/freeclaudedesktop again.`);
   }
 }
 
@@ -31,7 +31,7 @@ function nativeCliPath() {
   const filename = process.platform === "win32" ? "freeclaude.exe" : "freeclaude";
   const binary = path.join(platformPackageDirectory(), "bin", filename);
   if (!fs.existsSync(binary)) {
-    throw new Error(`找不到管理程式：${binary}`);
+    throw new Error(`Management program not found: ${binary}`);
   }
   return binary;
 }
@@ -46,20 +46,20 @@ function runNative(args) {
 }
 
 function printHelp() {
-  console.log(`FreeClaudeDesktop Bun 管理工具
+  console.log(`FreeClaudeDesktop Bun management tool
 
-用法：freeclaude <命令>
+Usage: freeclaude <command>
 
-命令：
-  start      啟動本機 Proxy 並等待健康檢查
-  stop       停止由 FreeClaudeDesktop 管理的 Proxy
-  restart    重新啟動本機 Proxy
-  status     顯示 Proxy 與自動啟動狀態
-  dashboard  開啟 Web 控制台
-  path       顯示目前平台 binary 所在資料夾
-  purge      停止服務、還原 Claude 設定並完整清除本程式資料
-  uninstall  清理本機狀態，並移除目前的 Bun 全域套件
-  <其他>     直接傳遞給原生 freeclaude CLI
+Commands:
+  start      Start the local Proxy and wait for the health check
+  stop       Stop the Proxy managed by FreeClaudeDesktop
+  restart    Restart the local Proxy
+  status     Show the Proxy and autostart status
+  dashboard  Open the web dashboard
+  path       Show the folder containing the platform binary
+  purge      Stop services, restore Claude settings, and erase all program data
+  uninstall  Clean up local state and remove the current Bun global package
+  <other>    Pass the arguments through to the native freeclaude CLI
 `);
 }
 
@@ -72,7 +72,7 @@ function uninstall(args) {
   const retry = "bun remove -g @mushroomtw/freeclaudedesktop --ignore-scripts";
   if (installation.kind === "local") return;
   if (installation.kind === "unknown") {
-    console.error(`本機狀態已清理，但無法確認 Bun 全域安裝位置：${installation.reason}。如需移除全域套件，請執行 ${retry}`);
+    console.error(`Local state has been cleaned up, but the Bun global installation location could not be determined: ${installation.reason}. To remove the global package, run ${retry}`);
     process.exitCode = 1;
     return;
   }
@@ -89,13 +89,13 @@ function uninstall(args) {
   });
   process.exitCode = result.status ?? 1;
   if (result.error || process.exitCode !== 0) {
-    console.error(`本機狀態已清理，但套件移除失敗${result.error ? `：${result.error.message}` : ""}。請重試 ${retry}`);
+    console.error(`Local state has been cleaned up, but removing the package failed${result.error ? `: ${result.error.message}` : ""}. Retry with ${retry}`);
   } else {
     // Bun 在部分平台會留下全域命令入口，只清理由本次安裝持有的別名。
     try {
       cleanupGlobalAliases(installation);
     } catch (error) {
-      console.error(`套件已移除，但命令入口清理失敗：${error.message}。請檢查 ${installation.binDirectory} 內殘留的 freeclaude / freecd 別名。`);
+      console.error(`The package was removed, but cleaning up command entries failed: ${error.message}. Check ${installation.binDirectory} for leftover freeclaude / freecd aliases.`);
       process.exitCode = 1;
     }
   }
@@ -131,6 +131,6 @@ try {
       break;
   }
 } catch (error) {
-  console.error(`freeclaude：${error.message}`);
+  console.error(`freeclaude: ${error.message}`);
   process.exitCode = 1;
 }

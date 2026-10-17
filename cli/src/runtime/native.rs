@@ -40,7 +40,12 @@ pub fn stop_proxy() -> io::Result<()> {
     let pid = fs::read_to_string(&path)?
         .trim()
         .parse::<u32>()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Proxy PID 檔內容無效"))?;
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid Proxy PID file contents",
+            )
+        })?;
 
     #[cfg(target_os = "windows")]
     let status = Command::new("taskkill")
@@ -52,7 +57,9 @@ pub fn stop_proxy() -> io::Result<()> {
         .status()?;
 
     if !status.success() {
-        return Err(io::Error::other(format!("停止 proxy process 失敗：{pid}")));
+        return Err(io::Error::other(format!(
+            "Failed to stop proxy process: {pid}"
+        )));
     }
     fs::remove_file(path)?;
     Ok(())
@@ -74,7 +81,12 @@ pub fn stop_companion() -> io::Result<()> {
     let pid = fs::read_to_string(&path)?
         .trim()
         .parse::<u32>()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Companion PID 檔內容無效"))?;
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid Companion PID file contents",
+            )
+        })?;
 
     #[cfg(target_os = "windows")]
     let status = Command::new("taskkill")
@@ -87,7 +99,7 @@ pub fn stop_companion() -> io::Result<()> {
 
     if !status.success() {
         return Err(io::Error::other(format!(
-            "停止 companion process 失敗：{pid}"
+            "Failed to stop companion process: {pid}"
         )));
     }
     fs::remove_file(path)?;

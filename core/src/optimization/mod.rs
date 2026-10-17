@@ -167,7 +167,7 @@ pub async fn try_optimizations(
         return Some(build_optimized_text_response(
             body_str,
             &model,
-            "配額檢查通過。",
+            "Quota check passed.",
             10,
             5,
         ));
@@ -296,7 +296,7 @@ mod tests {
         else {
             panic!("非串流請求應回傳 JSON");
         };
-        assert_eq!(value["content"][0]["text"], "配額檢查通過。");
+        assert_eq!(value["content"][0]["text"], "Quota check passed.");
     }
 
     #[tokio::test]

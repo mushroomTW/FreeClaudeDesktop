@@ -13,3 +13,12 @@
 - `sonar-project.properties`（根目錄）— SonarQube 分析設定
 
 > **維護約定**：所有對外介紹性 Markdown（架構、功能說明）請置於 `docs/` 下，根目錄僅保留 `README.md` / `README_zh.md` / `LICENSE` 與配置檔，避免根目錄膨脹。
+
+## 語言約定
+
+- CLI 使用者可見文字一律使用英文：終端輸出、`--help` 的 about 文字、錯誤訊息、日誌，以及 `core/`、`proxy/` 冒泡給使用者的訊息與 API 錯誤本文。
+- 使用者可見的標籤常數（例如 `core::constants::PROVIDERS`）同採英文。
+- Web Dashboard 的語系表（`core/src/core/config.rs` 的 `En`/`ZhTw` 對照、`proxy/src/server/dashboard.js` 的 `translations`）是刻意的多語系資源，維持原文。Dashboard 顯示伺服器錯誤時，以回應中的 `code` 對照語系表；沒有 `code` 時才顯示伺服器訊息（英文診斷）。
+- 程式碼註解與 `docs/` 文件預設維持繁體中文。
+- 適用範圍為受版控的專案程式碼；`.scratch/` 的本機暫存腳本與舊版封裝產物（例如 `.scratch/live-bun/package/`）不在此限。
+- 本節是版本控管的正式來源；根目錄 `AGENTS.md` 是同一份約定的本機副本（已被 `.gitignore` 排除）。

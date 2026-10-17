@@ -73,11 +73,37 @@ pub struct DashboardSettingsUpdate {
     pub custom_claude_path: Option<Option<String>>,
 }
 
-pub(crate) fn validate_gateway_url(base_url: &str) -> Result<String, &'static str> {
+/// Dashboard 欄位驗證失敗的回應內容。
+///
+/// `code` 供前端對照 Dashboard 語系表顯示在地化文字；`message` 是沒有對照時的
+/// 英文備援，因此不隨語系改變。
+#[derive(Debug)]
+pub(crate) struct FieldError {
+    pub code: &'static str,
+    pub message: &'static str,
+}
+
+impl FieldError {
+    /// 轉為 HTTP 錯誤回應；`error` 與 `code` 同時回傳，前端以 `code` 為準。
+    fn response(self, status: StatusCode) -> (StatusCode, Json<Value>) {
+        (
+            status,
+            Json(json!({ "error": self.message, "code": self.code })),
+        )
+    }
+}
+
+pub(crate) fn validate_gateway_url(base_url: &str) -> Result<String, FieldError> {
     let base_url = base_url.trim().trim_end_matches('/');
-    let parsed = Url::parse(base_url).map_err(|_| "Gateway URL 格式無效")?;
+    let parsed = Url::parse(base_url).map_err(|_| FieldError {
+        code: "gateway_url_invalid",
+        message: "Gateway URL is not a valid URL",
+    })?;
     if !matches!(parsed.scheme(), "https" | "http") || parsed.host_str().is_none() {
-        return Err("Gateway URL 必須使用 HTTP 或 HTTPS");
+        return Err(FieldError {
+            code: "gateway_url_scheme",
+            message: "Gateway URL must use http or https",
+        });
     }
     if parsed.scheme() == "http"
         && !matches!(
@@ -85,7 +111,10 @@ pub(crate) fn validate_gateway_url(base_url: &str) -> Result<String, &'static st
             Some("localhost") | Some("127.0.0.1") | Some("::1")
         )
     {
-        return Err("非本機 Gateway 必須使用 HTTPS");
+        return Err(FieldError {
+            code: "gateway_url_insecure",
+            message: "Non-local Gateway must use HTTPS",
+        });
     }
     Ok(base_url.to_string())
 }
@@ -102,16 +131,17 @@ fn apply_settings_update(
     input: DashboardSettingsUpdate,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     settings.gateway.real_base_url = validate_gateway_url(&input.base_url)
-        .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
+        .map_err(|error| error.response(StatusCode::BAD_REQUEST))?;
     settings.gateway.real_auth_scheme = input.auth_scheme.trim().to_ascii_lowercase();
     if !matches!(
         settings.gateway.real_auth_scheme.as_str(),
         "bearer" | "x-api-key"
     ) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "authScheme 必須是 bearer 或 x-api-key" })),
-        ));
+        return Err(FieldError {
+            code: "auth_scheme_invalid",
+            message: "authScheme must be bearer or x-api-key",
+        }
+        .response(StatusCode::BAD_REQUEST));
     }
     if let Some(api_key) = input.api_key.map(|key| key.trim().to_string())
         && !api_key.is_empty()
@@ -275,14 +305,16 @@ pub async fn update_dashboard_settings(
     };
     let input = save_input_from_settings(&settings, raw_api_key);
     if let Err(error) = free_claude_core::save_config_async(input).await {
-        tracing::error!("同步 3P Gateway 設定給 Claude Desktop 失敗: {error}");
+        tracing::error!("Failed to sync the 3P Gateway settings to Claude Desktop: {error}");
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": error.to_string() })),
         )
             .into_response();
     }
-    tracing::info!("<- 已成功為 Claude Desktop 部署與套用 3P Gateway 設定！");
+    tracing::info!(
+        "<- successfully deployed and applied the 3P Gateway settings for Claude Desktop"
+    );
     (StatusCode::OK, Json(updated_config)).into_response()
 }
 
@@ -367,5 +399,53 @@ fn save_input_from_settings(settings: &Settings, api_key: String) -> SaveConfigI
         real_model_sonnet: settings.models.real_model_sonnet.clone(),
         real_model_opus: settings.models.real_model_opus.clone(),
         real_model_haiku: settings.models.real_model_haiku.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Dashboard 語系表（`dashboard.js`）必須為每個伺服器錯誤碼提供 `err_<code>` 項目。
+    const DASHBOARD_JS: &str = include_str!("dashboard.js");
+
+    fn assert_localized(code: &str) {
+        let key = format!("'err_{code}'");
+        assert_eq!(
+            DASHBOARD_JS.matches(&key).count(),
+            2,
+            "dashboard.js 的 en 與 zh-tw 語系表需各有 {key} 項目"
+        );
+    }
+
+    #[test]
+    /// 驗證 Gateway URL 驗證失敗會帶穩定錯誤碼，且語系表有對應項目。
+    fn gateway_url_errors_expose_stable_codes() {
+        let cases = [
+            ("://missing-scheme", "gateway_url_invalid"),
+            ("file:///tmp/gateway", "gateway_url_scheme"),
+            ("http://gateway.example", "gateway_url_insecure"),
+        ];
+        for (input, expected) in cases {
+            let error = validate_gateway_url(input).unwrap_err();
+            assert_eq!(error.code, expected);
+            assert_localized(error.code);
+        }
+        assert!(validate_gateway_url("http://127.0.0.1:4000").is_ok());
+        assert!(validate_gateway_url("https://gateway.example/v1/").is_ok());
+    }
+
+    #[test]
+    /// 驗證 auth scheme 驗證失敗會帶穩定錯誤碼，且語系表有對應項目。
+    fn auth_scheme_error_exposes_stable_code() {
+        let mut settings = Settings::default();
+        let input = DashboardSettingsUpdate {
+            base_url: "https://gateway.example/v1".to_string(),
+            auth_scheme: "bogus".to_string(),
+            ..Default::default()
+        };
+        let (_, body) = apply_settings_update(&mut settings, input).unwrap_err();
+        assert_eq!(body.0["code"], "auth_scheme_invalid");
+        assert_localized("auth_scheme_invalid");
     }
 }

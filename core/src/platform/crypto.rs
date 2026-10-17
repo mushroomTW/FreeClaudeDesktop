@@ -49,7 +49,9 @@ pub fn unprotect_secret(stored: &str) -> AppResult<String> {
             .map_err(|error| AppError::Crypto(error.to_string()));
     }
 
-    Err(AppError::Crypto("不支援的 API key 儲存格式".to_string()))
+    Err(AppError::Crypto(
+        "Unsupported API key storage format".to_string(),
+    ))
 }
 
 #[cfg(test)]

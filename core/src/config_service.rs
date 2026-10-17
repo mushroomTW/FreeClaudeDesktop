@@ -113,7 +113,7 @@ async fn validate_openrouter_api_key(
     };
     if api_key.is_empty() {
         return Err(AppError::InvalidConfig(
-            "OpenRouter API key 不可為空".to_string(),
+            "OpenRouter API key must not be empty".to_string(),
         ));
     }
 
@@ -138,9 +138,9 @@ async fn validate_openrouter_api_key(
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_string)
         })
-        .unwrap_or_else(|| "OpenRouter 拒絕此憑證".to_string());
+        .unwrap_or_else(|| "OpenRouter rejected this credential".to_string());
     Err(AppError::InvalidConfig(format!(
-        "OpenRouter API key 驗證失敗（HTTP {}）：{message}",
+        "OpenRouter API key validation failed (HTTP {}): {message}",
         status.as_u16()
     )))
 }
@@ -162,7 +162,9 @@ async fn save_or_refresh(
 ) -> AppResult<SaveConfigOutput> {
     let base_url = input.base_url.trim().to_string();
     if base_url.is_empty() {
-        return Err(AppError::InvalidConfig("缺少 Gateway Base URL".to_string()));
+        return Err(AppError::InvalidConfig(
+            "Missing Gateway Base URL".to_string(),
+        ));
     }
     normalize_messages_url(&base_url).map_err(AppError::InvalidConfig)?;
     let _ = crate::apply_gateway_auth(

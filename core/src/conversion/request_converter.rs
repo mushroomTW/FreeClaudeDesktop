@@ -70,7 +70,7 @@ fn family_override_model<'a>(settings: &'a Settings, family: &str) -> Option<&'a
 fn try_family_override(settings: &Settings, family: Option<&str>) -> Option<String> {
     let fam = family?;
     let m = family_override_model(settings, fam)?;
-    tracing::debug!("[model 映射] 家族 {} 覆寫 → {}", fam, m);
+    tracing::debug!("[model mapping] family {} override → {}", fam, m);
     Some(m.clone())
 }
 
@@ -179,7 +179,7 @@ fn safety_net_route(requested_model: &str, settings: &Settings) -> Option<String
     }
     if let Some(m) = settings.models.real_model_routes.values().min() {
         tracing::warn!(
-            "[model 映射安全兜底] 無法解析 alias {}，強制映射為 routes 內的第一個模型 {}",
+            "[model mapping fallback] cannot resolve alias {}; forcing the first model in routes {}",
             requested_model,
             m
         );
@@ -187,7 +187,7 @@ fn safety_net_route(requested_model: &str, settings: &Settings) -> Option<String
     }
     if let Some(m) = settings.models.discovered_models.first() {
         tracing::warn!(
-            "[model 映射安全兜底] 無法解析 alias {}，強制映射為已偵測的第一個模型 {}",
+            "[model mapping fallback] cannot resolve alias {}; forcing the first detected model {}",
             requested_model,
             m
         );
@@ -235,11 +235,11 @@ fn base_model_alias(model: &str) -> &str {
 
 fn apply_model_mapping(data: &mut Value, req_model: &str, settings: &Settings) {
     if let Some(mapped) = resolve_model_route(req_model, settings) {
-        tracing::info!("[model 映射] {} → {}", req_model, mapped);
+        tracing::info!("[model mapping] {} → {}", req_model, mapped);
         data["model"] = Value::String(mapped);
     } else {
         tracing::debug!(
-            "[model 映射] {} 不在 routes 中，也沒有預設 model，原樣轉發",
+            "[model mapping] {} is not in routes and no default model is set; forwarding as-is",
             req_model
         );
     }

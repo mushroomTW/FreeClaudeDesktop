@@ -1,7 +1,7 @@
 {
   "name": "@mushroomtw/freeclaudedesktop",
   "version": "2.0.1",
-  "description": "以 Bun 管理的 FreeClaudeDesktop 本機 Proxy",
+  "description": "Local FreeClaudeDesktop Proxy managed with Bun",
   "license": "MIT",
   "type": "commonjs",
   "engines": {

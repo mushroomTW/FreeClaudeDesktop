@@ -23,7 +23,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
     let mut settings = match load_runtime_settings().await {
         Ok(Some(settings)) => settings,
         Ok(None) => {
-            tracing::error!("<- 錯誤: Launcher 尚未配置");
+            tracing::error!("<- error: launcher is not configured");
             return (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": "Launcher has not been configured yet." })),
@@ -31,7 +31,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
                 .into_response();
         }
         Err(error) => {
-            tracing::error!("<- 錯誤: 讀取 Launcher 設定失敗: {error}");
+            tracing::error!("<- error: failed to read launcher settings: {error}");
             return (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": error.to_string() })),
@@ -55,7 +55,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
     let api_key = match unprotect_runtime_api_key(settings.gateway.real_api_key.clone()).await {
         Ok(key) => key,
         Err(error) => {
-            tracing::error!("<- 錯誤: 解密 API key 失敗: {:?}", error);
+            tracing::error!("<- error: failed to decrypt API key: {:?}", error);
             return (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": error.to_string() })),
@@ -65,7 +65,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
     };
 
     tracing::info!(
-        "-> 正在獲取模型列表，Gateway: {}",
+        "-> fetching model list from Gateway: {}",
         settings.gateway.real_base_url
     );
 
@@ -103,7 +103,10 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
                     &mut normalized,
                     &settings.models.model_visibility_overrides,
                 );
-                tracing::info!("<- 獲取模型列表成功，模型數量: {}", normalized.data.len());
+                tracing::info!(
+                    "<- fetched model list successfully, model count: {}",
+                    normalized.data.len()
+                );
                 settings.models.real_model_routes = normalized.routes.clone();
                 settings.models.real_model_reasoning_efforts =
                     normalized.reasoning_effort_routes.clone();
@@ -127,7 +130,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
                 })
                 .await
                 {
-                    tracing::error!("<- 儲存模型設定失敗: {error}");
+                    tracing::error!("<- failed to save model settings: {error}");
                     return (
                         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                         Json(json!({ "error": error.to_string() })),
@@ -148,7 +151,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
                 (axum::http::StatusCode::OK, Json(normalized)).into_response()
             }
             Err(error) => {
-                tracing::error!("<- 解析模型列表失敗: {:?}", error);
+                tracing::error!("<- failed to parse model list: {:?}", error);
                 (
                     axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({ "error": error.to_string() })),
@@ -157,7 +160,7 @@ pub async fn handle_models(_headers: HeaderMap) -> impl IntoResponse {
             }
         },
         Err(error) => {
-            tracing::error!("<- 獲取模型列表失敗: {:?}", error);
+            tracing::error!("<- failed to fetch model list: {:?}", error);
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": error.to_string() })),

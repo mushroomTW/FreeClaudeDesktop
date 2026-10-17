@@ -4,29 +4,29 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum AppError {
     // DPAPI 加密/解密錯誤
-    #[error("加解密錯誤: {0}")]
+    #[error("Crypto error: {0}")]
     Crypto(String),
 
     // 設定檔與 IO 錯誤
-    #[error("I/O 錯誤: {0}")]
+    #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("JSON 解析/序列化錯誤: {0}")]
+    #[error("JSON parse/serialize error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("無效設定: {0}")]
+    #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
-    #[error("無效設定 JSON: {0}")]
+    #[error("Invalid configuration JSON: {0}")]
     InvalidConfigJson(#[source] serde_json::Error),
 
     // 啟動器與進程錯誤
-    #[error("啟動錯誤: {0}")]
+    #[error("Launcher error: {0}")]
     Launcher(String),
 
     // 伺服器代理與 HTTP 錯誤
-    #[error("上游請求失敗: {0}")]
+    #[error("Upstream request failed: {0}")]
     UpstreamRequest(#[from] reqwest::Error),
-    #[error("上游 API 錯誤 (HTTP {status}): {body}")]
+    #[error("Upstream API error (HTTP {status}): {body}")]
     UpstreamResponse { status: u16, body: String },
-    #[error("網路代理錯誤: {0}")]
+    #[error("Network proxy error: {0}")]
     Proxy(String),
 }
 

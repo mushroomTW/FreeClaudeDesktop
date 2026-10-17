@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "freeclaude", about = "FreeClaudeDesktop 管理工具")]
+#[command(name = "freeclaude", about = "FreeClaudeDesktop management tool")]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub(crate) command: Command,

@@ -90,7 +90,7 @@ async fn invalid_probe_response_is_replaced_with_probe_success() {
     let response = invalid_openai_response(
         reqwest::StatusCode::OK,
         "gateway temporarily returned plain text",
-        "上游 OpenAI 回應不是有效 JSON",
+        "Upstream OpenAI response is not valid JSON",
         request_body,
         "test",
     );
@@ -111,7 +111,7 @@ async fn invalid_normal_response_returns_bad_gateway_diagnostics() {
     let response = invalid_openai_response(
         reqwest::StatusCode::OK,
         "gateway temporarily returned plain text",
-        "上游 OpenAI 回應不是有效 JSON",
+        "Upstream OpenAI response is not valid JSON",
         request_body,
         "test",
     );
@@ -125,7 +125,7 @@ async fn invalid_normal_response_returns_bad_gateway_diagnostics() {
         body["error"]
             .as_str()
             .unwrap()
-            .contains("不是有效的 OpenAI JSON")
+            .contains("not valid OpenAI JSON")
     );
     assert_eq!(body["upstreamStatus"], 200);
     assert_eq!(

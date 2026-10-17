@@ -99,6 +99,10 @@
         'toast_fetch_failed': '抓取失敗: ',
         'toast_restore_success': '已還原為官方 Claude Desktop 設定。',
         'toast_restore_failed': '還原失敗: ',
+        'err_gateway_url_invalid': 'Gateway URL 不是有效的網址',
+        'err_gateway_url_scheme': 'Gateway URL 必須使用 http 或 https',
+        'err_gateway_url_insecure': '非本機 Gateway 必須使用 HTTPS',
+        'err_auth_scheme_invalid': 'authScheme 必須是 bearer 或 x-api-key',
         'confirm_sync': '⚠ 確定要從官方原版 Claude Desktop 同步配置？',
         'confirm_reset': '⚠ 確定要重置第三方 Profile 目錄？原版目錄完全不受影響。',
         'confirm_restore': '⚠ 還原為官方設定會停止 Claude Desktop，並移除 FreeClaudeDesktop 套用的設定。確定要繼續嗎？',
@@ -206,6 +210,10 @@
         'toast_fetch_failed': 'Fetch failed: ',
         'toast_restore_success': 'Official Claude Desktop settings restored.',
         'toast_restore_failed': 'Restore failed: ',
+        'err_gateway_url_invalid': 'Gateway URL is not a valid URL',
+        'err_gateway_url_scheme': 'Gateway URL must use http or https',
+        'err_gateway_url_insecure': 'Non-local Gateway must use HTTPS',
+        'err_auth_scheme_invalid': 'authScheme must be bearer or x-api-key',
         'confirm_sync': '⚠ Are you sure you want to sync settings from original Claude?',
         'confirm_reset': '⚠ Are you sure you want to reset the third-party Profile? Original profile will not be affected.',
         'confirm_restore': '⚠ Restoring the official settings will stop Claude Desktop and remove the settings applied by FreeClaudeDesktop. Continue?',
@@ -262,6 +270,14 @@
         text += param;
       }
       return text;
+    }
+
+    // 伺服器錯誤優先以回應中的 code 對照語系表；沒有對照時沿用伺服器訊息（英文）。
+    function tError(error) {
+      const code = error && error.code ? `err_${error.code}` : '';
+      const dict = translations[$('language').value] || translations['zh-tw'];
+      if (code && dict[code]) return dict[code];
+      return (error && error.message) || String(error || '');
     }
 
     const providerPresets = {
@@ -330,7 +346,11 @@
       });
       if (r.status === 401) throw new Error(t('toast_auth_required'));
       const b = await r.json();
-      if (!r.ok) throw new Error(b.error || r.statusText);
+      if (!r.ok) {
+        const error = new Error(b.error || r.statusText);
+        error.code = b.code;
+        throw error;
+      }
       return b;
     }
 
@@ -566,7 +586,7 @@
         $('authWrapper').classList.add('hidden');
         $('mainLayout').classList.remove('hidden');
         $('appContainer').classList.remove('unauthorized');
-        showToast(t('toast_load_failed') + e.message, 'error');
+        showToast(t('toast_load_failed') + tError(e), 'error');
       } finally {
         showLoading(false);
       }
@@ -915,13 +935,13 @@
             }, 1000);
             return;
           } catch (launchErr) {
-            showToast(t('toast_launch_failed') + launchErr.message, 'error');
+            showToast(t('toast_launch_failed') + tError(launchErr), 'error');
           }
         }
 
         await load();
       } catch (e) {
-        showToast(t('toast_save_failed') + e.message, 'error');
+        showToast(t('toast_save_failed') + tError(e), 'error');
       } finally {
         showLoading(false);
       }
@@ -941,7 +961,7 @@
         showToast(t('toast_save_success'));
         await load();
       } catch(e) {
-        showToast(t('toast_save_failed') + e.message, 'error');
+        showToast(t('toast_save_failed') + tError(e), 'error');
       } finally {
         showLoading(false);
       }
@@ -959,7 +979,7 @@
         showToast(t('toast_save_success'));
         await load();
       } catch(e) {
-        showToast(t('toast_save_failed') + e.message, 'error');
+        showToast(t('toast_save_failed') + tError(e), 'error');
       } finally {
         showLoading(false);
       }
@@ -986,7 +1006,7 @@
           `;
         }, 800);
       } catch (e) {
-        showToast(t('toast_restore_failed') + e.message, 'error');
+        showToast(t('toast_restore_failed') + tError(e), 'error');
       } finally {
         showLoading(false);
       }
@@ -1003,7 +1023,7 @@
         showToast(t('toast_fetch_success'));
         await load();
       } catch (e) {
-        showToast(t('toast_fetch_failed') + e.message, 'error');
+        showToast(t('toast_fetch_failed') + tError(e), 'error');
       } finally {
         showLoading(false);
       }

@@ -124,7 +124,7 @@ test("原生程序無法啟動不移除套件", () => {
 test.each([{ removeStatus: 12 }, { removeError: true }])("移除失敗提供可重試命令：%j", (options) => {
   const result = runWrapper(fixture(), ["uninstall"], options);
   expect(result.status).not.toBe(0);
-  expect(result.errors.join("\n")).toContain("本機狀態已清理，但套件移除失敗");
+  expect(result.errors.join("\n")).toContain("removing the package failed");
   expect(result.errors.join("\n")).toContain(`bun remove -g ${packageName} --ignore-scripts`);
 });
 
@@ -191,7 +191,7 @@ test("無法確認全域歸屬時清理後顯示手動移除命令", () => {
   const result = runWrapper(fixture(), ["uninstall"], { queryStatus: 1 });
   expect(result.status).toBe(1);
   expect(result.calls.some((call) => call.args[0] === "remove")).toBe(false);
-  expect(result.errors.join("\n")).toContain("無法確認 Bun 全域安裝位置");
+  expect(result.errors.join("\n")).toContain("the Bun global installation location could not be determined");
 });
 
 test("損壞的全域設定不觸發套件移除", () => {
@@ -221,7 +221,7 @@ test("缺少平台套件或 binary 時回報 Bun 修復方式", () => {
   expect(missingPackage.status).toBe(1);
   expect(missingPackage.errors[0]).toContain(`bun add -g ${packageName}`);
   fs.unlinkSync(path.join(f.nativeDirectory, "bin", f.platform === "win32" ? "freeclaude.exe" : "freeclaude"));
-  expect(runWrapper(f, ["status"]).errors[0]).toContain("找不到管理程式");
+  expect(runWrapper(f, ["status"]).errors[0]).toContain("Management program not found");
 });
 
 test("主套件 tarball 包含兩個可執行的 Bun 別名與解除安裝模組", () => {
@@ -240,7 +240,7 @@ test("沒有 Node.js 的 PATH 也能執行 Bun 包裝器", () => {
   const root = temporaryDirectory();
   const result = spawnSync(process.execPath, [fileURLToPath(new URL("bin/freeclaude.cjs", packageDirectory)), "--help"], { encoding: "utf8", env: { ...process.env, PATH: root } });
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toContain("FreeClaudeDesktop Bun 管理工具");
+  expect(result.stdout).toContain("FreeClaudeDesktop Bun management tool");
 });
 
 test.each(Object.entries(platforms))("平台封裝與 tarball 權限驗證：%s", (target, platform) => {
@@ -294,7 +294,7 @@ test("隔離 Bun 全域安裝：兩個別名無需 Node，清理後實際移除�
     expect(fs.existsSync(command), install.stdout).toBe(true);
     const help = spawnSync(command, ["--help"], { cwd: f.globalDirectory, env: { ...f.env, PATH: runtime }, encoding: "utf8" });
     expect(help.status, help.stderr).toBe(0);
-    expect(help.stdout).toContain("FreeClaudeDesktop Bun 管理工具");
+    expect(help.stdout).toContain("FreeClaudeDesktop Bun management tool");
   }
   // 原生測試程式只記錄事件；不執行真實服務、設定或資料清理。
   const events = path.join(f.root, "events");

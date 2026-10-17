@@ -74,7 +74,9 @@ pub(crate) fn try_probe_response(body: &str, model: &str) -> Option<Response> {
         return None;
     }
 
-    tracing::info!("-> [探測攔截] 繞過 Claude 檢查，自動回傳成功回應 (model: {model})");
+    tracing::info!(
+        "-> [probe intercept] bypassed the Claude check and returned a success response automatically (model: {model})"
+    );
     let message_id = probe_message_id();
 
     if is_stream {
@@ -125,7 +127,7 @@ pub(crate) fn invalid_openai_response(
 ) -> Response {
     if upstream_status.is_success() && is_short_connection_probe(request_body) {
         tracing::warn!(
-            "上游探測回應無法解析，改回傳本機探測成功結果（model: {model}）：{parse_error}"
+            "Failed to parse the upstream probe response; returning the local success result instead (model: {model}): {parse_error}"
         );
         return non_stream_probe_response(model);
     }
@@ -133,13 +135,13 @@ pub(crate) fn invalid_openai_response(
     let trimmed_body = response_body.trim();
     let response_preview = bounded_preview(trimmed_body);
     let error_message = if trimmed_body.is_empty() {
-        "上游回應本文為空".to_string()
+        "Upstream response body is empty".to_string()
     } else {
-        format!("上游回應不是有效的 OpenAI JSON：{parse_error}")
+        format!("Upstream response is not valid OpenAI JSON: {parse_error}")
     };
 
     tracing::error!(
-        "上游回傳 HTTP {}，但本文無法轉換為 Claude Messages 回應：{}",
+        "Upstream returned HTTP {}, but the body could not be converted to a Claude Messages response: {}",
         upstream_status.as_u16(),
         parse_error
     );
@@ -230,7 +232,7 @@ fn stream_probe_response(message_id: &str, model: &str) -> Response {
         .header("Cache-Control", "no-cache")
         .header("Connection", "keep-alive")
         .body(Body::from_stream(stream))
-        .expect("固定的探測回應標頭必須有效")
+        .expect("static probe response header must be valid")
 }
 
 fn bounded_preview(body: &str) -> String {
@@ -372,7 +374,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
         let body = axum::body::to_bytes(resp.into_body(), 8192).await.unwrap();
         let v: Value = serde_json::from_slice(&body).unwrap();
-        assert!(v["error"].as_str().unwrap().contains("本文為空"));
+        assert!(v["error"].as_str().unwrap().contains("body is empty"));
         assert_eq!(v["responseBody"], "<empty>");
     }
 }

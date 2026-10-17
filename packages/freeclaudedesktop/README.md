@@ -1,31 +1,31 @@
 # FreeClaudeDesktop
 
-需要 Bun 1.4.3 以上版本，以 Bun 安裝及管理 FreeClaudeDesktop：
+Requires Bun 1.4.3 or later. Install and manage FreeClaudeDesktop with Bun:
 
 ```sh
 bun add -g @mushroomtw/freeclaudedesktop
 freecd start
 ```
 
-可使用 `freecd status`、`freecd restart`、`freecd dashboard` 與 `freecd path` 管理服務。Web 控制台預設位於 `http://127.0.0.1:3000/dashboard`。
+Use `freecd status`, `freecd restart`, `freecd dashboard`, and `freecd path` to manage the service. The web dashboard is available at `http://127.0.0.1:3000/dashboard` by default.
 
-## 解除安裝
+## Uninstall
 
-全域安裝可一鍵清理本機狀態並移除套件：
+A global installation can clean up local state and remove the package in one step:
 
 ```sh
 freecd uninstall
 ```
 
-清理成功後，Bun 包裝器會等待原生程式退出，再移除目前的 Bun 全域套件。清理失敗會保留套件；移除失敗時請重試 `bun remove -g @mushroomtw/freeclaudedesktop --ignore-scripts`。區域安裝與原生 binary 只清理應用程式狀態；無法確認全域安裝歸屬時，會顯示手動移除命令。`freecd purge` 會保留套件。
+After a successful cleanup, the Bun wrapper waits for the native program to exit before removing the current Bun global package. A failed cleanup keeps the package; if package removal fails, retry `bun remove -g @mushroomtw/freeclaudedesktop --ignore-scripts`. Source builds and local installations only clean up application state. When global ownership cannot be confirmed, the wrapper prints the manual removal command. `freecd purge` keeps the package.
 
-## 記憶體與效能
+## Memory and performance
 
-常駐 runtime 以單一 `freeclaude` 程序執行 Proxy 與 Companion。Proxy 逐段轉送上游串流，每個請求主體上限為 `16 MiB`；記憶體占用會隨同時處理的請求與串流數量而變化，沒有固定的 RAM 數值保證。每個 Tokio runtime 預設最多使用 `2` 個非同步工作執行緒，可用 `TOKIO_WORKER_THREADS` 調整。
+The resident runtime runs the Proxy and Companion in a single `freeclaude` process. The Proxy forwards the upstream stream chunk by chunk, and each request body is limited to `16 MiB`; memory usage varies with the number of concurrent requests and streams, so there is no fixed RAM guarantee. Each Tokio runtime uses at most `2` async worker threads by default, adjustable with `TOKIO_WORKER_THREADS`.
 
-## 從 npm 遷移
+## Migrating from npm
 
-先用舊版程式清理本機狀態，再透過原本管理 npm 全域套件的流程移除舊命令；接著以 Bun 安裝：
+First clean up local state with the old program, then remove the old commands through whatever process previously managed the global npm package; finally install with Bun:
 
 ```sh
 freecd uninstall
@@ -33,4 +33,4 @@ bun add -g @mushroomtw/freeclaudedesktop
 freecd install
 ```
 
-清理會刪除應用程式資料，重新安裝後需再次設定 Gateway。
+Cleanup deletes application data, so you must configure the Gateway again after reinstalling.

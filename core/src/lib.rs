@@ -93,7 +93,11 @@ pub fn resolve_auth_header_name(scheme: &str, url: &str) -> AppResult<&'static s
             }
         }
         "x-api-key" | "bearer" | "sso" => scheme,
-        _ => return Err(AppError::InvalidConfig("不支援的 Auth Scheme".to_string())),
+        _ => {
+            return Err(AppError::InvalidConfig(
+                "Unsupported Auth Scheme".to_string(),
+            ));
+        }
     };
 
     Ok(if resolved == "x-api-key" {

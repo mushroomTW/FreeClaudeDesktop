@@ -23,7 +23,7 @@ pub fn into_response(result: OptimizationResponse) -> Response {
                 .header("Cache-Control", "no-cache")
                 .header("Connection", "keep-alive")
                 .body(Body::from_stream(stream))
-                .expect("固定的最佳化回應標頭必須有效")
+                .expect("static optimization response header must be valid")
         }
     }
 }

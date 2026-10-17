@@ -15,7 +15,7 @@ impl GatewayClientFactory for AsyncOpenAiGatewayFactory {
     fn gateway_client(&self, settings: &Settings) -> AppResult<Client<OpenAIConfig>> {
         if settings.gateway.transport_type == "anthropic_messages" {
             return Err(AppError::InvalidConfig(
-                "anthropic_messages transport 不使用 async-openai client".to_string(),
+                "anthropic_messages transport does not use the async-openai client".to_string(),
             ));
         }
 
@@ -32,13 +32,15 @@ impl GatewayClientFactory for AsyncOpenAiGatewayFactory {
 pub fn openai_api_base(base_url: &str) -> AppResult<String> {
     let base_url = base_url.trim().trim_end_matches('/');
     if base_url.is_empty() {
-        return Err(AppError::InvalidConfig("Gateway URL 不可為空".to_string()));
+        return Err(AppError::InvalidConfig(
+            "Gateway URL must not be empty".to_string(),
+        ));
     }
     let parsed = url::Url::parse(base_url)
-        .map_err(|_| AppError::InvalidConfig("Gateway URL 格式無效".to_string()))?;
+        .map_err(|_| AppError::InvalidConfig("Invalid Gateway URL format".to_string()))?;
     if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
         return Err(AppError::InvalidConfig(
-            "Gateway URL 必須使用 HTTP 或 HTTPS".to_string(),
+            "Gateway URL must use HTTP or HTTPS".to_string(),
         ));
     }
     Ok(base_url.to_string())
