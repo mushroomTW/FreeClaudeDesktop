@@ -1,7 +1,7 @@
 use crate::config::Settings;
 use crate::models::claude::{
     ClaudeContentBlock, ClaudeMessageContent, ClaudeMessagesRequest, ClaudeRole, ClaudeSystem,
-    ClaudeToolResultContent,
+    ClaudeThinkingConfig, ClaudeToolResultContent,
 };
 use serde_json::{Value, json};
 
@@ -245,64 +245,87 @@ fn apply_model_mapping(data: &mut Value, req_model: &str, settings: &Settings) {
     }
 }
 
-fn apply_thinking_mapping(data: &mut Value, req: &ClaudeMessagesRequest, settings: &Settings) {
-    let thinking = req.thinking.as_ref();
-    let disabled = thinking.is_some_and(|thinking| {
+/// 依序以請求模型別名、基礎別名與實際目標模型查詢上游支援的推理強度。
+fn supported_efforts<'a>(
+    settings: &'a Settings,
+    req_model: &str,
+    target_model: &str,
+) -> Option<&'a Vec<String>> {
+    let table = &settings.models.real_model_reasoning_efforts;
+    table
+        .get(req_model)
+        .or_else(|| table.get(base_model_alias(req_model)))
+        .or_else(|| table.get(target_model))
+}
+
+/// 請求是否明確要求關閉思考（kind=disabled 或 enabled=false）。
+fn thinking_disabled(thinking: Option<&ClaudeThinkingConfig>) -> bool {
+    thinking.is_some_and(|thinking| {
         thinking.kind.as_deref() == Some("disabled") || thinking.enabled == Some(false)
-    });
-    let target_model = data["model"].as_str().unwrap_or("");
-    let supported = settings
-        .models
-        .real_model_reasoning_efforts
-        .get(&req.model)
-        .or_else(|| {
-            settings
-                .models
-                .real_model_reasoning_efforts
-                .get(base_model_alias(&req.model))
-        })
-        .or_else(|| {
-            settings
-                .models
-                .real_model_reasoning_efforts
-                .get(target_model)
-        });
-    if disabled {
+    })
+}
+
+/// 由 thinking 設定推導推理強度；自適應且未指定預算時保留上游預設。
+fn thinking_effort(thinking: Option<&ClaudeThinkingConfig>) -> Option<&'static str> {
+    let thinking = thinking?;
+    if thinking.kind.as_deref() == Some("adaptive") && thinking.budget_tokens.is_none() {
+        return None;
+    }
+    Some(thinking_budget_to_effort(
+        thinking.budget_tokens.unwrap_or(1024),
+    ))
+}
+
+/// 先採用呼叫端明確指定的強度，其次才由 thinking 設定推導。
+fn requested_effort(req: &ClaudeMessagesRequest) -> Option<&str> {
+    let explicit = req
+        .output_config
+        .as_ref()
+        .and_then(|config| config.effort.as_deref());
+    explicit.or_else(|| thinking_effort(req.thinking.as_ref()))
+}
+
+/// 依上游宣告的支援清單套用推理強度；未宣告時僅對 o1/o3 系列送出。
+fn apply_effort(
+    data: &mut Value,
+    effort: &str,
+    supported: Option<&Vec<String>>,
+    target_model: &str,
+) {
+    match supported {
+        Some(levels) => {
+            if effort == "none" {
+                if levels.iter().any(|level| level == "none") {
+                    data["reasoning_effort"] = json!("none");
+                }
+                return;
+            }
+            if let Some(e) = clamp_reasoning_effort(effort, levels) {
+                data["reasoning_effort"] = Value::String(e.to_string());
+            }
+        }
+        None => {
+            if target_model.contains("o1") || target_model.contains("o3") {
+                data["reasoning_effort"] = Value::String(effort.to_string());
+            }
+        }
+    }
+}
+
+fn apply_thinking_mapping(data: &mut Value, req: &ClaudeMessagesRequest, settings: &Settings) {
+    let target_model = data["model"].as_str().unwrap_or("").to_string();
+    let supported = supported_efforts(settings, &req.model, &target_model);
+    if thinking_disabled(req.thinking.as_ref()) {
         // 只有上游明確支援 none 時才送出，避免把關閉思考改成低強度。
         if supported.is_some_and(|levels| levels.iter().any(|level| level == "none")) {
             data["reasoning_effort"] = json!("none");
         }
         return;
     }
-    let explicit = req
-        .output_config
-        .as_ref()
-        .and_then(|config| config.effort.as_deref());
-    let effort = explicit.or_else(|| {
-        thinking.and_then(|thinking| {
-            if thinking.kind.as_deref() == Some("adaptive") && thinking.budget_tokens.is_none() {
-                None // 自適應且未指定強度時，保留上游預設。
-            } else {
-                Some(thinking_budget_to_effort(
-                    thinking.budget_tokens.unwrap_or(1024),
-                ))
-            }
-        })
-    });
-    let Some(effort) = effort else { return };
-    if let Some(supported) = supported {
-        if effort == "none" {
-            if supported.iter().any(|level| level == "none") {
-                data["reasoning_effort"] = json!("none");
-            }
-            return;
-        }
-        if let Some(e) = clamp_reasoning_effort(effort, supported) {
-            data["reasoning_effort"] = Value::String(e.to_string());
-        }
-    } else if target_model.contains("o1") || target_model.contains("o3") {
-        data["reasoning_effort"] = Value::String(effort.to_string());
-    }
+    let Some(effort) = requested_effort(req) else {
+        return;
+    };
+    apply_effort(data, effort, supported, &target_model);
 }
 
 fn extract_system_text(system: &ClaudeSystem) -> Option<String> {
@@ -410,9 +433,8 @@ fn build_tool_messages(blocks: &[ClaudeContentBlock]) -> Vec<Value> {
     out
 }
 
-fn extract_after_tools_user_text(blocks: &[ClaudeContentBlock]) -> Option<Value> {
-    // Chat Completions 的 tool 訊息不接受圖片；等所有工具結果送出後，
-    // 用帶有工具 ID 的 user 多模態訊息補上截圖，維持工具配對順序。
+/// 收集工具結果中的圖片，並在每張圖片前補上標示來源的說明文字。
+fn tool_result_images(blocks: &[ClaudeContentBlock]) -> Vec<Value> {
     let mut images = Vec::new();
     for block in blocks {
         if let ClaudeContentBlock::ToolResult {
@@ -421,22 +443,35 @@ fn extract_after_tools_user_text(blocks: &[ClaudeContentBlock]) -> Option<Value>
         } = block
         {
             for result in results {
-                if result.get("type").and_then(Value::as_str) == Some("image") {
-                    images.push(json!({"type":"text","text":format!("Image from tool result {tool_use_id}:")}));
-                    if let Some(image) = tool_result_image(result) {
-                        images.push(image);
-                    }
+                if result.get("type").and_then(Value::as_str) != Some("image") {
+                    continue;
+                }
+                images.push(
+                    json!({"type":"text","text":format!("Image from tool result {tool_use_id}:")}),
+                );
+                if let Some(image) = tool_result_image(result) {
+                    images.push(image);
                 }
             }
         }
     }
-    let texts: Vec<String> = blocks
+    images
+}
+
+fn text_blocks(blocks: &[ClaudeContentBlock]) -> Vec<String> {
+    blocks
         .iter()
         .filter_map(|b| match b {
             ClaudeContentBlock::Text { text } => Some(text.clone()),
             _ => None,
         })
-        .collect();
+        .collect()
+}
+
+fn extract_after_tools_user_text(blocks: &[ClaudeContentBlock]) -> Option<Value> {
+    // Chat Completions 的 tool 訊息不接受圖片；等所有工具結果送出後，
+    // 用帶有工具 ID 的 user 多模態訊息補上截圖，維持工具配對順序。
+    let mut images = tool_result_images(blocks);
     if !images.is_empty() {
         images.extend(convert_user_blocks(blocks).0);
         return Some(json!({"role":"user","content":images}));
@@ -445,10 +480,7 @@ fn extract_after_tools_user_text(blocks: &[ClaudeContentBlock]) -> Option<Value>
     if has_image {
         return Some(json!({"role":"user","content":user_parts}));
     }
-    if texts.is_empty() {
-        return None;
-    }
-    let combined = texts.join("\n").trim().to_string();
+    let combined = text_blocks(blocks).join("\n").trim().to_string();
     if combined.is_empty() {
         None
     } else {
@@ -474,29 +506,40 @@ fn tool_result_image(block: &Value) -> Option<Value> {
     Some(json!({"type":"image_url","image_url":{"url":url}}))
 }
 
+/// 工具結果中的圖片必須能被轉換，否則配對順序會與實際內容不一致。
+fn has_unsupported_tool_result_image(results: &[Value]) -> bool {
+    results.iter().any(|result| {
+        result.get("type").and_then(Value::as_str) == Some("image")
+            && tool_result_image(result).is_none()
+    })
+}
+
+fn message_has_unsupported_tool_result_image(
+    message: &crate::models::claude::ClaudeMessage,
+) -> bool {
+    let ClaudeMessageContent::Blocks(blocks) = &message.content else {
+        return false;
+    };
+    blocks.iter().any(|block| {
+        let ClaudeContentBlock::ToolResult {
+            content: Some(ClaudeToolResultContent::Blocks(results)),
+            ..
+        } = block
+        else {
+            return false;
+        };
+        has_unsupported_tool_result_image(results)
+    })
+}
+
 fn validate_tool_result_images(
     messages: &[crate::models::claude::ClaudeMessage],
 ) -> Result<(), String> {
-    for message in messages {
-        if let ClaudeMessageContent::Blocks(blocks) = &message.content {
-            for block in blocks {
-                if let ClaudeContentBlock::ToolResult {
-                    content: Some(ClaudeToolResultContent::Blocks(results)),
-                    ..
-                } = block
-                {
-                    for result in results {
-                        if result.get("type").and_then(Value::as_str) == Some("image")
-                            && tool_result_image(result).is_none()
-                        {
-                            return Err(
-                                "Unsupported or incomplete image in tool_result".to_string()
-                            );
-                        }
-                    }
-                }
-            }
-        }
+    if messages
+        .iter()
+        .any(message_has_unsupported_tool_result_image)
+    {
+        return Err("Unsupported or incomplete image in tool_result".to_string());
     }
     Ok(())
 }

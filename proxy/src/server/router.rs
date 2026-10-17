@@ -111,4 +111,54 @@ mod tests {
         );
         assert!(!is_request_authorized(&headers, "token"));
     }
+
+    #[tokio::test]
+    /// 驗證受保護端點需要憑證，且 CORS 只允許本機 Proxy 來源。
+    async fn router_requires_token_and_restricts_cors_origins() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, create_router(port)).await.unwrap();
+        });
+        let base = format!("http://127.0.0.1:{port}");
+        let client = reqwest::Client::new();
+
+        // 未帶憑證的受保護端點會被拒絕。
+        let response = client.get(format!("{base}/settings")).send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        // 指向本機 Proxy 埠的來源會通過 CORS 檢查。
+        let response = client
+            .get(format!("{base}/healthz"))
+            .header("Origin", base.clone())
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            base
+        );
+
+        // 其他來源不會取得允許標頭。
+        let response = client
+            .get(format!("{base}/healthz"))
+            .header("Origin", "https://evil.example")
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .is_none()
+        );
+
+        server.abort();
+    }
 }

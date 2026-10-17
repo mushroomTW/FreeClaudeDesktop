@@ -274,10 +274,10 @@
 
     // 伺服器錯誤優先以回應中的 code 對照語系表；沒有對照時沿用伺服器訊息（英文）。
     function tError(error) {
-      const code = error && error.code ? `err_${error.code}` : '';
+      const code = error?.code ? `err_${error.code}` : '';
       const dict = translations[$('language').value] || translations['zh-tw'];
       if (code && dict[code]) return dict[code];
-      return (error && error.message) || String(error || '');
+      return error?.message || String(error || '');
     }
 
     const providerPresets = {
@@ -419,14 +419,183 @@
       });
     });
 
-    // Load Settings
-    async function load() {
-      showLoading(true);
+    function showDetectingClaude() {
       $('detectedClaudeDot').className = 'status-dot offline';
       $('detectedClaudeStatus').dataset.i18n = 'conn_detecting';
       $('detectedClaudeStatus').textContent = t('conn_detecting');
       $('detectedClaudePath').dataset.i18n = 'conn_detecting';
       $('detectedClaudePath').textContent = t('conn_detecting');
+    }
+
+    function showAuthorizedLayout() {
+      $('authWrapper').classList.add('hidden');
+      $('mainLayout').classList.remove('hidden');
+      $('appContainer').classList.remove('unauthorized');
+    }
+
+    function applyConnectionSettings(settings) {
+      $('baseUrl').value = settings.baseUrl || '';
+      $('authScheme').value = settings.authScheme || 'bearer';
+      selectProviderForBaseUrl(settings.baseUrl);
+      $('apiKey').placeholder = settings.hasApiKey ? t('apiKey_saved') : t('apiKey_not_set');
+      $('keyStatus').textContent = settings.hasApiKey ? t('keyStatus_saved') : t('keyStatus_not_set');
+      $('keyStatus').style.color = settings.hasApiKey ? '#10b981' : '#f59e0b';
+      $('customClaudePath').value = settings.customClaudePath || '';
+      $('useCustomClaudePath').checked = Boolean(settings.customClaudePath);
+      syncCustomClaudePathUI();
+    }
+
+    function applyModelSettings(settings) {
+      $('realModelSonnet').value = settings.realModelSonnet || '';
+      $('realModelOpus').value = settings.realModelOpus || '';
+      $('realModelHaiku').value = settings.realModelHaiku || '';
+      $('realModel').value = settings.realModel || '';
+
+      const dl = $('modelSuggestions');
+      dl.innerHTML = '';
+      if (settings.discoveredModels) {
+        settings.discoveredModels.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          dl.appendChild(opt);
+        });
+      }
+
+      $('transportType').value = settings.transportType || 'openai_chat';
+      $('reasoningReplayMode').value = ['inline', 'separate'].includes(settings.reasoningReplayMode)
+        ? settings.reasoningReplayMode
+        : 'separate';
+
+      renderModelsTable(settings);
+    }
+
+    function applyOptimizationSettings(settings) {
+      $('enableQuotaCheckMock').checked = settings.enableQuotaCheckMock !== false;
+      $('enablePrefixDetection').checked = settings.enablePrefixDetection !== false;
+      $('enableTitleGenerationSkip').checked = settings.enableTitleGenerationSkip !== false;
+      $('enableSuggestionModeSkip').checked = settings.enableSuggestionModeSkip !== false;
+      $('enableFilepathExtractionMock').checked = settings.enableFilepathExtractionMock !== false;
+      $('enableSafetyCheckSkip').checked = settings.enableSafetyCheckSkip !== false;
+      $('enableApiCallLogging').checked = settings.enableApiCallLogging === true;
+
+      const webTools = settings.enableWebServerTools === true;
+      $('enableWebServerTools').checked = webTools;
+      if (webTools) {
+        $('webToolsSettings').classList.remove('hidden');
+      } else {
+        $('webToolsSettings').classList.add('hidden');
+      }
+
+      $('webFetchAllowedSchemes').value = settings.webFetchAllowedSchemes || 'http,https';
+      $('webFetchAllowPrivateNetworks').checked = settings.webFetchAllowPrivateNetworks === true;
+    }
+
+    function applyAppearanceSettings(settings) {
+      const theme = localStorage.getItem('theme') || settings.themeMode || 'system';
+      localStorage.setItem('theme', theme);
+      applyTheme(theme);
+
+      $('language').value = settings.language || 'zh-tw';
+      applyLanguage($('language').value);
+    }
+
+    function mcpDotClass(hasBundled, count) {
+      if (hasBundled) return 'status-dot online';
+      if (count > 0) return 'status-dot neutral';
+      return 'status-dot offline';
+    }
+
+    function mcpSuffix(count, hasBundled) {
+      if (count === 0) return '';
+      return ` — ${hasBundled ? t('mcp_with_bundled') : t('mcp_custom_only')}`;
+    }
+
+    function renderMcpServerList(list, names) {
+      list.replaceChildren();
+      if (names.length === 0) {
+        const empty = document.createElement('span');
+        empty.style.opacity = '0.6';
+        empty.textContent = t('mcp_no_servers') || '無 MCP 伺服器';
+        list.appendChild(empty);
+        return;
+      }
+      names.forEach(name => {
+        const badge = document.createElement('span');
+        badge.style.cssText = 'display:inline-block; background:var(--bg-hover); border:1px solid var(--border-color); border-radius:4px; padding:2px 8px; margin:2px 4px 2px 0;';
+        badge.textContent = name;
+        list.appendChild(badge);
+      });
+    }
+
+    // 點擊展開/收合
+    function bindMcpToggle(cnt, list, count, suffix) {
+      if (!list || cnt._mcpBound) return;
+      cnt._mcpBound = true;
+      cnt.addEventListener('click', () => {
+        if (count === 0) return;
+        list.classList.toggle('hidden');
+        const expanded = !list.classList.contains('hidden');
+        cnt.textContent = `${t('mcp_server_count')} ${count}${suffix}${expanded ? ' ▾' : ' ▸'}`;
+      });
+    }
+
+    function renderMcpServerStatus(status) {
+      const mcp = status.mcp || {};
+      const hasBundled = mcp.hasBundledSkills === true;
+      const count = typeof mcp.serverCount === 'number' ? mcp.serverCount : 0;
+      const names = Array.isArray(mcp.serverNames) ? mcp.serverNames : [];
+      const dot = $('mcpBundledDot');
+      const txt = $('mcpBundledText');
+      const cnt = $('mcpServerCount');
+      const list = $('mcpServerList');
+      if (!dot || !txt || !cnt) return;
+      // 已偵測 → 綠點；未偵測但有 MCP 伺服器 → 灰點（中性，僅提示）；兩者皆無 → 黃點提示
+      dot.className = mcpDotClass(hasBundled, count);
+      txt.textContent = hasBundled ? t('mcp_bundled_yes') : t('mcp_bundled_no');
+      delete txt.dataset.i18n;
+      const suffix = mcpSuffix(count, hasBundled);
+      cnt.textContent = `${t('mcp_server_count')} ${count}${suffix}${count > 0 ? ' ▸' : ''}`;
+      delete cnt.dataset.i18n;
+      cnt.title = count > 0 ? (t('mcp_click_hint') || '點擊展開/收合清單') : '';
+      if (list) renderMcpServerList(list, names);
+      bindMcpToggle(cnt, list, count, suffix);
+    }
+
+    function setDetectedClaude(state, titleKey, pathKey, path = '') {
+      $('detectedClaudeDot').className = `status-dot ${state}`;
+      $('detectedClaudeStatus').dataset.i18n = titleKey;
+      $('detectedClaudeStatus').textContent = t(titleKey);
+      if (path) {
+        delete $('detectedClaudePath').dataset.i18n;
+        $('detectedClaudePath').textContent = path;
+        return;
+      }
+      $('detectedClaudePath').dataset.i18n = pathKey;
+      $('detectedClaudePath').textContent = t(pathKey);
+    }
+
+    async function detectClaudePath() {
+      try {
+        const detectRes = await request('/rpc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'DetectClaude' })
+        });
+        if (detectRes?.result?.path) {
+          setDetectedClaude('online', 'detected_online', '', detectRes.result.path);
+        } else {
+          setDetectedClaude('offline', 'detected_offline_title', 'detected_offline');
+        }
+      } catch (err) {
+        setDetectedClaude('failed', 'detected_failed_title', 'detected_failed');
+        console.warn('DetectClaude 失敗:', err);
+      }
+    }
+
+    // Load Settings
+    async function load() {
+      showLoading(true);
+      showDetectingClaude();
       try {
         const [settings, status] = await Promise.all([
           request('/settings'),
@@ -435,157 +604,26 @@
 
         loadedSettings = settings;
 
-        $('authWrapper').classList.add('hidden');
-        $('mainLayout').classList.remove('hidden');
-        $('appContainer').classList.remove('unauthorized');
-
+        showAuthorizedLayout();
         $('activePort').textContent = '127.0.0.1 : ' + (status.proxy.port || '3000');
 
-        $('baseUrl').value = settings.baseUrl || '';
-        $('authScheme').value = settings.authScheme || 'bearer';
-        selectProviderForBaseUrl(settings.baseUrl);
-        $('apiKey').placeholder = settings.hasApiKey ? t('apiKey_saved') : t('apiKey_not_set');
-        $('keyStatus').textContent = settings.hasApiKey ? t('keyStatus_saved') : t('keyStatus_not_set');
-        $('keyStatus').style.color = settings.hasApiKey ? '#10b981' : '#f59e0b';
-
-        $('customClaudePath').value = settings.customClaudePath || '';
-        $('useCustomClaudePath').checked = Boolean(settings.customClaudePath);
-        syncCustomClaudePathUI();
-
-        $('realModelSonnet').value = settings.realModelSonnet || '';
-        $('realModelOpus').value = settings.realModelOpus || '';
-        $('realModelHaiku').value = settings.realModelHaiku || '';
-        $('realModel').value = settings.realModel || '';
-
-        const dl = $('modelSuggestions');
-        dl.innerHTML = '';
-        if (settings.discoveredModels) {
-          settings.discoveredModels.forEach(m => {
-            const opt = document.createElement('option');
-            opt.value = m;
-            dl.appendChild(opt);
-          });
-        }
-
-        $('transportType').value = settings.transportType || 'openai_chat';
-        const reasoningReplayMode = ['inline', 'separate'].includes(settings.reasoningReplayMode)
-          ? settings.reasoningReplayMode
-          : 'separate';
-        $('reasoningReplayMode').value = reasoningReplayMode;
-
-        $('enableQuotaCheckMock').checked = settings.enableQuotaCheckMock !== false;
-        $('enablePrefixDetection').checked = settings.enablePrefixDetection !== false;
-        $('enableTitleGenerationSkip').checked = settings.enableTitleGenerationSkip !== false;
-        $('enableSuggestionModeSkip').checked = settings.enableSuggestionModeSkip !== false;
-        $('enableFilepathExtractionMock').checked = settings.enableFilepathExtractionMock !== false;
-        $('enableSafetyCheckSkip').checked = settings.enableSafetyCheckSkip !== false;
-        $('enableApiCallLogging').checked = settings.enableApiCallLogging === true;
-
-        $('enableWebServerTools').checked = settings.enableWebServerTools === true;
-        if (settings.enableWebServerTools) {
-          $('webToolsSettings').classList.remove('hidden');
-        } else {
-          $('webToolsSettings').classList.add('hidden');
-        }
-
-        $('webFetchAllowedSchemes').value = settings.webFetchAllowedSchemes || 'http,https';
-        $('webFetchAllowPrivateNetworks').checked = settings.webFetchAllowPrivateNetworks === true;
-
-        const theme = localStorage.getItem('theme') || settings.themeMode || 'system';
-        localStorage.setItem('theme', theme);
-        applyTheme(theme);
-
-        $('language').value = settings.language || 'zh-tw';
-        applyLanguage($('language').value);
-        renderModelsTable(settings);
+        applyConnectionSettings(settings);
+        applyModelSettings(settings);
+        applyOptimizationSettings(settings);
+        applyAppearanceSettings(settings);
 
         // MCP Bundled Skills 偵測（對應 ClaudeSource resources/bundled-skills）
         try {
-          const mcp = status.mcp || {};
-          const hasBundled = mcp.hasBundledSkills === true;
-          const count = typeof mcp.serverCount === 'number' ? mcp.serverCount : 0;
-          const names = Array.isArray(mcp.serverNames) ? mcp.serverNames : [];
-          const dot = $('mcpBundledDot');
-          const txt = $('mcpBundledText');
-          const cnt = $('mcpServerCount');
-          const list = $('mcpServerList');
-          if (dot && txt && cnt) {
-            // 已偵測 → 綠點；未偵測但有 MCP 伺服器 → 灰點（中性，僅提示）；兩者皆無 → 黃點提示
-            if (hasBundled) dot.className = 'status-dot online';
-            else if (count > 0) dot.className = 'status-dot neutral';
-            else dot.className = 'status-dot offline';
-            txt.textContent = hasBundled ? t('mcp_bundled_yes') : t('mcp_bundled_no');
-            txt.removeAttribute('data-i18n');
-            const suffix = count > 0 ? ` — ${hasBundled ? t('mcp_with_bundled') : t('mcp_custom_only')}` : '';
-            const hint = count > 0 ? ' ▸' : '';
-            cnt.textContent = `${t('mcp_server_count')} ${count}${suffix}${hint}`;
-            cnt.removeAttribute('data-i18n');
-            cnt.title = count > 0 ? (t('mcp_click_hint') || '點擊展開/收合清單') : '';
-            if (list) {
-              list.replaceChildren();
-              if (names.length > 0) {
-                names.forEach(name => {
-                  const badge = document.createElement('span');
-                  badge.style.cssText = 'display:inline-block; background:var(--bg-hover); border:1px solid var(--border-color); border-radius:4px; padding:2px 8px; margin:2px 4px 2px 0;';
-                  badge.textContent = name;
-                  list.appendChild(badge);
-                });
-              } else {
-                const empty = document.createElement('span');
-                empty.style.opacity = '0.6';
-                empty.textContent = t('mcp_no_servers') || '無 MCP 伺服器';
-                list.appendChild(empty);
-              }
-            }
-            // 點擊展開/收合
-            if (cnt && list && !cnt._mcpBound) {
-              cnt._mcpBound = true;
-              cnt.addEventListener('click', () => {
-                if (count === 0) return;
-                list.classList.toggle('hidden');
-                const expanded = !list.classList.contains('hidden');
-                cnt.textContent = `${t('mcp_server_count')} ${count}${suffix}${expanded ? ' ▾' : ' ▸'}`;
-              });
-            }
-          }
+          renderMcpServerStatus(status);
         } catch (e) {
           console.warn('MCP status render failed', e);
         }
 
-        // Detect Claude Path via RPC
-        try {
-          const detectRes = await request('/rpc', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ method: 'DetectClaude' })
-          });
-          if (detectRes?.result?.path) {
-            $('detectedClaudeDot').className = 'status-dot online';
-            $('detectedClaudeStatus').dataset.i18n = 'detected_online';
-            $('detectedClaudeStatus').textContent = t('detected_online');
-            delete $('detectedClaudePath').dataset.i18n;
-            $('detectedClaudePath').textContent = detectRes.result.path;
-          } else {
-            $('detectedClaudeDot').className = 'status-dot offline';
-            $('detectedClaudeStatus').dataset.i18n = 'detected_offline_title';
-            $('detectedClaudeStatus').textContent = t('detected_offline_title');
-            $('detectedClaudePath').dataset.i18n = 'detected_offline';
-            $('detectedClaudePath').textContent = t('detected_offline');
-          }
-        } catch (err) {
-          $('detectedClaudeDot').className = 'status-dot failed';
-          $('detectedClaudeStatus').dataset.i18n = 'detected_failed_title';
-          $('detectedClaudeStatus').textContent = t('detected_failed_title');
-          $('detectedClaudePath').dataset.i18n = 'detected_failed';
-          $('detectedClaudePath').textContent = t('detected_failed');
-          console.warn('DetectClaude 失敗:', err);
-        }
+        await detectClaudePath();
 
         showToast(t('toast_load_success'));
       } catch (e) {
-        $('authWrapper').classList.add('hidden');
-        $('mainLayout').classList.remove('hidden');
-        $('appContainer').classList.remove('unauthorized');
+        showAuthorizedLayout();
         showToast(t('toast_load_failed') + tError(e), 'error');
       } finally {
         showLoading(false);
@@ -1041,7 +1079,7 @@
     (function() {
       const savedTheme = localStorage.getItem('theme') || 'system';
       applyTheme(savedTheme);
-      load();
+      void load();
     })();
 
 // 將原本的 inline onclick 改為集中事件綁定。

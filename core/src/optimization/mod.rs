@@ -373,4 +373,41 @@ mod tests {
 
         assert!(text.contains("hello from web fetch"));
     }
+
+    #[test]
+    /// 驗證 `build_text_sse` 產生完整且順序正確的 SSE 事件。
+    fn build_text_sse_emits_complete_event_sequence() {
+        let events = build_text_sse("claude-test", "hello", 7, 3);
+        assert_eq!(events.len(), 6);
+        assert!(events[0].starts_with("event: message_start\ndata: "));
+        assert!(events[0].contains("\"input_tokens\":7"));
+        assert!(events[0].contains("\"model\":\"claude-test\""));
+        assert!(events[1].contains("content_block_start"));
+        assert!(events[2].contains("content_block_delta"));
+        assert!(events[2].contains("hello"));
+        assert!(events[3].contains("content_block_stop"));
+        assert!(events[4].contains("\"output_tokens\":3"));
+        assert!(events[5].starts_with("event: message_stop"));
+    }
+
+    #[tokio::test]
+    /// 驗證串流請求的優化結果會以 SSE 事件回傳。
+    async fn stream_optimization_returns_sse_events() {
+        let settings = Settings::default();
+        let body = json!({
+            "model": "claude-test",
+            "max_tokens": 1,
+            "stream": true,
+            "tools": [{ "name": "usage_probe" }],
+            "messages": [{ "role": "user", "content": "count" }]
+        })
+        .to_string();
+
+        let OptimizationResponse::Sse(events) = try_optimizations(&body, &settings).await.unwrap()
+        else {
+            panic!("串流請求應回傳 SSE");
+        };
+        assert!(!events.is_empty());
+        assert!(events.iter().any(|event| event.contains("message_start")));
+    }
 }

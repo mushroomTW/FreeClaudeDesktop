@@ -41,22 +41,32 @@ function sameDirectory(left, right) {
   return a.ino !== 0n && a.dev === b.dev && a.ino === b.ino;
 }
 
+// Windows 的 Bun shim 以 <entry>.bunx 記錄原始入口，據此判斷別名是否由本套件擁有。
+function windowsOwnedAliases(binDirectory, entry, current) {
+  const metadata = `${entry}.bunx`;
+  if (!fs.existsSync(metadata)) return [];
+  const target = fs.readFileSync(metadata).toString("utf16le").split('"\0')[0];
+  const resolved = path.resolve(binDirectory, "..", target);
+  if (!fs.existsSync(resolved) || !sameDirectory(resolved, path.join(current, "bin/freeclaude.cjs"))) return [];
+  const owned = [];
+  for (const filename of [metadata, `${entry}.exe`]) {
+    if (fs.existsSync(filename)) owned.push({ filename, identity: fs.lstatSync(filename, { bigint: true }) });
+  }
+  return owned;
+}
+
+function posixOwnedAliases(entry, current) {
+  if (!fs.existsSync(entry) || !sameDirectory(entry, path.join(current, "bin/freeclaude.cjs"))) return [];
+  return [{ filename: entry, identity: fs.lstatSync(entry, { bigint: true }) }];
+}
+
 function ownedAliases(binDirectory, current) {
   const aliases = [];
   for (const name of ["freeclaude", "freecd"]) {
     const entry = path.join(binDirectory, name);
-    if (process.platform === "win32") {
-      const metadata = `${entry}.bunx`;
-      if (!fs.existsSync(metadata)) continue;
-      const target = fs.readFileSync(metadata).toString("utf16le").split('"\0')[0];
-      const resolved = path.resolve(binDirectory, "..", target);
-      if (!fs.existsSync(resolved) || !sameDirectory(resolved, path.join(current, "bin/freeclaude.cjs"))) continue;
-      for (const filename of [metadata, `${entry}.exe`]) {
-        if (fs.existsSync(filename)) aliases.push({ filename, identity: fs.lstatSync(filename, { bigint: true }) });
-      }
-    } else if (fs.existsSync(entry) && sameDirectory(entry, path.join(current, "bin/freeclaude.cjs"))) {
-      aliases.push({ filename: entry, identity: fs.lstatSync(entry, { bigint: true }) });
-    }
+    aliases.push(...(process.platform === "win32"
+      ? windowsOwnedAliases(binDirectory, entry, current)
+      : posixOwnedAliases(entry, current)));
   }
   return aliases;
 }
@@ -110,24 +120,40 @@ function retireWindowsAlias(filename) {
   child.unref();
 }
 
+// 讀取別名目前的身分；已消失（ENOENT）時回傳 null 交由呼叫端略過。
+function currentAliasIdentity(filename) {
+  try {
+    return fs.lstatSync(filename, { bigint: true });
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+// 只有 Windows 上被鎖定的 .exe 才需要延後由子程序清理。
+function isRetirableWindowsAlias(filename, error) {
+  if (process.platform !== "win32") return false;
+  if (!filename.endsWith(".exe")) return false;
+  return ["EPERM", "EBUSY", "EACCES"].includes(error.code);
+}
+
+function removeAliasFile(filename) {
+  try {
+    fs.unlinkSync(filename);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    if (!isRetirableWindowsAlias(filename, error)) throw error;
+    retireWindowsAlias(filename);
+  }
+}
+
 function cleanupGlobalAliases(installation) {
   for (const { filename, identity } of installation.aliases) {
-    let current;
-    try {
-      // lstat 也能檢查套件移除後已失效的 POSIX symlink。
-      current = fs.lstatSync(filename, { bigint: true });
-    } catch (error) {
-      if (error.code === "ENOENT") continue;
-      throw error;
-    }
+    // lstat 也能檢查套件移除後已失效的 POSIX symlink。
+    const current = currentAliasIdentity(filename);
+    if (!current) continue;
     if (identity.dev !== current.dev || identity.ino !== current.ino) continue;
-    try {
-      fs.unlinkSync(filename);
-    } catch (error) {
-      if (error.code === "ENOENT") continue;
-      if (process.platform !== "win32" || !filename.endsWith(".exe") || !["EPERM", "EBUSY", "EACCES"].includes(error.code)) throw error;
-      retireWindowsAlias(filename);
-    }
+    removeAliasFile(filename);
   }
 }
 

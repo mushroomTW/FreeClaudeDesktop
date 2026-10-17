@@ -234,4 +234,41 @@ mod tests {
         ensure_env_object(&mut obj2);
         cleanup_empty_env(&mut obj2, false);
     }
+
+    #[test]
+    fn cleanup_and_remove_managed_keys_cover_branches() {
+        // 空 env 且先前不存在時，整個 env 物件會被移除。
+        let mut obj = serde_json::Map::new();
+        obj.insert("env".to_string(), json!({}));
+        obj.insert("other".to_string(), json!(1));
+        cleanup_empty_env(&mut obj, false);
+        assert!(!obj.contains_key("env"));
+        assert!(obj.contains_key("other"));
+
+        // 先前存在時，即使 env 是空的也要保留。
+        let mut kept = serde_json::Map::new();
+        kept.insert("env".to_string(), json!({}));
+        cleanup_empty_env(&mut kept, true);
+        assert!(kept.contains_key("env"));
+
+        // 沒有 env 物件時無事可做，回報未變更。
+        let mut without_env = serde_json::Map::new();
+        assert!(!remove_managed_keys_without_previous(&mut without_env));
+
+        // 有 env 物件時移除受管理的鍵，但保留其他鍵。
+        let mut managed = serde_json::Map::new();
+        managed.insert(
+            "env".to_string(),
+            json!({ "ANTHROPIC_BASE_URL": "http://x", "KEEP": "1" }),
+        );
+        assert!(remove_managed_keys_without_previous(&mut managed));
+        let env_obj = managed.get("env").unwrap().as_object().unwrap();
+        assert!(!env_obj.contains_key("ANTHROPIC_BASE_URL"));
+        assert_eq!(env_obj.get("KEEP").unwrap(), "1");
+
+        // 沒有受管理的鍵時不算變更。
+        let mut untouched = serde_json::Map::new();
+        untouched.insert("env".to_string(), json!({ "KEEP": "1" }));
+        assert!(!remove_managed_keys_without_previous(&mut untouched));
+    }
 }

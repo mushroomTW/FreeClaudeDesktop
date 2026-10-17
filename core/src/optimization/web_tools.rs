@@ -486,6 +486,25 @@ mod tests {
         }
     }
 
+    #[test]
+    /// 驗證 IPv6 分支：公開位址放行，特殊用途前綴與 NAT64 一律阻擋。
+    fn ipv6_special_purpose_ranges_are_blocked() {
+        assert!(is_public_ip("2001:4860:4860::8888".parse().unwrap()));
+        for raw in [
+            "::",          // 未指定
+            "::1",         // 迴路
+            "ff02::1",     // 多播
+            "fc00::1",     // 唯一本地位址
+            "fe80::1",     // 連結本地位址
+            "2001:db8::1", // 文件範例
+            "64:ff9b::1",  // NAT64
+        ] {
+            assert!(!is_public_ip(raw.parse().unwrap()), "{raw}");
+        }
+        // 保留範圍的 IPv4 位址（240.0.0.0/4）也要阻擋。
+        assert!(!is_public_ip("240.0.0.1".parse().unwrap()));
+    }
+
     #[tokio::test]
     /// 驗證 `stops_reading_after_two_mibibytes` 的行為符合預期。
     async fn stops_reading_after_two_mibibytes() {

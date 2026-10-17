@@ -1026,3 +1026,83 @@ async fn root_icon_healthz_cover() {
     let j = handle_healthz().await;
     assert_eq!(j.0["status"], "ok");
 }
+
+#[test]
+/// 驗證 count_tokens 的字元估算涵蓋各種欄位型別。
+fn count_token_estimation_covers_every_field_shape() {
+    // text_field_chars：只有字串型別的 text 才計入。
+    assert_eq!(text_field_chars(&json!({ "text": "abc" })), 3);
+    assert_eq!(text_field_chars(&json!({ "text": ["abc"] })), 0);
+    assert_eq!(text_field_chars(&json!({})), 0);
+
+    // system_char_count：字串、文字區塊陣列、其他型別與未提供。
+    assert_eq!(system_char_count(Some(&json!("hello"))), 5);
+    assert_eq!(
+        system_char_count(Some(&json!([{ "text": "ab" }, { "text": "cde" }]))),
+        5
+    );
+    assert_eq!(system_char_count(Some(&json!([{ "other": 1 }]))), 0);
+    assert_eq!(system_char_count(Some(&json!(42))), 0);
+    assert_eq!(system_char_count(None), 0);
+
+    // block_char_count：text、content 與 input 都要累加。
+    assert_eq!(
+        block_char_count(&json!({ "text": "ab", "content": "cde", "input": "f" })),
+        6
+    );
+    assert_eq!(block_char_count(&json!({ "content": 5, "input": 5 })), 0);
+
+    // content_char_count：字串、區塊陣列、其他型別與未提供。
+    assert_eq!(content_char_count(Some(&json!("abcd"))), 4);
+    assert_eq!(
+        content_char_count(Some(&json!([{ "text": "ab" }, { "text": "cd" }]))),
+        4
+    );
+    assert_eq!(content_char_count(Some(&json!(false))), 0);
+    assert_eq!(content_char_count(None), 0);
+
+    // messages_char_count：陣列、非陣列與未提供。
+    assert_eq!(
+        messages_char_count(Some(&json!([
+            { "content": "ab" },
+            { "content": [{ "text": "cd" }] }
+        ]))),
+        4
+    );
+    assert_eq!(messages_char_count(Some(&json!("nope"))), 0);
+    assert_eq!(messages_char_count(None), 0);
+
+    // tools_char_count：非陣列與未提供為 0，否則每個 tool 至少 8 字元等價。
+    assert_eq!(tools_char_count(Some(&json!({ "name": "a" }))), 0);
+    assert_eq!(tools_char_count(None), 0);
+    assert!(tools_char_count(Some(&json!([{ "name": "a" }]))) >= 8);
+
+    // estimate_char_count：合併 system、messages 與 tools。
+    assert_eq!(estimate_char_count(None), 0);
+    assert_eq!(estimate_char_count(Some(&json!({ "system": "abcd" }))), 4);
+}
+
+#[tokio::test]
+/// 驗證 count_tokens 端點以本地估算回覆，且無法解析的內容仍有保底值。
+async fn handle_count_tokens_returns_local_estimate() {
+    let response = handle_count_tokens(Bytes::from_static(
+        br#"{"system":"hello","messages":[{"content":"world"}]}"#,
+    ))
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let parsed: Value = serde_json::from_slice(&body).unwrap();
+    assert!(parsed["input_tokens"].as_u64().unwrap() >= 1);
+
+    let response = handle_count_tokens(Bytes::from_static(b"not json"))
+        .await
+        .into_response();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let parsed: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(parsed["input_tokens"], 1);
+}

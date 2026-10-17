@@ -89,7 +89,8 @@ function uninstall(args) {
   });
   process.exitCode = result.status ?? 1;
   if (result.error || process.exitCode !== 0) {
-    console.error(`Local state has been cleaned up, but removing the package failed${result.error ? `: ${result.error.message}` : ""}. Retry with ${retry}`);
+    const reason = result.error ? `: ${result.error.message}` : "";
+    console.error(`Local state has been cleaned up, but removing the package failed${reason}. Retry with ${retry}`);
   } else {
     // Bun 在部分平台會留下全域命令入口，只清理由本次安裝持有的別名。
     try {

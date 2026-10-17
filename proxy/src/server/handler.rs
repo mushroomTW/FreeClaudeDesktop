@@ -149,63 +149,84 @@ pub async fn handle_root() -> impl IntoResponse {
     "FreeClaudeDesktop API proxy is running"
 }
 
+/// 取出 JSON 物件的 `text` 欄位字元數。
+fn text_field_chars(item: &Value) -> usize {
+    item.get("text")
+        .and_then(Value::as_str)
+        .map_or(0, |t| t.chars().count())
+}
+
+/// `system` 欄位：字串或文字區塊陣列（使用 chars 計數，對 CJK 更準確）。
+fn system_char_count(system: Option<&Value>) -> usize {
+    match system {
+        Some(Value::String(s)) => s.chars().count(),
+        Some(Value::Array(arr)) => arr.iter().map(text_field_chars).sum(),
+        _ => 0,
+    }
+}
+
+/// 單一內容區塊：text、tool_result 的 content 與 tool_use 的 input 都算在內。
+fn block_char_count(block: &Value) -> usize {
+    let text = text_field_chars(block);
+    let inner = block
+        .get("content")
+        .and_then(Value::as_str)
+        .map_or(0, |c| c.chars().count());
+    let input = block
+        .get("input")
+        .and_then(Value::as_str)
+        .map_or(0, |i| i.chars().count());
+    text + inner + input
+}
+
+/// 單一訊息的 content：字串或區塊陣列。
+fn content_char_count(content: Option<&Value>) -> usize {
+    match content {
+        Some(Value::String(s)) => s.chars().count(),
+        Some(Value::Array(arr)) => arr.iter().map(block_char_count).sum(),
+        _ => 0,
+    }
+}
+
+fn messages_char_count(messages: Option<&Value>) -> usize {
+    messages
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|m| content_char_count(m.get("content")))
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
+/// tools 定義也會佔 token（JSON 序列化長度 /4），並保底每個 tool 至少 32 tokens 等價。
+fn tools_char_count(tools: Option<&Value>) -> usize {
+    let Some(tools) = tools.and_then(Value::as_array) else {
+        return 0;
+    };
+    let serialized: usize = tools
+        .iter()
+        .map(|tool| serde_json::to_string(tool).map_or(64, |s| s.chars().count()) / 4)
+        .sum();
+    serialized + tools.len() * 8
+}
+
+/// 估算整份請求的字元數，作為 input_tokens 的近似值。
+fn estimate_char_count(parsed: Option<&Value>) -> usize {
+    let Some(v) = parsed else {
+        return 0;
+    };
+    system_char_count(v.get("system"))
+        + messages_char_count(v.get("messages"))
+        + tools_char_count(v.get("tools"))
+}
+
 /// 本地處理 Anthropic `POST /v1/messages/count_tokens`，避免轉發至不支援的 gateway 產生 404。
 pub async fn handle_count_tokens(body: Bytes) -> impl IntoResponse {
     // 盡量本地估算 input_tokens，避免將計數請求送往上游
     let parsed = serde_json::from_str::<Value>(&String::from_utf8_lossy(&body)).ok();
-    let mut char_count: usize = 0;
-    if let Some(v) = parsed.as_ref() {
-        // system（使用 chars 計數，對 CJK 更準確）
-        if let Some(system) = v.get("system") {
-            match system {
-                Value::String(s) => char_count += s.chars().count(),
-                Value::Array(arr) => {
-                    for item in arr {
-                        if let Some(t) = item.get("text").and_then(Value::as_str) {
-                            char_count += t.chars().count();
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        // messages
-        if let Some(messages) = v.get("messages").and_then(Value::as_array) {
-            for m in messages {
-                if let Some(content) = m.get("content") {
-                    match content {
-                        Value::String(s) => char_count += s.chars().count(),
-                        Value::Array(arr) => {
-                            for block in arr {
-                                if let Some(t) = block.get("text").and_then(Value::as_str) {
-                                    char_count += t.chars().count();
-                                }
-                                // tool_result / image blocks 忽略文字以外的內容
-                                if let Some(c) = block.get("content").and_then(Value::as_str) {
-                                    char_count += c.chars().count();
-                                }
-                                if let Some(inp) = block.get("input").and_then(|v| v.as_str()) {
-                                    char_count += inp.chars().count();
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        // tools 定義也會佔 token（JSON 序列化長度 /4）
-        if let Some(tools) = v.get("tools").and_then(Value::as_array) {
-            for tool in tools {
-                char_count += serde_json::to_string(tool)
-                    .map(|s| s.chars().count())
-                    .unwrap_or(64)
-                    / 4;
-            }
-            // 保底每個 tool 至少 32 tokens 等價
-            char_count += tools.len() * 8;
-        }
-    }
+    let char_count = estimate_char_count(parsed.as_ref());
     // 粗略估算：每 4 字元 ≈ 1 token，最低 1
     let estimated = std::cmp::max(1, char_count.div_ceil(4));
     tracing::info!(
